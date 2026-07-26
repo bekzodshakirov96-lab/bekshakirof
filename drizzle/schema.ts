@@ -86,6 +86,8 @@ export const products = mysqlTable(
     containerUnitsPerItem: int("containerUnitsPerItem").default(0).notNull(),
     /** Sklad: below this stock level the product is flagged as low-stock. 0 = no alert configured. */
     minStockLevel: int("minStockLevel").default(0).notNull(),
+    /** Manual display order (Агент x Товар jadvalidagi qatorlar tartibi va h.k.) — kichikroq son yuqorida turadi. */
+    sortOrder: int("sortOrder").default(0).notNull(),
     isActive: boolean("isActive").default(true).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),

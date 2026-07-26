@@ -1,4 +1,4 @@
-import { asc, eq, like, or } from "drizzle-orm";
+import { asc, eq, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agentTakingEntries, products, transactions } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure } from "../access";
@@ -19,7 +19,24 @@ export const productsRouter = router({
             ? or(like(products.name, `%${search}%`), like(products.code, `%${search}%`))
             : undefined,
         )
-        .orderBy(asc(products.name));
+        .orderBy(asc(products.sortOrder), asc(products.name));
+    }),
+  /** Bitta mahsulotni ro'yxatda bir pog'ona yuqoriga/pastga suradi — qo'shni
+   * mahsulot bilan sortOrder qiymatlarini almashtiradi. */
+  reorder: businessProcedure
+    .input(z.object({ id: z.number().int().positive(), direction: z.enum(["up", "down"]) }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      const ordered = await db.select({ id: products.id, sortOrder: products.sortOrder }).from(products).orderBy(asc(products.sortOrder), asc(products.name));
+      const index = ordered.findIndex(row => row.id === input.id);
+      if (index === -1) throw new Error("Mahsulot topilmadi.");
+      const swapIndex = input.direction === "up" ? index - 1 : index + 1;
+      if (swapIndex < 0 || swapIndex >= ordered.length) return { success: true };
+      const current = ordered[index];
+      const neighbor = ordered[swapIndex];
+      await db.update(products).set({ sortOrder: neighbor.sortOrder }).where(eq(products.id, current.id));
+      await db.update(products).set({ sortOrder: current.sortOrder }).where(eq(products.id, neighbor.id));
+      return { success: true };
     }),
   updatePrice: businessProcedure
     .input(
@@ -81,7 +98,8 @@ export const productsRouter = router({
     )
     .mutation(async ({ input }) => {
       const db = await requireDb();
-      const [created] = await db.insert(products).values(input).$returningId();
+      const [{ maxOrder }] = await db.select({ maxOrder: sql<number>`coalesce(max(${products.sortOrder}), 0)`.mapWith(Number) }).from(products);
+      const [created] = await db.insert(products).values({ ...input, sortOrder: maxOrder + 1 }).$returningId();
       return { id: created.id };
     }),
 });

@@ -1,12 +1,15 @@
 import { MetricCard, PageHeader, QueryError } from "@/components/finance-ui";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import {
   Banknote,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Landmark,
   Plus,
   Trash2,
@@ -557,9 +560,72 @@ function AgentProductMatrix({ date }: { date: string }) {
     },
     onError: error => toast.error(error.message),
   });
+  const reorderProduct = trpc.products.reorder.useMutation({
+    onSuccess: () => utils.products.list.invalidate(),
+    onError: error => toast.error(error.message),
+  });
+  const createAgent = trpc.agents.create.useMutation({
+    onSuccess: async () => {
+      toast.success("Agent qo'shildi");
+      setNewAgentName("");
+      await utils.agents.options.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const createProduct = trpc.products.create.useMutation({
+    onSuccess: async () => {
+      toast.success("Mahsulot qo'shildi");
+      setNewProductForm({ code: "", name: "", unit: "dona", price: "" });
+      setNewProductOpen(false);
+      await utils.products.list.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
 
   const agentList = agents.data ?? [];
   const productList = products.data ?? [];
+
+  /** null = hammasi ko'rsatiladi (standart holat); tanlash boshlangandan keyin aniq to'plamga aylanadi. */
+  const [selectedAgentIds, setSelectedAgentIds] = useState<Set<number> | null>(null);
+  const visibleAgents = selectedAgentIds === null ? agentList : agentList.filter(agent => selectedAgentIds.has(agent.id));
+  function toggleAgentVisible(agentId: number) {
+    setSelectedAgentIds(prev => {
+      const base = new Set(prev === null ? agentList.map(agent => agent.id) : prev);
+      if (base.has(agentId)) base.delete(agentId); else base.add(agentId);
+      return base;
+    });
+  }
+
+  const [agentPickerOpen, setAgentPickerOpen] = useState(false);
+  const agentPickerRef = useRef<HTMLDivElement>(null);
+  const [newAgentOpen, setNewAgentOpen] = useState(false);
+  const [newAgentName, setNewAgentName] = useState("");
+  useEffect(() => {
+    if (!agentPickerOpen) return;
+    function handleOutsideClick(event: MouseEvent) {
+      if (agentPickerRef.current && !agentPickerRef.current.contains(event.target as Node)) { setAgentPickerOpen(false); setNewAgentOpen(false); }
+    }
+    function handleEscape(event: KeyboardEvent) { if (event.key === "Escape") setAgentPickerOpen(false); }
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [agentPickerOpen]);
+
+  const [newProductOpen, setNewProductOpen] = useState(false);
+  const [newProductForm, setNewProductForm] = useState({ code: "", name: "", unit: "dona", price: "" });
+  const newProductRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!newProductOpen) return;
+    function handleOutsideClick(event: MouseEvent) {
+      if (newProductRef.current && !newProductRef.current.contains(event.target as Node)) setNewProductOpen(false);
+    }
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [newProductOpen]);
+  const canCreateProduct = newProductForm.code.trim() && newProductForm.name.trim() && newProductForm.unit.trim() && newProductForm.price.trim();
   const entryMap = useMemo(() => {
     const map = new Map<string, { id: number; quantity: string; amount: number }>();
     for (const row of takingRows.data ?? []) map.set(`${row.agentId}:${row.productId}`, row);
@@ -601,7 +667,7 @@ function AgentProductMatrix({ date }: { date: string }) {
     else if (event.key === "ArrowDown" || event.key === "Enter") targetRow += 1;
     else if (event.key === "ArrowLeft") targetColumn -= 1;
     else if (event.key === "ArrowRight") targetColumn += 1;
-    if (targetRow < 0 || targetRow >= productList.length || targetColumn < 0 || targetColumn >= agentList.length) return;
+    if (targetRow < 0 || targetRow >= productList.length || targetColumn < 0 || targetColumn >= visibleAgents.length) return;
     event.preventDefault();
     const target = document.querySelector<HTMLInputElement>(`[data-cash-matrix-cell="${targetRow}-${targetColumn}"]`);
     target?.focus();
@@ -615,14 +681,97 @@ function AgentProductMatrix({ date }: { date: string }) {
   const summaryByAgent = new Map((daySummary.data?.agentSummaries ?? []).map(row => [row.agentId, row]));
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-200">
+    <div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="relative" ref={agentPickerRef}>
+          <Button
+            type="button" variant="outline" size="sm" className="h-8 gap-1.5 bg-white text-xs font-semibold"
+            onClick={() => setAgentPickerOpen(open => !open)}
+          >
+            <Users className="size-3.5" /> Agentlar ({visibleAgents.length}/{agentList.length})
+          </Button>
+          {agentPickerOpen && (
+            <div className="absolute z-20 mt-1 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+              <div className="max-h-56 overflow-y-auto">
+                {agentList.map(agent => (
+                  <button
+                    key={agent.id} type="button"
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    onClick={() => toggleAgentVisible(agent.id)}
+                  >
+                    <Checkbox checked={selectedAgentIds === null || selectedAgentIds.has(agent.id)} />
+                    <span className="flex-1 truncate font-medium text-slate-800">{agent.name}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="border-t border-slate-100 p-2">
+                {!newAgentOpen ? (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5"
+                    onClick={() => setNewAgentOpen(true)}
+                  >
+                    <Plus className="size-3.5" /> Yangi agent qo'shish
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      autoFocus className="finance-input h-8 flex-1 text-xs" placeholder="Agent nomi"
+                      value={newAgentName}
+                      onChange={event => setNewAgentName(event.target.value)}
+                      onKeyDown={event => { if (event.key === "Enter" && newAgentName.trim() && !createAgent.isPending) createAgent.mutate({ name: newAgentName.trim() }); }}
+                    />
+                    <Button
+                      type="button" size="sm" className="h-8 px-2.5 text-xs"
+                      disabled={!newAgentName.trim() || createAgent.isPending}
+                      onClick={() => createAgent.mutate({ name: newAgentName.trim() })}
+                    >
+                      Qo'sh
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="relative" ref={newProductRef}>
+          <Button
+            type="button" variant="outline" size="sm" className="h-8 gap-1.5 bg-white text-xs font-semibold"
+            onClick={() => setNewProductOpen(open => !open)}
+          >
+            <Plus className="size-3.5" /> Mahsulot qo'shish
+          </Button>
+          {newProductOpen && (
+            <div className="absolute z-20 mt-1 w-64 space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+              <Input className="finance-input h-8 text-xs" placeholder="Kodi" value={newProductForm.code} onChange={event => setNewProductForm(prev => ({ ...prev, code: event.target.value }))} />
+              <Input className="finance-input h-8 text-xs" placeholder="Nomi" value={newProductForm.name} onChange={event => setNewProductForm(prev => ({ ...prev, name: event.target.value }))} />
+              <Input className="finance-input h-8 text-xs" placeholder="O'lchov birligi" value={newProductForm.unit} onChange={event => setNewProductForm(prev => ({ ...prev, unit: event.target.value }))} />
+              <Input
+                className="finance-input h-8 text-xs" type="text" inputMode="numeric" placeholder="Narxi"
+                value={newProductForm.price}
+                onChange={event => setNewProductForm(prev => ({ ...prev, price: sanitizeIntegerInput(event.target.value) }))}
+              />
+              <Button
+                type="button" size="sm" className="h-8 w-full text-xs"
+                disabled={!canCreateProduct || createProduct.isPending}
+                onClick={() => createProduct.mutate({ code: newProductForm.code.trim(), name: newProductForm.name.trim(), unit: newProductForm.unit.trim(), price: Math.round(Number(newProductForm.price || 0)) })}
+              >
+                Qo'shish
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-slate-200">
       <table className="w-full min-w-[720px] text-sm">
         <thead>
           <tr className="bg-slate-50 text-xs font-semibold text-slate-500">
             <th className="sticky left-0 whitespace-nowrap bg-slate-50 px-3 py-2 text-left">Товар</th>
             <th className="whitespace-nowrap px-3 py-2 text-right">Narxi</th>
             <th className="whitespace-nowrap px-3 py-2 text-right">Kunlik narx</th>
-            {agentList.map(agent => <th key={agent.id} className="whitespace-nowrap px-3 py-2 text-right">{agent.name}</th>)}
+            {visibleAgents.map(agent => <th key={agent.id} className="whitespace-nowrap px-3 py-2 text-right">{agent.name}</th>)}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -630,7 +779,29 @@ function AgentProductMatrix({ date }: { date: string }) {
             const dayPrice = dayPriceByProduct.get(product.id) ?? null;
             return (
             <tr key={product.id}>
-              <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-1.5 font-medium text-slate-800">{product.name}</td>
+              <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-1.5 font-medium text-slate-800">
+                <div className="flex items-center gap-1.5">
+                  <div className="flex shrink-0 flex-col">
+                    <button
+                      type="button" aria-label="Yuqoriga surish"
+                      className="flex size-4 items-center justify-center rounded text-slate-300 hover:bg-slate-100 hover:text-slate-600 disabled:pointer-events-none disabled:opacity-0"
+                      disabled={rowIndex === 0}
+                      onClick={() => reorderProduct.mutate({ id: product.id, direction: "up" })}
+                    >
+                      <ChevronUp className="size-3" />
+                    </button>
+                    <button
+                      type="button" aria-label="Pastga surish"
+                      className="flex size-4 items-center justify-center rounded text-slate-300 hover:bg-slate-100 hover:text-slate-600 disabled:pointer-events-none disabled:opacity-0"
+                      disabled={rowIndex === productList.length - 1}
+                      onClick={() => reorderProduct.mutate({ id: product.id, direction: "down" })}
+                    >
+                      <ChevronDown className="size-3" />
+                    </button>
+                  </div>
+                  {product.name}
+                </div>
+              </td>
               <td className="whitespace-nowrap px-3 py-1.5 text-right text-slate-400">{formatMoney(product.price)}</td>
               <td className="px-2 py-1">
                 <Input
@@ -644,7 +815,7 @@ function AgentProductMatrix({ date }: { date: string }) {
                   onKeyDown={event => event.key === "Enter" && event.currentTarget.blur()}
                 />
               </td>
-              {agentList.map((agent, columnIndex) => {
+              {visibleAgents.map((agent, columnIndex) => {
                 const existing = entryMap.get(`${agent.id}:${product.id}`);
                 return (
                   <td key={agent.id} className="px-2 py-1">
@@ -668,7 +839,7 @@ function AgentProductMatrix({ date }: { date: string }) {
         <tfoot>
           <tr className="border-t-2 border-slate-200 bg-slate-50/80 text-xs font-bold text-slate-700">
             <td className="sticky left-0 whitespace-nowrap bg-slate-50/80 px-3 py-2" colSpan={3}>Умумий</td>
-            {agentList.map(agent => (
+            {visibleAgents.map(agent => (
               <td key={agent.id} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
                 {formatMoney(summaryByAgent.get(agent.id)?.computedAmount ?? 0)}
               </td>
@@ -676,7 +847,7 @@ function AgentProductMatrix({ date }: { date: string }) {
           </tr>
           <tr className="bg-slate-50/80 text-xs font-bold text-slate-700">
             <td className="sticky left-0 whitespace-nowrap bg-slate-50/80 px-3 py-2" colSpan={3}>Касса</td>
-            {agentList.map(agent => {
+            {visibleAgents.map(agent => {
               const row = summaryByAgent.get(agent.id);
               return (
                 <td key={agent.id} className="px-2 py-1.5">
@@ -700,7 +871,7 @@ function AgentProductMatrix({ date }: { date: string }) {
           </tr>
           <tr className="text-xs font-bold">
             <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-2" colSpan={3}>Разница</td>
-            {agentList.map(agent => {
+            {visibleAgents.map(agent => {
               const row = summaryByAgent.get(agent.id);
               const farq = row?.farq ?? 0;
               return (
@@ -712,6 +883,7 @@ function AgentProductMatrix({ date }: { date: string }) {
           </tr>
         </tfoot>
       </table>
+      </div>
     </div>
   );
 }
