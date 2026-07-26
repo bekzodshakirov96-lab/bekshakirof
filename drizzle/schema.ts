@@ -276,6 +276,28 @@ export const agentTakingEntries = mysqlTable(
   table => [index("agent_taking_entries_date_agent_idx").on(table.entryDate, table.agentId)],
 );
 
+/**
+ * Bitta mahsulot uchun tanlangan kunga xos vaqtinchalik narx bekor qilish.
+ * Belgilansa, o'sha kundagi Агент x Товар setkasida shu mahsulot barcha agentlar
+ * uchun shu narx bilan hisoblanadi; mahsulotning doimiy (products.price) narxini
+ * o'zgartirmaydi va boshqa kunlarga ta'sir qilmaydi.
+ */
+export const dailyProductPrices = mysqlTable(
+  "daily_product_prices",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    entryDate: timestamp("entryDate").notNull(),
+    productId: int("productId")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    unitPrice: int("unitPrice").notNull(),
+    updatedBy: int("updatedBy").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [uniqueIndex("daily_product_prices_date_product_unique").on(table.entryDate, table.productId)],
+);
+
 /** How much cash each agent handed over on a given day, one row per agent per day. */
 export const agentCashSubmissions = mysqlTable(
   "agent_cash_submissions",
@@ -310,3 +332,4 @@ export type ImportHistory = typeof importHistory.$inferSelect;
 export type KassaDailyActual = typeof kassaDailyActuals.$inferSelect;
 export type AgentTakingEntry = typeof agentTakingEntries.$inferSelect;
 export type AgentCashSubmission = typeof agentCashSubmissions.$inferSelect;
+export type DailyProductPrice = typeof dailyProductPrices.$inferSelect;

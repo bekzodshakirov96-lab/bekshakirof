@@ -525,6 +525,7 @@ function AgentProductMatrix({ date }: { date: string }) {
   const products = trpc.products.list.useQuery({});
   const takingRows = trpc.kassa.agentTaking.listForDay.useQuery({ date: timestamp });
   const daySummary = trpc.kassa.daySummary.useQuery({ date: timestamp });
+  const dayPriceQuery = trpc.kassa.dayPrice.listForDay.useQuery({ date: timestamp });
 
   const invalidateMatrix = () =>
     Promise.all([
@@ -545,6 +546,10 @@ function AgentProductMatrix({ date }: { date: string }) {
     onSuccess: invalidateMatrix,
     onError: error => toast.error(error.message),
   });
+  const setDayPrice = trpc.kassa.dayPrice.upsert.useMutation({
+    onSuccess: () => Promise.all([invalidateMatrix(), utils.kassa.dayPrice.listForDay.invalidate({ date: timestamp })]),
+    onError: error => toast.error(error.message),
+  });
   const submitCash = trpc.kassa.agentCashSubmission.upsert.useMutation({
     onSuccess: async () => {
       toast.success("Касса saqlandi");
@@ -560,6 +565,18 @@ function AgentProductMatrix({ date }: { date: string }) {
     for (const row of takingRows.data ?? []) map.set(`${row.agentId}:${row.productId}`, row);
     return map;
   }, [takingRows.data]);
+  const dayPriceByProduct = useMemo(() => new Map((dayPriceQuery.data ?? []).map(row => [row.productId, row.unitPrice])), [dayPriceQuery.data]);
+
+  /** Bo'sh qoldirilsa yoki mahsulotning qat'iy narxi bilan bir xil kiritilsa,
+   * kunlik narx bekor qilinadi va hisob-kitob yana doimiy narxga qaytadi. */
+  function onDayPriceBlur(product: { id: number; price: number }, rawValue: string) {
+    const trimmed = rawValue.trim();
+    const value = trimmed === "" ? null : Math.round(Number(trimmed));
+    const current = dayPriceByProduct.get(product.id) ?? null;
+    if (value === current) return;
+    if (value !== null && (Number.isNaN(value) || value <= 0)) return;
+    setDayPrice.mutate({ date: timestamp, productId: product.id, unitPrice: value && value !== product.price ? value : null });
+  }
 
   function onCellBlur(agentId: number, productId: number, rawValue: string) {
     const key = `${agentId}:${productId}`;
@@ -604,14 +621,29 @@ function AgentProductMatrix({ date }: { date: string }) {
           <tr className="bg-slate-50 text-xs font-semibold text-slate-500">
             <th className="sticky left-0 whitespace-nowrap bg-slate-50 px-3 py-2 text-left">Товар</th>
             <th className="whitespace-nowrap px-3 py-2 text-right">Narxi</th>
+            <th className="whitespace-nowrap px-3 py-2 text-right">Kunlik narx</th>
             {agentList.map(agent => <th key={agent.id} className="whitespace-nowrap px-3 py-2 text-right">{agent.name}</th>)}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {productList.map((product, rowIndex) => (
+          {productList.map((product, rowIndex) => {
+            const dayPrice = dayPriceByProduct.get(product.id) ?? null;
+            return (
             <tr key={product.id}>
               <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-1.5 font-medium text-slate-800">{product.name}</td>
               <td className="whitespace-nowrap px-3 py-1.5 text-right text-slate-400">{formatMoney(product.price)}</td>
+              <td className="px-2 py-1">
+                <Input
+                  className={`finance-input h-10 w-24 text-right ${dayPrice != null ? "font-bold text-amber-700" : ""}`}
+                  type="text" inputMode="numeric"
+                  defaultValue={dayPrice != null ? String(dayPrice) : ""}
+                  key={`day-price-${product.id}-${dayPrice ?? ""}`}
+                  placeholder={String(product.price)}
+                  onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
+                  onBlur={event => onDayPriceBlur(product, event.target.value)}
+                  onKeyDown={event => event.key === "Enter" && event.currentTarget.blur()}
+                />
+              </td>
               {agentList.map((agent, columnIndex) => {
                 const existing = entryMap.get(`${agent.id}:${product.id}`);
                 return (
@@ -630,11 +662,12 @@ function AgentProductMatrix({ date }: { date: string }) {
                 );
               })}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-slate-200 bg-slate-50/80 text-xs font-bold text-slate-700">
-            <td className="sticky left-0 whitespace-nowrap bg-slate-50/80 px-3 py-2" colSpan={2}>Умумий</td>
+            <td className="sticky left-0 whitespace-nowrap bg-slate-50/80 px-3 py-2" colSpan={3}>Умумий</td>
             {agentList.map(agent => (
               <td key={agent.id} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
                 {formatMoney(summaryByAgent.get(agent.id)?.computedAmount ?? 0)}
@@ -642,7 +675,7 @@ function AgentProductMatrix({ date }: { date: string }) {
             ))}
           </tr>
           <tr className="bg-slate-50/80 text-xs font-bold text-slate-700">
-            <td className="sticky left-0 whitespace-nowrap bg-slate-50/80 px-3 py-2" colSpan={2}>Касса</td>
+            <td className="sticky left-0 whitespace-nowrap bg-slate-50/80 px-3 py-2" colSpan={3}>Касса</td>
             {agentList.map(agent => {
               const row = summaryByAgent.get(agent.id);
               return (
@@ -666,7 +699,7 @@ function AgentProductMatrix({ date }: { date: string }) {
             })}
           </tr>
           <tr className="text-xs font-bold">
-            <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-2" colSpan={2}>Разница</td>
+            <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-2" colSpan={3}>Разница</td>
             {agentList.map(agent => {
               const row = summaryByAgent.get(agent.id);
               const farq = row?.farq ?? 0;

@@ -5,6 +5,7 @@ import {
   agentTakingEntries,
   agents,
   cashEntries,
+  dailyProductPrices,
   kassaDailyActuals,
   products,
 } from "../../drizzle/schema";
@@ -177,7 +178,20 @@ export const kassaRouter = router({
         const db = await requireDb();
         const [product] = await db.select().from(products).where(eq(products.id, input.productId)).limit(1);
         if (!product) throw new Error("Mahsulot topilmadi.");
-        const amount = Math.round(input.quantity * product.price);
+        const { start, end } = dayRange(input.date);
+        const [override] = await db
+          .select({ unitPrice: dailyProductPrices.unitPrice })
+          .from(dailyProductPrices)
+          .where(
+            and(
+              eq(dailyProductPrices.productId, input.productId),
+              gte(dailyProductPrices.entryDate, start),
+              lte(dailyProductPrices.entryDate, end),
+            ),
+          )
+          .limit(1);
+        const unitPrice = override?.unitPrice ?? product.price;
+        const amount = Math.round(input.quantity * unitPrice);
         const [created] = await db
           .insert(agentTakingEntries)
           .values({
@@ -185,7 +199,7 @@ export const kassaRouter = router({
             agentId: input.agentId,
             productId: product.id,
             productName: product.name,
-            unitPrice: product.price,
+            unitPrice,
             quantity: input.quantity.toFixed(3),
             amount,
             createdBy: ctx.user.id,
@@ -211,6 +225,65 @@ export const kassaRouter = router({
       await db.delete(agentTakingEntries).where(eq(agentTakingEntries.id, input.id));
       return { success: true } as const;
     }),
+  }),
+
+  /**
+   * Bitta kunga xos vaqtinchalik narx bekor qilish — Агент x Товар setkasidagi
+   * "Narxi" ustuni yonidagi tahrirlanadigan katak orqali boshqariladi. Belgilansa,
+   * o'sha kun-mahsulot uchun barcha mavjud agentTakingEntries qatorlari ham shu
+   * narxga qayta hisoblanadi; tozalansa, mahsulotning joriy (qat'iy) narxiga qaytadi.
+   */
+  dayPrice: router({
+    listForDay: businessProcedure.input(z.object({ date: z.number().int() })).query(async ({ input }) => {
+      const db = await requireDb();
+      const { start, end } = dayRange(input.date);
+      const rows = await db
+        .select({ productId: dailyProductPrices.productId, unitPrice: dailyProductPrices.unitPrice })
+        .from(dailyProductPrices)
+        .where(and(gte(dailyProductPrices.entryDate, start), lte(dailyProductPrices.entryDate, end)));
+      return rows;
+    }),
+    upsert: businessProcedure
+      .input(z.object({ date: z.number().int(), productId: z.number().int().positive(), unitPrice: z.number().int().min(0).nullable() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await requireDb();
+        const { start, end } = dayRange(input.date);
+        const [existing] = await db
+          .select({ id: dailyProductPrices.id })
+          .from(dailyProductPrices)
+          .where(and(eq(dailyProductPrices.productId, input.productId), gte(dailyProductPrices.entryDate, start), lte(dailyProductPrices.entryDate, end)))
+          .limit(1);
+
+        let effectiveUnitPrice: number;
+        if (input.unitPrice && input.unitPrice > 0) {
+          effectiveUnitPrice = input.unitPrice;
+          if (existing) {
+            await db.update(dailyProductPrices).set({ unitPrice: input.unitPrice, updatedBy: ctx.user.id }).where(eq(dailyProductPrices.id, existing.id));
+          } else {
+            await db.insert(dailyProductPrices).values({ entryDate: new Date(input.date), productId: input.productId, unitPrice: input.unitPrice, updatedBy: ctx.user.id });
+          }
+        } else {
+          if (existing) await db.delete(dailyProductPrices).where(eq(dailyProductPrices.id, existing.id));
+          const [product] = await db.select({ price: products.price }).from(products).where(eq(products.id, input.productId)).limit(1);
+          if (!product) throw new Error("Mahsulot topilmadi.");
+          effectiveUnitPrice = product.price;
+        }
+
+        await db
+          .update(agentTakingEntries)
+          .set({
+            unitPrice: effectiveUnitPrice,
+            amount: sql`round(cast(${agentTakingEntries.quantity} as decimal(18,3)) * ${effectiveUnitPrice})`,
+          })
+          .where(
+            and(
+              eq(agentTakingEntries.productId, input.productId),
+              gte(agentTakingEntries.entryDate, start),
+              lte(agentTakingEntries.entryDate, end),
+            ),
+          );
+        return { success: true, unitPrice: effectiveUnitPrice } as const;
+      }),
   }),
 
   agentCashSubmission: router({
