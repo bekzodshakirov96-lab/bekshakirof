@@ -40,11 +40,13 @@ type DraftRow = { agentId: string; reason: string; amounts: Record<string, strin
 const emptyDraftRow = (): DraftRow => ({ agentId: "", reason: "", amounts: Object.fromEntries(JOURNAL_COLUMNS.map(name => [name, ""])) });
 
 const cellInputClass =
-  "w-full min-w-[64px] rounded-md bg-transparent px-1.5 py-1 text-right tabular-nums outline-none transition-colors focus:bg-primary/5 focus:ring-1 focus:ring-primary/30";
+  "w-full min-w-[64px] rounded-md border border-transparent bg-slate-50/70 px-1.5 py-1.5 text-right tabular-nums outline-none transition-colors hover:border-slate-200 hover:bg-slate-100 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/25";
 const textInputClass =
-  "w-full min-w-[110px] rounded-md bg-transparent px-1.5 py-1 outline-none transition-colors focus:bg-primary/5 focus:ring-1 focus:ring-primary/30";
+  "w-full min-w-[110px] rounded-md border border-transparent bg-slate-50/70 px-1.5 py-1.5 outline-none transition-colors hover:border-slate-200 hover:bg-slate-100 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/25";
 const selectInputClass =
-  "w-full min-w-[120px] rounded-md border-0 bg-transparent px-1.5 py-1 text-xs outline-none transition-colors focus:bg-primary/5 focus:ring-1 focus:ring-primary/30";
+  "w-full min-w-[120px] cursor-pointer rounded-md border border-transparent bg-slate-50/70 px-1.5 py-1.5 text-xs outline-none transition-colors hover:border-slate-200 hover:bg-slate-100 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/25";
+const emptyCellClass = "block px-1.5 py-1.5 text-right text-slate-200 select-none";
+const emptyCellClassLeft = "block px-1.5 py-1.5 text-left text-slate-200 select-none";
 
 /**
  * Excel "Kunlik jurnal" A1:H16 diapazoniga aynan mos, to'g'ridan-to'g'ri
@@ -188,10 +190,10 @@ function DailyJournalGrid({
     <div className="overflow-x-auto rounded-2xl border border-slate-200">
       <table className="w-full min-w-[900px] text-sm">
         <thead>
-          <tr className="bg-slate-50 text-xs font-semibold text-slate-500">
-            <th className="whitespace-nowrap px-3 py-2 text-left">Агент</th>
-            {JOURNAL_COLUMNS.map(name => <th key={name} className="whitespace-nowrap px-3 py-2 text-right">{name}</th>)}
-            <th className="whitespace-nowrap px-3 py-2 text-left">Нимага расход</th>
+          <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold tracking-wide text-slate-500">
+            <th className="whitespace-nowrap px-3 py-2.5 text-left">Агент</th>
+            {JOURNAL_COLUMNS.map(name => <th key={name} className="whitespace-nowrap px-3 py-2.5 text-right">{name}</th>)}
+            <th className="whitespace-nowrap px-3 py-2.5 text-left">Нимага расход</th>
             <th className="w-11" />
           </tr>
         </thead>
@@ -199,8 +201,8 @@ function DailyJournalGrid({
           {sortedEntries.map((entry, rowIndex) => {
             const amount = entry.cashAmount + entry.terminalAmount + entry.clickAmount;
             return (
-              <tr key={entry.id} className="text-xs">
-                <td className="px-1 py-1">
+              <tr key={entry.id} className="text-xs even:bg-slate-50/40">
+                <td className="px-1.5 py-1">
                   {entry.type === "income" ? (
                     <div>
                       <select
@@ -215,28 +217,28 @@ function DailyJournalGrid({
                         {agentList.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                       </select>
                       {entry.agentId == null && entry.description ? (
-                        <p className="truncate px-1.5 text-[10px] text-slate-400">{entry.description}</p>
+                        <p className="truncate px-1.5 pt-0.5 text-[10px] text-slate-400">{entry.description}</p>
                       ) : null}
                     </div>
-                  ) : <span className="px-1.5 text-slate-300">—</span>}
+                  ) : <span className={emptyCellClassLeft}>—</span>}
                 </td>
                 {JOURNAL_COLUMNS.map((name, colOffset) => (
-                  <td key={name} className="px-1 py-1">
+                  <td key={name} className="px-1.5 py-1">
                     {entry.category === name ? (
                       <input
                         key={`amount-${entry.id}-${amount}`}
                         type="text" inputMode="numeric"
                         data-journal-cell={`${rowIndex}-${colOffset + 1}`}
                         defaultValue={String(amount)}
-                        className={`${cellInputClass} text-slate-900`}
+                        className={`${cellInputClass} font-semibold text-slate-900`}
                         onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
                         onBlur={event => commitExistingAmount(entry, event.target.value)}
                         onKeyDown={event => onAmountKeyDown(event, rowIndex, colOffset + 1)}
                       />
-                    ) : null}
+                    ) : <span className={emptyCellClass}>—</span>}
                   </td>
                 ))}
-                <td className="px-1 py-1">
+                <td className="px-1.5 py-1">
                   {entry.type === "expense" ? (
                     <input
                       key={`reason-${entry.id}-${entry.description ?? ""}`}
@@ -252,13 +254,13 @@ function DailyJournalGrid({
                         focusJournalCell(rowIndex, REASON_COL, 1, 0);
                       }}
                     />
-                  ) : <span className="px-1.5 text-slate-300">—</span>}
+                  ) : <span className={emptyCellClassLeft}>—</span>}
                 </td>
                 <td className="px-1 py-1 text-right">
                   <button
                     type="button"
                     aria-label="O'chirish"
-                    className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                     onClick={() => del.mutate({ id: entry.id })}
                   >
                     <Trash2 className="size-3.5" />
@@ -270,12 +272,16 @@ function DailyJournalGrid({
           {drafts.map((draft, index) => {
             const rowIndex = sortedEntries.length + index;
             return (
-            <tr key={`draft-${index}`} className="bg-slate-50/40 text-xs" onBlur={event => commitDraftRow(index, event)}>
-              <td className="px-1 py-1">
+            <tr
+              key={`draft-${index}`}
+              className={`text-xs ${index === 0 ? "border-t-2 border-dashed border-slate-200" : ""}`}
+              onBlur={event => commitDraftRow(index, event)}
+            >
+              <td className="px-1.5 py-1">
                 <select
                   value={draft.agentId}
                   data-journal-cell={`${rowIndex}-0`}
-                  className={selectInputClass}
+                  className={`${selectInputClass} ${draft.agentId ? "text-slate-700" : "text-slate-400"}`}
                   onChange={event => updateDraft(index, { agentId: event.target.value })}
                   onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}
                 >
@@ -284,7 +290,7 @@ function DailyJournalGrid({
                 </select>
               </td>
               {JOURNAL_COLUMNS.map((name, colOffset) => (
-                <td key={name} className="px-1 py-1">
+                <td key={name} className="px-1.5 py-1">
                   <input
                     type="text" inputMode="numeric"
                     data-journal-cell={`${rowIndex}-${colOffset + 1}`}
@@ -296,7 +302,7 @@ function DailyJournalGrid({
                   />
                 </td>
               ))}
-              <td className="px-1 py-1">
+              <td className="px-1.5 py-1">
                 <input
                   value={draft.reason}
                   data-journal-cell={`${rowIndex}-${REASON_COL}`}
@@ -317,9 +323,9 @@ function DailyJournalGrid({
           })}
         </tbody>
         <tfoot>
-          <tr className="bg-slate-50/80 text-xs font-bold text-slate-900">
-            <td className="whitespace-nowrap px-3 py-2">Jami</td>
-            {totals.map((value, index) => <td key={JOURNAL_COLUMNS[index]} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(value)}</td>)}
+          <tr className="border-t-2 border-slate-200 bg-slate-50/80 text-xs font-bold text-slate-900">
+            <td className="whitespace-nowrap px-3 py-2.5">Jami</td>
+            {totals.map((value, index) => <td key={JOURNAL_COLUMNS[index]} className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(value)}</td>)}
             <td colSpan={2} />
           </tr>
         </tfoot>
@@ -327,7 +333,7 @@ function DailyJournalGrid({
       <div className="border-t border-slate-100 px-3 py-2">
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+          className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/5 hover:underline"
           onClick={() => setDrafts(prev => [...prev, emptyDraftRow()])}
         >
           <Plus className="size-3.5" /> Qator qo'shish
