@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
-import { ShieldCheck, UserPlus } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -21,6 +21,7 @@ export default function Users() {
   const users = trpc.users.list.useQuery(undefined, { enabled: user?.role === "admin" });
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [showPassword, setShowPassword] = useState(false);
 
   const setRole = trpc.users.setRole.useMutation({
     onSuccess: async () => { toast.success("Foydalanuvchi roli yangilandi"); await utils.users.list.invalidate(); },
@@ -126,7 +127,7 @@ export default function Users() {
         </div>
       </SectionCard>
 
-      <Dialog open={createOpen} onOpenChange={open => { setCreateOpen(open); if (!open) setForm(emptyForm); }}>
+      <Dialog open={createOpen} onOpenChange={open => { setCreateOpen(open); if (!open) { setForm(emptyForm); setShowPassword(false); } }}>
         <DialogContent className="rounded-2xl sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Yangi foydalanuvchi yaratish</DialogTitle>
@@ -135,7 +136,26 @@ export default function Users() {
           <div className="space-y-4 py-2">
             <div className="space-y-2"><Label>Ism</Label><Input className="finance-input" value={form.name} onChange={event => setForm(prev => ({ ...prev, name: event.target.value }))} /></div>
             <div className="space-y-2"><Label>Email (login)</Label><Input className="finance-input" type="email" value={form.email} onChange={event => setForm(prev => ({ ...prev, email: event.target.value }))} /></div>
-            <div className="space-y-2"><Label>Parol</Label><Input className="finance-input" type="text" value={form.password} onChange={event => setForm(prev => ({ ...prev, password: event.target.value }))} placeholder="Kamida 8 belgi" /></div>
+            <div className="space-y-2">
+              <Label>Parol</Label>
+              <div className="relative">
+                <Input
+                  className="finance-input pr-10"
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                  onChange={event => setForm(prev => ({ ...prev, password: event.target.value }))}
+                  placeholder="Kamida 8 belgi"
+                />
+                <button
+                  type="button"
+                  aria-label={showPassword ? "Parolni yashirish" : "Parolni ko‘rsatish"}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  onClick={() => setShowPassword(current => !current)}
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label>Ruxsat</Label>
               <select className="finance-input w-full border px-3 text-sm" value={form.role} onChange={event => setForm(prev => ({ ...prev, role: event.target.value as "user" | "accountant" }))}>
