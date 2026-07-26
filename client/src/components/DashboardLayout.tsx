@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BarChart3,
+  Beer,
   Boxes,
   Building2,
   ChevronDown,
@@ -40,7 +41,6 @@ import {
   PackageOpen,
   ReceiptText,
   ShieldCheck,
-  Zap,
   UserCog,
   UsersRound,
   WalletCards,
@@ -67,7 +67,7 @@ const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
   {
     label: "Savdo va moliya",
     items: [
-      { icon: Zap, label: "Tezkor KEG savdosi", path: "/tezkor-keg" },
+      { icon: Beer, label: "Tezkor KEG savdosi", path: "/tezkor-keg" },
       { icon: ReceiptText, label: "Savdo jurnali", path: "/savdo" },
       { icon: BarChart3, label: "Sotuv bo‘yicha hisobot", path: "/sotuv-hisoboti" },
       { icon: WalletCards, label: "KASSA", path: "/kassa" },
@@ -323,7 +323,7 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
                           isActive={isActive}
                           tooltip={item.label}
                           onClick={() => setLocation(item.path)}
-                          className="h-10 rounded-xl px-3 text-[13px] font-medium text-slate-300 transition-all hover:bg-white/8 hover:text-white data-[active=true]:bg-gradient-to-r data-[active=true]:from-cyan-400/20 data-[active=true]:to-emerald-400/10 data-[active=true]:font-semibold data-[active=true]:text-cyan-100"
+                          className="relative h-10 rounded-xl px-3 text-[13px] font-medium text-slate-300 transition-all hover:bg-white/8 hover:text-white data-[active=true]:bg-gradient-to-r data-[active=true]:from-cyan-400/20 data-[active=true]:to-emerald-400/10 data-[active=true]:font-semibold data-[active=true]:text-cyan-100 data-[active=true]:before:absolute data-[active=true]:before:left-0 data-[active=true]:before:top-1/2 data-[active=true]:before:h-5 data-[active=true]:before:w-[3px] data-[active=true]:before:-translate-y-1/2 data-[active=true]:before:rounded-r-full data-[active=true]:before:bg-cyan-300 data-[active=true]:before:content-['']"
                         >
                           <item.icon className={`h-[18px] w-[18px] ${isActive ? "text-cyan-300" : "text-slate-500"}`} />
                           <span>{item.label}</span>
