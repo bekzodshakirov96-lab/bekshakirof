@@ -8,6 +8,7 @@ import {
   reconcileTransactionContainers,
 } from "../containerAccounting";
 import { requireDb } from "../db";
+import { reconcileTransactionStock } from "../stockAccounting";
 
 function toMySqlDate(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
@@ -224,6 +225,7 @@ export const transactionsRouter = router({
       return db.transaction(async tx => {
         const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).limit(1);
         if (!product) throw new Error("Mahsulot topilmadi.");
+        if (product.containerType) throw new Error("KEG/tara mahsulotlarini Savdo jurnalida sotib bo‘lmaydi — Tezkor KEG savdosi bo‘limidan foydalaning.");
         const totalAmount = Math.round(input.quantity * input.salePrice);
         const transactionDate = new Date(input.transactionDate);
         const [created] = await tx
@@ -261,6 +263,13 @@ export const transactionsRouter = router({
           returnQuantity: input.returnQuantity,
           createdBy: ctx.user.id,
           source: "manual",
+        });
+        await reconcileTransactionStock(tx, {
+          transactionId: created.id,
+          movementDate: transactionDate,
+          productId: product.id,
+          quantity: input.quantity,
+          createdBy: ctx.user.id,
         });
         return { success: true, totalAmount, containerImpact };
       });
@@ -336,6 +345,7 @@ export const transactionsRouter = router({
           const item = input.items[i];
           const product = productById.get(item.productId);
           if (!product) throw new Error(`Mahsulot topilmadi (ID: ${item.productId}).`);
+          if (product.containerType) throw new Error("KEG/tara mahsulotlarini Savdo jurnalida sotib bo‘lmaydi — Tezkor KEG savdosi bo‘limidan foydalaning.");
 
           let need = lineAllocatedTotal[i];
           const cashTake = Math.min(need, remainingCash);
@@ -386,6 +396,13 @@ export const transactionsRouter = router({
             createdBy: ctx.user.id,
             source: "manual",
           });
+          await reconcileTransactionStock(tx, {
+            transactionId: created.id,
+            movementDate: transactionDate,
+            productId: product.id,
+            quantity: item.quantity,
+            createdBy: ctx.user.id,
+          });
           results.push({ productName: product.name, totalAmount });
         }
 
@@ -420,6 +437,7 @@ export const transactionsRouter = router({
       return db.transaction(async tx => {
         const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).limit(1);
         if (!product) throw new Error("Mahsulot topilmadi.");
+        if (product.containerType) throw new Error("KEG/tara mahsulotlarini Savdo jurnalida sotib bo‘lmaydi — Tezkor KEG savdosi bo‘limidan foydalaning.");
         const totalAmount = Math.round(input.quantity * input.salePrice);
         const transactionDate = new Date(input.transactionDate);
         await tx
@@ -455,10 +473,17 @@ export const transactionsRouter = router({
           createdBy: ctx.user.id,
           source: "manual",
         });
+        await reconcileTransactionStock(tx, {
+          transactionId: input.id,
+          movementDate: transactionDate,
+          productId: product.id,
+          quantity: input.quantity,
+          createdBy: ctx.user.id,
+        });
         return { success: true, totalAmount, containerImpact };
       });
     }),
-  /** Deletes one transaction. Linked container_movements cascade-delete automatically (FK ON DELETE CASCADE). */
+  /** Deletes one transaction. Linked container_movements and stockMovements cascade-delete automatically (FK ON DELETE CASCADE). */
   delete: businessProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {

@@ -8,10 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { formatMoney, localDateInputValue } from "@/lib/format";
+import { formatMoney, localDateInputValue, sanitizeDecimalInput } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
-import { ArrowDown, ArrowUp, ArrowUpDown, CircleDollarSign, HandCoins, Plus, RotateCcw, Search, TrendingUp, UserCheck } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CircleDollarSign, HandCoins, Percent, Plus, RotateCcw, Search, TrendingUp, UserCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -19,6 +19,111 @@ type AgentSortBy = "name" | "clientCount" | "debtorCount" | "totalSales" | "tota
 type SortOrder = "asc" | "desc";
 type AgentStatus = "all" | "active" | "inactive";
 type AgentDebtStatus = "all" | "debt" | "clear";
+
+/** Inline-editable "Komissiya %" cell — admin-only; read-only text for other roles. */
+function CommissionPercentCell({ agentId, commissionPercent, canEdit }: { agentId: number; commissionPercent: number; canEdit: boolean }) {
+  const utils = trpc.useUtils();
+  const [value, setValue] = useState(String(commissionPercent));
+  const setCommission = trpc.agents.setCommissionPercent.useMutation({
+    onSuccess: async () => {
+      toast.success("Komissiya foizi saqlandi");
+      await Promise.all([utils.agents.list.invalidate(), utils.agents.commissionReport.invalidate()]);
+    },
+    onError: error => { toast.error(error.message); setValue(String(commissionPercent)); },
+  });
+
+  if (!canEdit) return <span className="tabular-nums">{commissionPercent}%</span>;
+
+  return (
+    <Input
+      className="finance-input h-9 w-20 text-right"
+      type="text"
+      inputMode="decimal"
+      value={value}
+      onChange={event => setValue(sanitizeDecimalInput(event.target.value))}
+      onBlur={() => {
+        const parsed = Math.min(100, Math.max(0, Number(value) || 0));
+        setValue(String(parsed));
+        if (parsed !== commissionPercent) setCommission.mutate({ id: agentId, commissionPercent: parsed });
+      }}
+    />
+  );
+}
+
+/** "Agent oyligi" — period commission report, computed from collected (paid) amounts only. */
+function AgentCommissionSection() {
+  const utils = trpc.useUtils();
+  const [fromDate, setFromDate] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return localDateInputValue(d);
+  });
+  const [toDate, setToDate] = useState(() => localDateInputValue());
+  const from = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : undefined;
+  const to = toDate ? new Date(`${toDate}T23:59:59.999`).getTime() : undefined;
+  const report = trpc.agents.commissionReport.useQuery({ from, to });
+  const periodLabel = `${fromDate} — ${toDate}`;
+
+  const payCommission = trpc.agents.payCommission.useMutation({
+    onSuccess: async () => {
+      toast.success("Komissiya Kassa'ga Ойлик xarajati sifatida yozildi");
+      await Promise.all([utils.cash.summary.invalidate(), utils.dashboard.overview.invalidate()]);
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const rows = report.data ?? [];
+  const totalCommission = rows.reduce((sum, row) => sum + row.commissionAmount, 0);
+
+  return (
+    <SectionCard
+      title="Agent oyligi (komissiya)"
+      description="Faqat mijozdan qaytib kelgan (to'langan) summadan hisoblanadi — qarzda qolgan qism kiritilmaydi."
+      className="mt-5"
+      action={
+        <div className="flex items-center gap-2">
+          <Input className="finance-input h-9 w-40" type="date" value={fromDate} onChange={event => setFromDate(event.target.value)} aria-label="Boshlanish sanasi" />
+          <span className="text-xs text-slate-400">—</span>
+          <Input className="finance-input h-9 w-40" type="date" value={toDate} onChange={event => setToDate(event.target.value)} aria-label="Tugash sanasi" />
+        </div>
+      }
+    >
+      <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+        {report.isLoading ? <TableLoading columns={5} /> : rows.length === 0 ? <EmptyState description="Faol agentlar topilmadi." /> : (
+          <Table className="finance-table">
+            <TableHeader><TableRow><TableHead>Agent</TableHead><TableHead className="text-right">Komissiya %</TableHead><TableHead className="text-right">Yig'ilgan summa</TableHead><TableHead className="text-right">Hisoblangan komissiya</TableHead><TableHead className="text-right">Amal</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {rows.map(row => (
+                <TableRow key={row.agentId}>
+                  <TableCell className="font-semibold text-slate-900">{row.agentName}</TableCell>
+                  <TableCell className="text-right tabular-nums text-slate-500">{row.commissionPercent}%</TableCell>
+                  <TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.collectedAmount)}</TableCell>
+                  <TableCell className="text-right font-bold tabular-nums text-slate-900">{formatMoney(row.commissionAmount)}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 rounded-lg text-xs"
+                      disabled={row.commissionAmount <= 0 || payCommission.isPending}
+                      onClick={() => payCommission.mutate({ agentId: row.agentId, amount: row.commissionAmount, periodLabel })}
+                    >
+                      To'lash
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              <TableRow className="bg-slate-50/60 font-bold">
+                <TableCell colSpan={3}>Jami</TableCell>
+                <TableCell className="text-right tabular-nums text-slate-900">{formatMoney(totalCommission)}</TableCell>
+                <TableCell />
+              </TableRow>
+            </TableBody>
+          </Table>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
 
 export default function Agents() {
   const { user } = useAuth();
@@ -127,14 +232,15 @@ export default function Agents() {
         <Button variant="outline" onClick={clearFilters} className="gap-2 bg-white"><RotateCcw className="size-4" />Tozalash</Button>
       </div>
       <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
-        {agents.isLoading ? <TableLoading columns={8} /> : rows.length === 0 ? <EmptyState description="Qidiruv yoki filterlarni o‘zgartirib ko‘ring." /> : <>
-          <Table className="finance-table min-w-[1020px]"><TableHeader><TableRow><SortableHead column="name">Agent</SortableHead><TableHead>Telefon</TableHead><SortableHead column="clientCount" className="text-center">Mijozlar</SortableHead><SortableHead column="debtorCount" className="text-center">Qarzdorlar</SortableHead><SortableHead column="totalSales" className="text-right">Savdo</SortableHead><SortableHead column="totalPaid" className="text-right">To‘lov</SortableHead><SortableHead column="currentDebt" className="text-right">Joriy qarz</SortableHead><TableHead>Holat</TableHead></TableRow></TableHeader>
-            <TableBody>{rows.map(row => <TableRow key={row.id}><TableCell><div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-cyan-50 text-xs font-bold text-cyan-700">{row.name.charAt(0)}</div><span className="font-semibold text-slate-900">{row.name}</span></div></TableCell><TableCell>{row.phone || "—"}</TableCell><TableCell className="text-center font-semibold">{row.clientCount}</TableCell><TableCell className="text-center"><Badge className="rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50">{row.debtorCount}</Badge></TableCell><TableCell className="text-right font-semibold tabular-nums">{formatMoney(row.totalSales)}</TableCell><TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.totalPaid)}</TableCell><TableCell className="text-right font-bold tabular-nums text-rose-700">{formatMoney(row.currentDebt)}</TableCell><TableCell><Badge className={row.isActive ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-100"}>{row.isActive ? "Faol" : "Nofaol"}</Badge></TableCell></TableRow>)}</TableBody>
+        {agents.isLoading ? <TableLoading columns={9} /> : rows.length === 0 ? <EmptyState description="Qidiruv yoki filterlarni o‘zgartirib ko‘ring." /> : <>
+          <Table className="finance-table min-w-[1120px]"><TableHeader><TableRow><SortableHead column="name">Agent</SortableHead><TableHead>Telefon</TableHead><SortableHead column="clientCount" className="text-center">Mijozlar</SortableHead><SortableHead column="debtorCount" className="text-center">Qarzdorlar</SortableHead><SortableHead column="totalSales" className="text-right">Savdo</SortableHead><SortableHead column="totalPaid" className="text-right">To‘lov</SortableHead><SortableHead column="currentDebt" className="text-right">Joriy qarz</SortableHead><TableHead className="text-right">Komissiya %</TableHead><TableHead>Holat</TableHead></TableRow></TableHeader>
+            <TableBody>{rows.map(row => <TableRow key={row.id}><TableCell><div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-cyan-50 text-xs font-bold text-cyan-700">{row.name.charAt(0)}</div><span className="font-semibold text-slate-900">{row.name}</span></div></TableCell><TableCell>{row.phone || "—"}</TableCell><TableCell className="text-center font-semibold">{row.clientCount}</TableCell><TableCell className="text-center"><Badge className="rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50">{row.debtorCount}</Badge></TableCell><TableCell className="text-right font-semibold tabular-nums">{formatMoney(row.totalSales)}</TableCell><TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.totalPaid)}</TableCell><TableCell className="text-right font-bold tabular-nums text-rose-700">{formatMoney(row.currentDebt)}</TableCell><TableCell className="text-right"><CommissionPercentCell agentId={row.id} commissionPercent={Number(row.commissionPercent)} canEdit={user?.role === "admin"} /></TableCell><TableCell><Badge className={row.isActive ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-100"}>{row.isActive ? "Faol" : "Nofaol"}</Badge></TableCell></TableRow>)}</TableBody>
           </Table>
           <PaginationBar page={agents.data?.page ?? 1} pageCount={agents.data?.pageCount ?? 1} total={agents.data?.total ?? 0} onChange={setPage} />
         </>}
       </div>
     </SectionCard>
+    <AgentCommissionSection />
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="rounded-2xl sm:max-w-md"><DialogHeader><DialogTitle>Yangi agent qo‘shish</DialogTitle><DialogDescription>Agentning asosiy aloqa ma’lumotlarini kiriting.</DialogDescription></DialogHeader><div className="space-y-4 py-2"><div className="space-y-2"><Label>Agent F.I.Sh.</Label><Input className="finance-input" value={name} onChange={event => setName(event.target.value)} placeholder="Masalan: Akmal Karimov" /></div><div className="space-y-2"><Label>Telefon raqami</Label><Input className="finance-input" value={phone} onChange={event => setPhone(event.target.value)} placeholder="+998 90 000 00 00" /></div><div className="space-y-2"><Label>Izoh</Label><Textarea value={note} onChange={event => setNote(event.target.value)} placeholder="Qo‘shimcha ma’lumot..." className="min-h-24 rounded-xl" /></div></div><DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Bekor qilish</Button><Button disabled={name.trim().length < 2 || create.isPending} onClick={() => create.mutate({ name, phone: phone || undefined, note: note || undefined })}>{create.isPending ? "Saqlanmoqda..." : "Agentni saqlash"}</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }

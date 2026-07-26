@@ -44,6 +44,8 @@ export const agents = mysqlTable(
     name: varchar("name", { length: 255 }).notNull(),
     phone: varchar("phone", { length: 255 }),
     note: varchar("note", { length: 255 }),
+    /** Percent (0-100) of the amount actually collected from clients (not the debt portion) paid to the agent as commission. */
+    commissionPercent: decimal("commissionPercent", { precision: 5, scale: 2 }).default("0").notNull(),
     isActive: boolean("isActive").default(true).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -82,6 +84,8 @@ export const products = mysqlTable(
     price: int("price").default(0).notNull(),
     containerType: mysqlEnum("containerType", ["keg_30", "keg_50"]),
     containerUnitsPerItem: int("containerUnitsPerItem").default(0).notNull(),
+    /** Sklad: below this stock level the product is flagged as low-stock. 0 = no alert configured. */
+    minStockLevel: int("minStockLevel").default(0).notNull(),
     isActive: boolean("isActive").default(true).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -178,6 +182,35 @@ export const containerMovements = mysqlTable(
     index("container_movements_date_idx").on(table.movementDate),
     index("container_movements_client_idx").on(table.clientId),
     index("container_movements_transaction_idx").on(table.transactionId),
+  ],
+);
+
+/**
+ * Sklad: single central warehouse stock ledger. Current stock per product is the running
+ * sum of "in" minus "out" movements — never a cached column, so it can't drift.
+ * "out" movements linked to a transactionId (isAutomatic=true) are kept in sync with sales
+ * by reconcileTransactionStock() in server/stockAccounting.ts; manual in/out (production
+ * receipts, waste, damage) have no transactionId and are entered directly on the Sklad page.
+ */
+export const stockMovements = mysqlTable(
+  "stockMovements",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    productId: int("productId").references(() => products.id, { onDelete: "cascade" }).notNull(),
+    movementType: mysqlEnum("movementType", ["in", "out"]).notNull(),
+    quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull(),
+    reason: varchar("reason", { length: 255 }),
+    transactionId: int("transactionId").references(() => transactions.id, { onDelete: "cascade" }),
+    isAutomatic: boolean("isAutomatic").default(false).notNull(),
+    movementDate: timestamp("movementDate").notNull(),
+    note: varchar("note", { length: 1_000 }),
+    createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("stock_movements_product_idx").on(table.productId),
+    index("stock_movements_date_idx").on(table.movementDate),
+    index("stock_movements_transaction_idx").on(table.transactionId),
   ],
 );
 

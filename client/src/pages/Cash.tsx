@@ -49,6 +49,7 @@ function QuickEntryForm({
       await Promise.all([
         utils.cash.byDate.invalidate({ date: dateToTimestamp(date) }),
         utils.cash.categories.invalidate({ type }),
+        utils.cash.summary.invalidate(),
         utils.kassa.daySummary.invalidate({ date: dateToTimestamp(date) }),
         utils.dashboard.overview.invalidate(),
       ]);
@@ -137,7 +138,7 @@ function EntryList({
   const utils = trpc.useUtils();
   const del = trpc.cash.delete.useMutation({
     onSuccess: async () => {
-      await Promise.all([utils.cash.byDate.invalidate(), utils.kassa.daySummary.invalidate(), utils.dashboard.overview.invalidate()]);
+      await Promise.all([utils.cash.byDate.invalidate(), utils.cash.summary.invalidate(), utils.kassa.daySummary.invalidate(), utils.dashboard.overview.invalidate()]);
       onDeleted();
     },
     onError: error => toast.error(error.message),
@@ -394,6 +395,7 @@ export default function Cash() {
   const timestamp = dateToTimestamp(date);
   const daySummary = trpc.kassa.daySummary.useQuery({ date: timestamp });
   const prihodEntries = trpc.cash.byDate.useQuery({ date: timestamp });
+  const cashSummary = trpc.cash.summary.useQuery();
   const utils = trpc.useUtils();
 
   const [actualCash, setActualCash] = useState("");
@@ -428,7 +430,8 @@ export default function Cash() {
         action={<Input className="finance-input h-10 w-44" type="date" value={date} onChange={event => setDate(event.target.value)} />}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="Naqd pul" value={formatMoney(cashSummary.data?.cashBalance, true)} helper="Umumiy qoldiq" icon={Banknote} tone="amber" />
         <MetricCard label="Jami Приход" value={formatMoney(data?.jamiPrihod, true)} helper="Tanlangan kun" icon={Banknote} tone="green" />
         <MetricCard label="Jami Расход" value={formatMoney(data?.jamiRasxod, true)} helper="Tanlangan kun" icon={Banknote} tone="rose" />
         <MetricCard label="Қолдиқ" value={formatMoney(kassaQoldigi, true)} helper="Приход - Расход" icon={Landmark} tone="cyan" />

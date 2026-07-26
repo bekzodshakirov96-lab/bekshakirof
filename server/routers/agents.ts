@@ -1,6 +1,7 @@
-import { asc, eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents } from "../../drizzle/schema";
+import { agents, cashEntries, transactions } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure } from "../access";
 import {
   enrichClientFinancialRows,
@@ -11,6 +12,10 @@ import {
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
+
+function toMySqlDate(d: Date): string {
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
 
 const agentFilterFields = {
   search: z.string().max(120).optional(),
@@ -141,6 +146,7 @@ export const agentsRouter = router({
         phone: z.string().trim().max(64).nullable().optional(),
         note: z.string().trim().max(1_000).nullable().optional(),
         isActive: z.boolean(),
+        commissionPercent: z.number().min(0).max(100).optional(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -152,8 +158,83 @@ export const agentsRouter = router({
           phone: input.phone ?? null,
           note: input.note ?? null,
           isActive: input.isActive,
+          ...(input.commissionPercent !== undefined ? { commissionPercent: input.commissionPercent.toFixed(2) } : {}),
         })
         .where(eq(agents.id, input.id));
+      return { success: true };
+    }),
+  /** Sets only the commission percent — used by the inline editor on the Agents page (no need to resend name/phone/note). */
+  setCommissionPercent: ownerProcedure
+    .input(z.object({ id: z.number().int().positive(), commissionPercent: z.number().min(0).max(100) }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      await db
+        .update(agents)
+        .set({ commissionPercent: input.commissionPercent.toFixed(2) })
+        .where(eq(agents.id, input.id));
+      return { success: true };
+    }),
+  /**
+   * Commission per agent for a period, based on the amount actually collected from clients
+   * (cash + terminal + click payments recorded on their transactions) — the unpaid/debt portion
+   * of a sale earns no commission.
+   */
+  commissionReport: businessProcedure
+    .input(z.object({ from: z.number().int().optional(), to: z.number().int().optional() }))
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const periodConditions = [
+        input.from ? sql`${transactions.transactionDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
+        input.to ? sql`${transactions.transactionDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+      ].filter(Boolean);
+
+      const agentRows = await db.select().from(agents).orderBy(asc(agents.name));
+      const collectedRows = await db
+        .select({
+          agentId: transactions.agentId,
+          collectedAmount:
+            sql<number>`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment}), 0)`.mapWith(
+              Number,
+            ),
+        })
+        .from(transactions)
+        .where(periodConditions.length ? and(...periodConditions) : undefined)
+        .groupBy(transactions.agentId);
+      const collectedByAgent = new Map(collectedRows.map(row => [row.agentId, row.collectedAmount]));
+
+      return agentRows
+        .filter(agent => agent.isActive)
+        .map(agent => {
+          const collectedAmount = collectedByAgent.get(agent.id) ?? 0;
+          const commissionPercent = Number(agent.commissionPercent);
+          const commissionAmount = Math.round((collectedAmount * commissionPercent) / 100);
+          return { agentId: agent.id, agentName: agent.name, commissionPercent, collectedAmount, commissionAmount };
+        });
+    }),
+  /** Records a computed commission payout as an "Ойлик" (salary) expense in the Kassa cash journal. */
+  payCommission: businessProcedure
+    .input(
+      z.object({
+        agentId: z.number().int().positive(),
+        amount: z.number().int().positive(),
+        periodLabel: z.string().trim().min(1).max(160),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const db = await requireDb();
+      await db.insert(cashEntries).values({
+        sourceKey: `agent-commission:${randomUUID()}`,
+        entryDate: new Date(),
+        type: "expense",
+        category: "Ойлик",
+        agentId: input.agentId,
+        description: `Komissiya (${input.periodLabel})`,
+        cashAmount: input.amount,
+        terminalAmount: 0,
+        clickAmount: 0,
+        source: "manual",
+        createdBy: ctx.user.id,
+      });
       return { success: true };
     }),
 });

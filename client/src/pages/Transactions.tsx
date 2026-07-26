@@ -72,12 +72,12 @@ export default function Transactions() {
   );
 
   const cartProductIds = useMemo(() => new Set(cart.map(line => line.productId)), [cart]);
+  const sellableProducts = useMemo(() => (products.data ?? []).filter(product => !product.containerType), [products.data]);
   const filteredProducts = useMemo(() => {
     const needle = productSearch.trim().toLocaleLowerCase("uz-Latn");
-    const rows = products.data ?? [];
-    if (!needle) return rows;
-    return rows.filter(product => `${product.code} ${product.name}`.toLocaleLowerCase("uz-Latn").includes(needle));
-  }, [products.data, productSearch]);
+    if (!needle) return sellableProducts;
+    return sellableProducts.filter(product => `${product.code} ${product.name}`.toLocaleLowerCase("uz-Latn").includes(needle));
+  }, [sellableProducts, productSearch]);
 
   const createMultiple = trpc.transactions.createMultiple.useMutation({
     onSuccess: async result => {
@@ -190,7 +190,7 @@ export default function Transactions() {
       </div>
     </SectionCard>
 
-    <SectionCard title="2. Mahsulotlar" description="Bir nechta mahsulot qo‘shishingiz mumkin, har biriga alohida miqdor va narx belgilang">
+    <SectionCard title="2. Mahsulotlar" description="Bir nechta mahsulot qo‘shishingiz mumkin, har biriga alohida miqdor va narx belgilang. KEG/tara mahsulotlari bu yerda yo‘q — ularni Tezkor KEG savdosi orqali soting.">
       <div className="relative mb-4" ref={pickerRef}>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />

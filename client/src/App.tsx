@@ -16,6 +16,8 @@ import FastKeg from "./pages/FastKeg";
 import Products from "./pages/Products";
 import KassaReports from "./pages/KassaReports";
 import SalesReport from "./pages/SalesReport";
+import Stock from "./pages/Stock";
+import StockReport from "./pages/StockReport";
 import Transactions from "./pages/Transactions";
 import Users from "./pages/Users";
 
@@ -31,6 +33,8 @@ function Router() {
       <Route path={"/sotuv-hisoboti"} component={SalesReport} />
       <Route path={"/tezkor-keg"} component={FastKeg} />
       <Route path={"/mahsulotlar"} component={Products} />
+      <Route path={"/sklad"} component={Stock} />
+      <Route path={"/sklad-hisoboti"} component={StockReport} />
       <Route path={"/kassa"} component={Cash} />
       <Route path={"/kassa-hisoboti"} component={KassaReports} />
       <Route path={"/tara"} component={Containers} />

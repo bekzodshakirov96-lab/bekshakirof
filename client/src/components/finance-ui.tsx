@@ -94,7 +94,7 @@ export function SectionCard({
 }) {
   return (
     <Card className={`rounded-2xl border-slate-200/70 bg-white shadow-[0_6px_24px_rgba(27,52,76,0.055)] ${className}`}>
-      <CardHeader className="flex-row items-start justify-between gap-4 p-5 pb-3">
+      <CardHeader className="grid-cols-[1fr_auto] items-start gap-4 p-5 pb-3">
         <div>
           <CardTitle className="text-[15px] font-bold text-slate-900">{title}</CardTitle>
           {description ? <p className="mt-1 text-xs text-slate-400">{description}</p> : null}

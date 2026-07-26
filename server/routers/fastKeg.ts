@@ -20,12 +20,15 @@ import {
   type ContainerType,
 } from "../containerAccounting";
 import { requireDb } from "../db";
+import { reconcileTransactionStock } from "../stockAccounting";
 import { router } from "../_core/trpc";
 
 const numberSql = (template: TemplateStringsArray, ...params: unknown[]) =>
   sql<number>(template, ...params).mapWith(Number);
 
 const quantitySchema = z.number().int().min(0).max(100_000);
+
+const paymentSchema = z.number().int().min(0).max(9_000_000_000_000).default(0);
 
 const fastKegRowSchema = z
   .object({
@@ -34,11 +37,13 @@ const fastKegRowSchema = z
     keg50: quantitySchema.default(0),
     returned30: quantitySchema.default(0),
     returned50: quantitySchema.default(0),
-    cash: z.number().int().min(0).max(9_000_000_000_000).default(0),
+    cash: paymentSchema,
+    terminal: paymentSchema,
+    transfer: paymentSchema,
   })
   .refine(
-    row => row.keg30 + row.keg50 + row.returned30 + row.returned50 + row.cash > 0,
-    { message: "Mijoz qatorida kamida bitta KEG, tara yoki kassa qiymati bo‘lishi kerak." },
+    row => row.keg30 + row.keg50 + row.returned30 + row.returned50 + row.cash + row.terminal + row.transfer > 0,
+    { message: "Mijoz qatorida kamida bitta KEG, tara yoki to‘lov qiymati bo‘lishi kerak." },
   );
 
 const saveBatchSchema = z
@@ -336,6 +341,8 @@ export const fastKegRouter = router({
         returned30: number;
         returned50: number;
         cash: number;
+        terminal: number;
+        transfer: number;
         saleAmount: number;
         endingDebt: number;
         endingKeg30Balance: number;
@@ -415,8 +422,8 @@ export const fastKegRouter = router({
               salePrice: action.product?.price ?? 0,
               totalAmount,
               cashPayment: actionIndex === 0 ? inputRow.cash : 0,
-              terminalPayment: 0,
-              clickPayment: 0,
+              terminalPayment: actionIndex === 0 ? inputRow.terminal : 0,
+              clickPayment: actionIndex === 0 ? inputRow.transfer : 0,
               note: `Tezkor KEG savdosi • ${input.idempotencyKey}`,
               source: "manual",
               createdBy: ctx.user.id,
@@ -435,6 +442,13 @@ export const fastKegRouter = router({
             returnQuantity: action.returned,
             createdBy: ctx.user.id,
             source: "manual",
+          });
+          await reconcileTransactionStock(tx, {
+            transactionId: created.id,
+            movementDate: transactionDate,
+            productId: action.product?.id ?? null,
+            quantity: action.quantity,
+            createdBy: ctx.user.id,
           });
         }
 

@@ -90,6 +90,14 @@ vi.mock("./containerAccounting", async importOriginal => {
   };
 });
 
+vi.mock("./stockAccounting", async importOriginal => {
+  const actual = await importOriginal<typeof import("./stockAccounting")>();
+  return {
+    ...actual,
+    reconcileTransactionStock: vi.fn(async () => undefined),
+  };
+});
+
 import { fastKegRouter } from "./routers/fastKeg";
 
 function createContext(): TrpcContext {

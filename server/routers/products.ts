@@ -1,6 +1,6 @@
 import { asc, eq, like, or } from "drizzle-orm";
 import { z } from "zod";
-import { products } from "../../drizzle/schema";
+import { agentTakingEntries, products, transactions } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure } from "../access";
 import { requireDb } from "../db";
 import { router } from "../_core/trpc";
@@ -31,6 +31,24 @@ export const productsRouter = router({
     .mutation(async ({ input }) => {
       const db = await requireDb();
       await db.update(products).set({ price: input.price }).where(eq(products.id, input.id));
+      return { success: true };
+    }),
+  /**
+   * Renames a product and backfills the name everywhere it was denormalized (transactions,
+   * agent taking entries), so every section reflects the new name immediately — not just
+   * future records. Price/quantity history is untouched; only the display name text changes.
+   */
+  rename: businessProcedure
+    .input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(240) }))
+    .mutation(async ({ input }) => {
+      const db = await requireDb();
+      await db.transaction(async tx => {
+        const [product] = await tx.select({ id: products.id }).from(products).where(eq(products.id, input.id)).limit(1);
+        if (!product) throw new Error("Mahsulot topilmadi.");
+        await tx.update(products).set({ name: input.name }).where(eq(products.id, input.id));
+        await tx.update(transactions).set({ productName: input.name }).where(eq(transactions.productId, input.id));
+        await tx.update(agentTakingEntries).set({ productName: input.name }).where(eq(agentTakingEntries.productId, input.id));
+      });
       return { success: true };
     }),
   updateContainerMeta: ownerProcedure

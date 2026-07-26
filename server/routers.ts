@@ -16,6 +16,7 @@ import { importsRouter } from "./routers/imports";
 import { kassaRouter } from "./routers/kassa";
 import { fastKegRouter } from "./routers/fastKeg";
 import { productsRouter } from "./routers/products";
+import { stockRouter } from "./routers/stock";
 import { transactionsRouter } from "./routers/transactions";
 import { usersRouter } from "./routers/users";
 
@@ -92,6 +93,7 @@ export const appRouter = router({
   containers: containersRouter,
   imports: importsRouter,
   fastKeg: fastKegRouter,
+  stock: stockRouter,
   users: usersRouter,
 });
 

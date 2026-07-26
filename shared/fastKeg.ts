@@ -4,6 +4,8 @@ export type FastKegQuantities = {
   returned30: number;
   returned50: number;
   cash: number;
+  terminal: number;
+  transfer: number;
 };
 
 export type FastKegCurrentState = {
@@ -27,7 +29,8 @@ export function calculateFastKegRow(
   const issued30 = quantities.keg30 * pricing.keg30UnitsPerItem;
   const issued50 = quantities.keg50 * pricing.keg50UnitsPerItem;
   const saleAmount = quantities.keg30 * pricing.keg30Price + quantities.keg50 * pricing.keg50Price;
-  const endingDebt = current.currentDebt + saleAmount - quantities.cash;
+  const totalPayment = quantities.cash + quantities.terminal + quantities.transfer;
+  const endingDebt = current.currentDebt + saleAmount - totalPayment;
   const endingKeg30Balance = current.currentKeg30Balance + issued30 - quantities.returned30;
   const endingKeg50Balance = current.currentKeg50Balance + issued50 - quantities.returned50;
 
@@ -53,6 +56,8 @@ export function summarizeFastKegRows(
     returned30: number;
     returned50: number;
     cash: number;
+    terminal: number;
+    transfer: number;
     saleAmount: number;
     endingDebt: number;
   }>(
@@ -63,6 +68,8 @@ export function summarizeFastKegRows(
       returned30: summary.returned30 + row.returned30,
       returned50: summary.returned50 + row.returned50,
       cash: summary.cash + row.cash,
+      terminal: summary.terminal + row.terminal,
+      transfer: summary.transfer + row.transfer,
       saleAmount: summary.saleAmount + row.saleAmount,
       endingDebt: summary.endingDebt + row.endingDebt,
     }),
@@ -73,6 +80,8 @@ export function summarizeFastKegRows(
       returned30: 0,
       returned50: 0,
       cash: 0,
+      terminal: 0,
+      transfer: 0,
       saleAmount: 0,
       endingDebt: 0,
     },

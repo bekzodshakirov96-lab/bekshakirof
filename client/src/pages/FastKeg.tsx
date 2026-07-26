@@ -27,7 +27,6 @@ import {
   Search,
   UsersRound,
   X,
-  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -38,6 +37,8 @@ type EntryValue = {
   returned30: string;
   returned50: string;
   cash: string;
+  terminal: string;
+  transfer: string;
 };
 
 type SaveFeedback = {
@@ -49,6 +50,8 @@ type SaveFeedback = {
     code?: string;
     saleAmount?: number;
     cash?: number;
+    terminal?: number;
+    transfer?: number;
     endingDebt?: number;
     endingKeg30Balance?: number;
     endingKeg50Balance?: number;
@@ -56,7 +59,7 @@ type SaveFeedback = {
   }>;
 };
 
-const EMPTY_ENTRY: EntryValue = { keg30: "", keg50: "", returned30: "", returned50: "", cash: "" };
+const EMPTY_ENTRY: EntryValue = { keg30: "", keg50: "", returned30: "", returned50: "", cash: "", terminal: "", transfer: "" };
 
 function createIdempotencyKey() {
   return `fk_${crypto.randomUUID().replaceAll("-", "")}`;
@@ -79,12 +82,14 @@ function quantitiesOf(value: EntryValue): FastKegQuantities {
     returned30: numeric(value.returned30),
     returned50: numeric(value.returned50),
     cash: numeric(value.cash),
+    terminal: numeric(value.terminal),
+    transfer: numeric(value.transfer),
   };
 }
 
 function hasValue(value: EntryValue) {
   const row = quantitiesOf(value);
-  return row.keg30 + row.keg50 + row.returned30 + row.returned50 + row.cash > 0;
+  return row.keg30 + row.keg50 + row.returned30 + row.returned50 + row.cash + row.terminal + row.transfer > 0;
 }
 
 const entryFields: Array<{ key: keyof EntryValue; label: string; tone: string }> = [
@@ -92,7 +97,9 @@ const entryFields: Array<{ key: keyof EntryValue; label: string; tone: string }>
   { key: "keg50", label: "KEG 50", tone: "focus-visible:ring-cyan-400 bg-cyan-50/55" },
   { key: "returned30", label: "Tara 30 qaytdi", tone: "focus-visible:ring-emerald-400 bg-emerald-50/55" },
   { key: "returned50", label: "Tara 50 qaytdi", tone: "focus-visible:ring-teal-400 bg-teal-50/55" },
-  { key: "cash", label: "Kassa", tone: "focus-visible:ring-violet-400 bg-violet-50/55" },
+  { key: "cash", label: "Наличные", tone: "focus-visible:ring-violet-400 bg-violet-50/55" },
+  { key: "terminal", label: "Терминаль", tone: "focus-visible:ring-fuchsia-400 bg-fuchsia-50/55" },
+  { key: "transfer", label: "Перечисление", tone: "focus-visible:ring-sky-400 bg-sky-50/55" },
 ];
 
 export default function FastKeg() {
@@ -146,6 +153,8 @@ export default function FastKeg() {
             code: row.clientCode,
             saleAmount: row.saleAmount,
             cash: row.cash,
+            terminal: row.terminal,
+            transfer: row.transfer,
             endingDebt: row.endingDebt,
             endingKeg30Balance: row.endingKeg30Balance,
             endingKeg50Balance: row.endingKeg50Balance,
@@ -342,25 +351,11 @@ export default function FastKeg() {
         }
       />
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Card className="rounded-2xl border-slate-200/70 shadow-sm">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-cyan-50 text-cyan-700"><CalendarDays className="h-5 w-5" /></div>
-            <div className="flex-1"><Label htmlFor="fast-keg-date" className="text-[11px] text-slate-500">Operatsiya sanasi</Label><Input id="fast-keg-date" type="date" value={transactionDate} onChange={event => setTransactionDate(event.target.value)} className="mt-1 h-8 border-0 p-0 text-sm font-bold shadow-none focus-visible:ring-0" /></div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-2xl border-slate-200/70 shadow-sm sm:col-span-1 xl:col-span-2">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-700"><UsersRound className="h-5 w-5" /></div>
-            <div className="min-w-0 flex-1"><Label className="text-[11px] text-slate-500">Agent</Label><Select value={agentId ? String(agentId) : undefined} onValueChange={value => setAgentId(Number(value))}><SelectTrigger className="mt-1 h-8 border-0 p-0 text-sm font-bold shadow-none focus:ring-0"><SelectValue placeholder="Agentni tanlang" /></SelectTrigger><SelectContent>{(setup.data?.agents ?? []).map(agent => <SelectItem key={agent.id} value={String(agent.id)}>{agent.name}</SelectItem>)}</SelectContent></Select></div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-2xl border-slate-200/70 shadow-sm">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-amber-50 text-amber-700"><Zap className="h-5 w-5" /></div>
-            <div><p className="text-[11px] text-slate-500">Tanlangan mijozlar</p><p className="mt-1 text-xl font-bold text-slate-950">{selectedIds.length} ta</p></div>
-          </CardContent>
-        </Card>
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryCard label="KEG 30 qoldig‘i" value={`${endingKeg30Total} dona`} helper={`O‘zgarish: ${netKeg30Total >= 0 ? "+" : ""}${netKeg30Total} • sotildi: ${summary.keg30}`} icon={PackageCheck} tone="amber" />
+        <SummaryCard label="KEG 50 qoldig‘i" value={`${endingKeg50Total} dona`} helper={`O‘zgarish: ${netKeg50Total >= 0 ? "+" : ""}${netKeg50Total} • sotildi: ${summary.keg50}`} icon={RotateCcw} tone="green" />
+        <SummaryCard label="Jami to‘lov" value={formatMoney(summary.cash + summary.terminal + summary.transfer)} helper={`Наличные: ${formatMoney(summary.cash)} • Терминаль: ${formatMoney(summary.terminal)} • Перечисление: ${formatMoney(summary.transfer)}`} icon={Banknote} tone="violet" />
+        <SummaryCard label="Yakuniy qarzlar" value={formatMoney(summary.endingDebt)} helper={`${selectedIds.length} ta mijoz bo‘yicha`} icon={CircleDollarSign} tone="rose" />
       </div>
 
       {!pricingReady && !setup.isLoading ? (
@@ -413,7 +408,7 @@ export default function FastKeg() {
                   </div>
                   {saveFeedback.kind === "success" ? (
                     <p className="mt-1 text-xs opacity-75">
-                      Savdo: {formatMoney(client.saleAmount ?? 0)} • Kassa: {formatMoney(client.cash ?? 0)} •
+                      Savdo: {formatMoney(client.saleAmount ?? 0)} • To‘lov: {formatMoney((client.cash ?? 0) + (client.terminal ?? 0) + (client.transfer ?? 0))} •
                       Yakuniy qarz: {formatMoney(client.endingDebt ?? 0)} • Tara 30/50: {client.endingKeg30Balance ?? 0}/{client.endingKeg50Balance ?? 0}
                     </p>
                   ) : (
@@ -426,23 +421,48 @@ export default function FastKeg() {
         </div>
       ) : null}
 
-      <div className="grid min-w-0 gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <SectionCard title="Agent mijozlari" description="Qidirib bir nechta mijozni belgilang" className="h-fit xl:sticky xl:top-20">
+      <div className="min-w-0 space-y-5">
+        <SectionCard
+          title="Agent va mijozlar"
+          description="Avval agentni tanlang, so‘ng qidirib bir nechta mijozni belgilang"
+          action={
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5">
+              <CalendarDays className="h-4 w-4 shrink-0 text-cyan-700" />
+              <div>
+                <Label htmlFor="fast-keg-date" className="text-[10px] text-slate-500">Operatsiya sanasi</Label>
+                <Input id="fast-keg-date" type="date" value={transactionDate} onChange={event => setTransactionDate(event.target.value)} className="h-6 border-0 p-0 text-sm font-bold shadow-none focus-visible:ring-0" />
+              </div>
+            </div>
+          }
+        >
+          <div className="grid gap-3 sm:grid-cols-[260px_1fr]">
+            <div>
+              <Label className="text-[11px] text-slate-500">Agent</Label>
+              <Select value={agentId ? String(agentId) : undefined} onValueChange={value => setAgentId(Number(value))}>
+                <SelectTrigger className="mt-1 h-10 w-full rounded-xl"><SelectValue placeholder="Agentni tanlang" /></SelectTrigger>
+                <SelectContent>{(setup.data?.agents ?? []).map(agent => <SelectItem key={agent.id} value={String(agent.id)}>{agent.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-[11px] text-slate-500">Mijoz qidirish</Label>
+              <div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Kod yoki mijoz nomi..." className="h-10 rounded-xl pl-9" disabled={!agentId} /></div>
+            </div>
+          </div>
+
           {!agentId ? (
             <div className="py-10 text-center"><UsersRound className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-700">Avval agentni tanlang</p><p className="mt-1 text-xs text-slate-400">Faqat shu agentga tegishli mijozlar ochiladi.</p></div>
           ) : clients.isError ? (
             <QueryError description={clients.error.message} onRetry={() => clients.refetch()} />
           ) : (
             <>
-              <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Kod yoki mijoz nomi..." className="h-10 rounded-xl pl-9" /></div>
-              <button onClick={toggleVisibleClients} className="mt-3 flex w-full items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-600 hover:bg-slate-100"><Checkbox checked={filteredClients.length > 0 && filteredClients.every(client => selectedSet.has(client.id))} /> Ko‘rinayotganlarning barchasini tanlash</button>
-              <ScrollArea className="mt-2 h-[430px] pr-3">
-                <div className="space-y-1.5">
-                  {clients.isLoading ? <div className="py-8 text-center text-xs text-slate-400"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Mijozlar yuklanmoqda...</div> : null}
+              <button onClick={toggleVisibleClients} className="mt-4 flex w-full items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-600 hover:bg-slate-100"><Checkbox checked={filteredClients.length > 0 && filteredClients.every(client => selectedSet.has(client.id))} /> Ko‘rinayotganlarning barchasini tanlash</button>
+              <ScrollArea className="mt-2 max-h-[320px] pr-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {clients.isLoading ? <div className="col-span-full py-8 text-center text-xs text-slate-400"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Mijozlar yuklanmoqda...</div> : null}
                   {filteredClients.map(client => {
                     const selected = selectedSet.has(client.id);
                     const order = selectedIds.indexOf(client.id) + 1;
-                    return <button key={client.id} onClick={() => toggleClient(client.id)} className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-all ${selected ? "border-cyan-200 bg-cyan-50/70" : "border-transparent hover:border-slate-200 hover:bg-slate-50"}`}><Checkbox checked={selected} /><div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-slate-800">{client.name}</p><p className="mt-0.5 truncate text-[10px] text-slate-400">{client.code} • qarz {formatMoney(client.currentDebt)}</p></div>{selected ? <Badge className="h-6 min-w-6 justify-center rounded-lg bg-cyan-700 px-1.5">{order}</Badge> : <ChevronRight className="h-4 w-4 text-slate-300" />}</button>;
+                    return <button key={client.id} onClick={() => toggleClient(client.id)} className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-all ${selected ? "border-cyan-200 bg-cyan-50/70" : "border-transparent hover:border-slate-200 hover:bg-slate-50"}`}><Checkbox checked={selected} /><div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-slate-800">{client.name}</p><p className="mt-0.5 truncate text-[10px] text-slate-400">{client.code} • qarz {formatMoney(client.currentDebt)}</p></div>{selected ? <Badge className="h-6 min-w-6 justify-center rounded-lg bg-cyan-700 px-1.5">{order}</Badge> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />}</button>;
                   })}
                 </div>
               </ScrollArea>
@@ -450,20 +470,12 @@ export default function FastKeg() {
           )}
         </SectionCard>
 
-        <div className="min-w-0 space-y-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard label="KEG 30 qoldig‘i" value={`${endingKeg30Total} dona`} helper={`O‘zgarish: ${netKeg30Total >= 0 ? "+" : ""}${netKeg30Total} • sotildi: ${summary.keg30}`} icon={PackageCheck} tone="amber" />
-            <SummaryCard label="KEG 50 qoldig‘i" value={`${endingKeg50Total} dona`} helper={`O‘zgarish: ${netKeg50Total >= 0 ? "+" : ""}${netKeg50Total} • sotildi: ${summary.keg50}`} icon={RotateCcw} tone="green" />
-            <SummaryCard label="Jami kassa" value={formatMoney(summary.cash)} helper={`Savdo: ${formatMoney(summary.saleAmount)}`} icon={Banknote} tone="violet" />
-            <SummaryCard label="Yakuniy qarzlar" value={formatMoney(summary.endingDebt)} helper={`${selectedIds.length} ta mijoz bo‘yicha`} icon={CircleDollarSign} tone="rose" />
-          </div>
-
-          <Card className="overflow-hidden rounded-2xl border-slate-200/70 bg-white shadow-[0_8px_30px_rgba(27,52,76,0.07)]">
+        <Card className="overflow-hidden rounded-2xl border-slate-200/70 bg-white shadow-[0_8px_30px_rgba(27,52,76,0.07)]">
             <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-sm font-bold text-slate-900">Ketma-ket KEG kiritish jadvali</h3><p className="mt-1 text-xs text-slate-400">Tab yoki ←/→ — qo‘shni katak, Enter/↑/↓ — shu ustundagi keyingi yoki oldingi mijoz.</p></div>{selectedIds.length > 0 ? <Button variant="outline" size="sm" onClick={() => { setSelectedIds([]); setEntries({}); }} className="h-9 rounded-xl"><Eraser className="mr-2 h-4 w-4" />Jadvalni tozalash</Button> : null}</div>
-            {draft.isError ? <QueryError description={draft.error.message} onRetry={() => draft.refetch()} /> : selectedIds.length === 0 ? <div className="flex min-h-80 flex-col items-center justify-center px-6 text-center"><div className="grid h-14 w-14 place-items-center rounded-2xl bg-cyan-50 text-cyan-700"><Boxes className="h-6 w-6" /></div><p className="mt-4 text-sm font-bold text-slate-800">Mijozlarni tanlang</p><p className="mt-1 max-w-md text-xs leading-5 text-slate-400">Chapdagi ro‘yxatdan mijozlarni belgilasangiz, ular tanlash tartibida shu jadvalga avtomatik joylashadi.</p></div> : draft.isLoading ? <div className="flex min-h-80 items-center justify-center text-sm text-slate-400"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Qarz va tara qoldiqlari yuklanmoqda...</div> : (
+            {draft.isError ? <QueryError description={draft.error.message} onRetry={() => draft.refetch()} /> : selectedIds.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center"><div className="grid h-14 w-14 place-items-center rounded-2xl bg-cyan-50 text-cyan-700"><Boxes className="h-6 w-6" /></div><p className="mt-4 text-sm font-bold text-slate-800">Mijozlarni tanlang</p><p className="mt-1 max-w-md text-xs leading-5 text-slate-400">Chapdagi ro‘yxatdan mijozlarni belgilasangiz, ular tanlash tartibida shu jadvalga avtomatik joylashadi.</p></div> : draft.isLoading ? <div className="flex min-h-64 items-center justify-center text-sm text-slate-400"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Qarz va tara qoldiqlari yuklanmoqda...</div> : (
               <div className="overflow-x-auto overscroll-x-contain">
-                <Table className="min-w-[1620px]">
-                  <TableHeader><TableRow className="bg-slate-50/80"><TableHead className="sticky left-0 z-20 w-12 bg-slate-50 text-center">№</TableHead><TableHead className="sticky left-12 z-20 min-w-[210px] bg-slate-50">Mijoz</TableHead><TableHead className="min-w-[130px] text-right">Hozirgi qarz</TableHead><TableHead className="min-w-[105px] bg-amber-50/70 text-center text-amber-800">KEG 30</TableHead><TableHead className="min-w-[105px] bg-cyan-50/70 text-center text-cyan-800">KEG 50</TableHead><TableHead className="min-w-[115px] bg-emerald-50/70 text-center text-emerald-800">Tara 30</TableHead><TableHead className="min-w-[115px] bg-teal-50/70 text-center text-teal-800">Tara 50</TableHead><TableHead className="min-w-[140px] bg-violet-50/70 text-center text-violet-800">Kassa</TableHead><TableHead className="min-w-[130px] text-right">Savdo</TableHead><TableHead className="min-w-[120px] text-right">Qoldiq 30</TableHead><TableHead className="min-w-[120px] text-right">Qoldiq 50</TableHead><TableHead className="min-w-[140px] text-right">Yakuniy qarz</TableHead><TableHead className="w-14" /></TableRow></TableHeader>
+                <Table className="min-w-[1890px]">
+                  <TableHeader><TableRow className="bg-slate-50/80"><TableHead className="sticky left-0 z-20 w-12 bg-slate-50 text-center">№</TableHead><TableHead className="sticky left-12 z-20 min-w-[210px] bg-slate-50">Mijoz</TableHead><TableHead className="min-w-[130px] text-right">Hozirgi qarz</TableHead><TableHead className="min-w-[105px] bg-amber-50/70 text-center text-amber-800">KEG 30</TableHead><TableHead className="min-w-[105px] bg-cyan-50/70 text-center text-cyan-800">KEG 50</TableHead><TableHead className="min-w-[115px] bg-emerald-50/70 text-center text-emerald-800">Tara 30</TableHead><TableHead className="min-w-[115px] bg-teal-50/70 text-center text-teal-800">Tara 50</TableHead><TableHead className="min-w-[130px] bg-violet-50/70 text-center text-violet-800">Наличные</TableHead><TableHead className="min-w-[130px] bg-fuchsia-50/70 text-center text-fuchsia-800">Терминаль</TableHead><TableHead className="min-w-[140px] bg-sky-50/70 text-center text-sky-800">Перечисление</TableHead><TableHead className="min-w-[130px] text-right">Savdo</TableHead><TableHead className="min-w-[120px] text-right">Qoldiq 30</TableHead><TableHead className="min-w-[120px] text-right">Qoldiq 50</TableHead><TableHead className="min-w-[140px] text-right">Yakuniy qarz</TableHead><TableHead className="w-14" /></TableRow></TableHeader>
                   <TableBody>{computedRows.map((row, rowIndex) => {
                     const missingProduct =
                       ((row.quantities.keg30 > 0 || row.quantities.returned30 > 0) && !keg30Product) ||
@@ -479,7 +491,6 @@ export default function FastKeg() {
             )}
             {selectedIds.length > 0 ? <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 text-xs text-slate-500">{invalidRows.length > 0 ? <><X className="h-4 w-4 text-rose-600" /><span className="font-semibold text-rose-700">{invalidRows.length} ta qatorni tuzatish kerak</span></> : <><CheckCircle2 className="h-4 w-4 text-emerald-600" /><span>{activeComputedRows.length} ta to‘ldirilgan qator saqlashga tayyor</span></>}</div><Button onClick={submitBatch} disabled={saveBatch.isPending || activeComputedRows.length === 0 || invalidRows.length > 0} className="h-10 rounded-xl bg-slate-950 px-5 hover:bg-slate-800">{saveBatch.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Operatsiyalarni saqlash</Button></div> : null}
           </Card>
-        </div>
       </div>
     </div>
   );

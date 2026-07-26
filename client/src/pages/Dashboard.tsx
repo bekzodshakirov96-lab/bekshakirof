@@ -6,6 +6,7 @@ import { MetricCard, PageHeader, QueryError, SectionCard, TableLoading } from "@
 import { formatDate, formatMoney, formatMonth } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import {
+  AlertTriangle,
   ArrowUpRight,
   Banknote,
   Building2,
@@ -36,10 +37,12 @@ function monthOverMonthTrend(monthly: { sales: number; received: number }[] | un
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const overview = trpc.dashboard.overview.useQuery(undefined, { refetchOnWindowFocus: false });
+  const stock = trpc.stock.list.useQuery();
   const data = overview.data;
   const salesTrend = monthOverMonthTrend(data?.monthly, "sales");
   const receivedTrend = monthOverMonthTrend(data?.monthly, "received");
   const maxAgentDebt = Math.max(1, ...(data?.agentDebt ?? []).slice(0, 6).map(a => a.debt));
+  const lowStockRows = (stock.data ?? []).filter(row => row.isLow);
 
   if (overview.error) {
     return <div className="mx-auto w-full max-w-[1600px]"><PageHeader eyebrow="Kompaniya holati" title="Boshqaruv paneli" description="Savdo, to‘lovlar va qarzdorlik bo‘yicha asosiy ko‘rsatkichlar." /><QueryError description={overview.error.message} onRetry={() => overview.refetch()} /></div>;
@@ -57,6 +60,21 @@ export default function Dashboard() {
           </Button>
         }
       />
+
+      {lowStockRows.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => setLocation("/sklad")}
+          className="mb-5 flex w-full items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-left transition-colors hover:bg-rose-100"
+        >
+          <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-rose-100 text-rose-700"><AlertTriangle className="size-5" /></div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-rose-900">{lowStockRows.length} ta mahsulot skladda kam qoldi</p>
+            <p className="mt-0.5 truncate text-xs text-rose-700">{lowStockRows.map(row => row.name).join(", ")}</p>
+          </div>
+          <ArrowUpRight className="size-4 shrink-0 text-rose-500" />
+        </button>
+      ) : null}
 
       {overview.isLoading || !data ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">

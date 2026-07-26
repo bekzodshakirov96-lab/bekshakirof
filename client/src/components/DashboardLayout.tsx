@@ -44,6 +44,7 @@ import {
   UserCog,
   UsersRound,
   WalletCards,
+  Warehouse,
 } from "lucide-react";
 import { useState, type ComponentType, type FormEvent, type ReactNode } from "react";
 import { useLocation } from "wouter";
@@ -73,6 +74,8 @@ const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
       { icon: WalletCards, label: "KASSA", path: "/kassa" },
       { icon: BarChart3, label: "Kassa hisobotlari", path: "/kassa-hisoboti" },
       { icon: PackageOpen, label: "Mahsulotlar", path: "/mahsulotlar" },
+      { icon: Warehouse, label: "Sklad", path: "/sklad" },
+      { icon: BarChart3, label: "Sklad hisoboti", path: "/sklad-hisoboti" },
     ],
   },
   {

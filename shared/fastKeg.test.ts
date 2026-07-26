@@ -11,7 +11,7 @@ const pricing = {
 describe("Tezkor KEG jonli hisoblari", () => {
   it("KEG 30/50 savdosi, qaytgan tara, kassa va yakuniy qarzni bir qatorda hisoblaydi", () => {
     const result = calculateFastKegRow(
-      { keg30: 2, keg50: 3, returned30: 1, returned50: 2, cash: 400_000 },
+      { keg30: 2, keg50: 3, returned30: 1, returned50: 2, cash: 400_000, terminal: 0, transfer: 0 },
       { currentDebt: 900_000, currentKeg30Balance: 4, currentKeg50Balance: 5 },
       pricing,
     );
@@ -26,7 +26,7 @@ describe("Tezkor KEG jonli hisoblari", () => {
 
   it("KEG 30 va KEG 50 tara qoldiqlarini o‘zaro aralashtirmaydi", () => {
     const result = calculateFastKegRow(
-      { keg30: 0, keg50: 1, returned30: 2, returned50: 0, cash: 0 },
+      { keg30: 0, keg50: 1, returned30: 2, returned50: 0, cash: 0, terminal: 0, transfer: 0 },
       { currentDebt: 0, currentKeg30Balance: 2, currentKeg50Balance: 0 },
       pricing,
     );
@@ -37,7 +37,7 @@ describe("Tezkor KEG jonli hisoblari", () => {
 
   it("faqat kassa kiritilganda savdo yoki tara yaratmasdan qarzni kamaytiradi", () => {
     const result = calculateFastKegRow(
-      { keg30: 0, keg50: 0, returned30: 0, returned50: 0, cash: 250_000 },
+      { keg30: 0, keg50: 0, returned30: 0, returned50: 0, cash: 250_000, terminal: 0, transfer: 0 },
       { currentDebt: 700_000, currentKeg30Balance: 3, currentKeg50Balance: 2 },
       { keg30Price: 0, keg50Price: 0, keg30UnitsPerItem: 1, keg50UnitsPerItem: 1 },
     );
@@ -50,7 +50,7 @@ describe("Tezkor KEG jonli hisoblari", () => {
 
   it("mahsulot tara koeffitsiyentini berilgan tara soniga qo‘llaydi", () => {
     const result = calculateFastKegRow(
-      { keg30: 3, keg50: 0, returned30: 1, returned50: 0, cash: 0 },
+      { keg30: 3, keg50: 0, returned30: 1, returned50: 0, cash: 0, terminal: 0, transfer: 0 },
       { currentDebt: 0, currentKeg30Balance: 0, currentKeg50Balance: 0 },
       { ...pricing, keg30UnitsPerItem: 2 },
     );
@@ -60,10 +60,21 @@ describe("Tezkor KEG jonli hisoblari", () => {
     expect(result.saleAmount).toBe(360_000);
   });
 
-  it("bir nechta tanlangan mijozning KEG, tara, kassa, savdo va qarzini jamlaydi", () => {
+  it("naqd, terminal va perechisleniya uchtasi birga qarzni kamaytiradi", () => {
+    const result = calculateFastKegRow(
+      { keg30: 0, keg50: 0, returned30: 0, returned50: 0, cash: 100_000, terminal: 50_000, transfer: 30_000 },
+      { currentDebt: 500_000, currentKeg30Balance: 0, currentKeg50Balance: 0 },
+      { keg30Price: 0, keg50Price: 0, keg30UnitsPerItem: 1, keg50UnitsPerItem: 1 },
+    );
+
+    expect(result.saleAmount).toBe(0);
+    expect(result.endingDebt).toBe(320_000);
+  });
+
+  it("bir nechta tanlangan mijozning KEG, tara, to‘lov turlari, savdo va qarzini jamlaydi", () => {
     const summary = summarizeFastKegRows([
-      { keg30: 2, keg50: 1, returned30: 1, returned50: 0, cash: 100, saleAmount: 500, endingDebt: 900 },
-      { keg30: 0, keg50: 3, returned30: 0, returned50: 2, cash: 200, saleAmount: 700, endingDebt: 1_200 },
+      { keg30: 2, keg50: 1, returned30: 1, returned50: 0, cash: 100, terminal: 40, transfer: 10, saleAmount: 500, endingDebt: 900 },
+      { keg30: 0, keg50: 3, returned30: 0, returned50: 2, cash: 200, terminal: 0, transfer: 60, saleAmount: 700, endingDebt: 1_200 },
     ]);
 
     expect(summary).toEqual({
@@ -73,6 +84,8 @@ describe("Tezkor KEG jonli hisoblari", () => {
       returned30: 1,
       returned50: 2,
       cash: 300,
+      terminal: 40,
+      transfer: 70,
       saleAmount: 1_200,
       endingDebt: 2_100,
     });
