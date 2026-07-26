@@ -1,15 +1,11 @@
 import { MetricCard, PageHeader, QueryError } from "@/components/finance-ui";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import {
   Banknote,
-  CheckCircle2,
   Landmark,
   Plus,
-  Scale,
   Trash2,
   Users,
 } from "lucide-react";
@@ -22,170 +18,209 @@ const dateToTimestamp = (value: string) => new Date(`${value}T12:00:00`).getTime
 const INCOME_CATEGORIES = ["Приход кег", "Приход пет"];
 const EXPENSE_CATEGORIES = ["Ойлик", "Обед", "Газ", "Расход"];
 
-function QuickEntryForm({
-  type,
-  date,
-  onSaved,
-}: {
+const CATEGORY_TYPE: Record<string, "income" | "expense"> = Object.fromEntries([
+  ...INCOME_CATEGORIES.map(name => [name, "income" as const]),
+  ...EXPENSE_CATEGORIES.map(name => [name, "expense" as const]),
+]);
+const JOURNAL_COLUMNS = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
+const DRAFT_ROWS = 4;
+
+type CashEntryRow = {
+  id: number;
   type: "income" | "expense";
-  date: string;
-  onSaved: () => void;
-}) {
-  const utils = trpc.useUtils();
-  const agents = trpc.agents.options.useQuery();
-  const options = type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
-  const [category, setCategory] = useState(options[0]);
-  const [agentId, setAgentId] = useState("");
-  const [cashAmount, setCashAmount] = useState("");
-  const [terminalAmount, setTerminalAmount] = useState("");
-  const [clickAmount, setClickAmount] = useState("");
-  const [description, setDescription] = useState("");
-  const [showSplit, setShowSplit] = useState(false);
+  category: string;
+  agentId: number | null;
+  description: string | null;
+  cashAmount: number;
+  terminalAmount: number;
+  clickAmount: number;
+};
 
-  const create = trpc.cash.create.useMutation({
-    onSuccess: async () => {
-      toast.success(type === "income" ? "Приход qo'shildi" : "Расход qo'shildi");
-      setCashAmount(""); setTerminalAmount(""); setClickAmount(""); setDescription(""); setShowSplit(false);
-      await Promise.all([
-        utils.cash.byDate.invalidate({ date: dateToTimestamp(date) }),
-        utils.cash.categories.invalidate({ type }),
-        utils.cash.summary.invalidate(),
-        utils.kassa.daySummary.invalidate({ date: dateToTimestamp(date) }),
-        utils.dashboard.overview.invalidate(),
-      ]);
-      onSaved();
-    },
-    onError: error => toast.error(error.message),
-  });
+type DraftRow = { agentId: string; reason: string; amounts: Record<string, string> };
+const emptyDraftRow = (): DraftRow => ({ agentId: "", reason: "", amounts: Object.fromEntries(JOURNAL_COLUMNS.map(name => [name, ""])) });
 
-  const total = Number(cashAmount || 0) + Number(terminalAmount || 0) + Number(clickAmount || 0);
-  const canSave = category.trim().length > 0 && total > 0 && !create.isPending;
-
-  function submit() {
-    if (!canSave) return;
-    create.mutate({
-      entryDate: dateToTimestamp(date),
-      type,
-      category: category.trim(),
-      agentId: agentId ? Number(agentId) : undefined,
-      description: description || undefined,
-      cashAmount: Math.round(Number(cashAmount || 0)),
-      terminalAmount: Math.round(Number(terminalAmount || 0)),
-      clickAmount: Math.round(Number(clickAmount || 0)),
-    });
-  }
-
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3">
-      <div className="flex flex-wrap gap-2">
-        <select
-          className="finance-input h-9 min-w-[140px] border px-2"
-          value={category}
-          onChange={event => setCategory(event.target.value)}
-        >
-          {options.map(name => <option key={name} value={name}>{name}</option>)}
-        </select>
-        <select
-          className="finance-input h-9 min-w-[130px] border px-2"
-          value={agentId}
-          onChange={event => setAgentId(event.target.value)}
-        >
-          <option value="">Agentsiz</option>
-          {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-        </select>
-        <Input
-          className="finance-input w-36"
-          type="text"
-          inputMode="numeric"
-          placeholder="Summa (naqd)"
-          value={cashAmount}
-          onChange={event => setCashAmount(sanitizeIntegerInput(event.target.value))}
-          onKeyDown={event => event.key === "Enter" && submit()}
-        />
-        {!showSplit ? (
-          <Button variant="outline" type="button" className="h-9 bg-white text-xs" onClick={() => setShowSplit(true)}>
-            + Терминаль/CLIK
-          </Button>
-        ) : (
-          <>
-            <Input className="finance-input w-32" type="text" inputMode="numeric" placeholder="Терминаль" value={terminalAmount} onChange={event => setTerminalAmount(sanitizeIntegerInput(event.target.value))} />
-            <Input className="finance-input w-32" type="text" inputMode="numeric" placeholder="CLIK" value={clickAmount} onChange={event => setClickAmount(sanitizeIntegerInput(event.target.value))} />
-          </>
-        )}
-        <Input
-          className="finance-input min-w-[140px] flex-1"
-          placeholder="Клиент / izoh (ixtiyoriy)"
-          value={description}
-          onChange={event => setDescription(event.target.value)}
-          onKeyDown={event => event.key === "Enter" && submit()}
-        />
-        <Button type="button" disabled={!canSave} onClick={submit} className="h-9 gap-1.5 text-xs font-semibold">
-          <Plus className="size-3.5" />
-          {create.isPending ? "Saqlanmoqda..." : "Qo'shish"}
-        </Button>
-      </div>
-    </div>
-  );
-}
+const cellInputClass =
+  "w-full min-w-[64px] rounded-md bg-transparent px-1.5 py-1 text-right tabular-nums outline-none transition-colors focus:bg-primary/5 focus:ring-1 focus:ring-primary/30";
+const textInputClass =
+  "w-full min-w-[110px] rounded-md bg-transparent px-1.5 py-1 outline-none transition-colors focus:bg-primary/5 focus:ring-1 focus:ring-primary/30";
+const selectInputClass =
+  "w-full min-w-[120px] rounded-md border-0 bg-transparent px-1.5 py-1 text-xs outline-none transition-colors focus:bg-primary/5 focus:ring-1 focus:ring-primary/30";
 
 /**
- * Excel "Kunlik jurnal" A1:H16 diapazoniga mos: har bir yozuv — alohida qator
- * (Клиент yoki Нимага расход ustunida izoh, mos toifa ustunida summasi),
- * 16-qator — Jami.
+ * Excel "Kunlik jurnal" A1:H16 diapazoniga aynan mos, to'g'ridan-to'g'ri
+ * kataklarga yozib kiritiladigan setka: prixod/rasxod yozuvlari alohida
+ * forma orqali emas, shu jadval kataklari orqali qo'shiladi/tahrirlanadi.
  */
 function DailyJournalGrid({
   entries,
-  onDeleted,
+  date,
+  onChanged,
 }: {
-  entries: Array<{ id: number; type: "income" | "expense"; category: string; description: string | null; cashAmount: number; terminalAmount: number; clickAmount: number }>;
-  onDeleted: () => void;
+  entries: CashEntryRow[];
+  date: string;
+  onChanged: () => void;
 }) {
   const utils = trpc.useUtils();
-  const del = trpc.cash.delete.useMutation({
-    onSuccess: async () => {
-      await Promise.all([utils.cash.byDate.invalidate(), utils.cash.summary.invalidate(), utils.kassa.daySummary.invalidate(), utils.dashboard.overview.invalidate()]);
-      onDeleted();
-    },
-    onError: error => toast.error(error.message),
-  });
+  const timestamp = dateToTimestamp(date);
+  const agents = trpc.agents.options.useQuery();
+  const agentList = agents.data ?? [];
+  const [drafts, setDrafts] = useState<DraftRow[]>(() => Array.from({ length: DRAFT_ROWS }, emptyDraftRow));
 
-  const columns = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
+  const invalidate = () =>
+    Promise.all([
+      utils.cash.byDate.invalidate({ date: timestamp }),
+      utils.cash.summary.invalidate(),
+      utils.kassa.daySummary.invalidate({ date: timestamp }),
+      utils.dashboard.overview.invalidate(),
+    ]).then(onChanged);
+
+  const create = trpc.cash.create.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
+  const update = trpc.cash.update.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
+  const del = trpc.cash.delete.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
+
   const sortedEntries = useMemo(() => [...entries].sort((a, b) => a.id - b.id), [entries]);
   const totals = useMemo(
-    () => columns.map(name => entries.filter(entry => entry.category === name).reduce((sum, entry) => sum + entry.cashAmount + entry.terminalAmount + entry.clickAmount, 0)),
+    () => JOURNAL_COLUMNS.map(name => entries.filter(entry => entry.category === name).reduce((sum, entry) => sum + entry.cashAmount + entry.terminalAmount + entry.clickAmount, 0)),
     [entries],
   );
+
+  function commitExistingAgent(entry: CashEntryRow, value: string) {
+    const agentId = value ? Number(value) : null;
+    if (agentId === entry.agentId) return;
+    update.mutate({
+      id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId,
+      description: entry.description ?? undefined,
+      cashAmount: entry.cashAmount, terminalAmount: entry.terminalAmount, clickAmount: entry.clickAmount,
+    });
+  }
+
+  function commitExistingReason(entry: CashEntryRow, value: string) {
+    const next = value.trim();
+    if ((entry.description ?? "") === next) return;
+    update.mutate({
+      id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId: entry.agentId,
+      description: next || undefined,
+      cashAmount: entry.cashAmount, terminalAmount: entry.terminalAmount, clickAmount: entry.clickAmount,
+    });
+  }
+
+  function commitExistingAmount(entry: CashEntryRow, value: string) {
+    const amount = Math.round(Number(value || 0));
+    const current = entry.cashAmount + entry.terminalAmount + entry.clickAmount;
+    if (amount === current) return;
+    if (amount <= 0) { del.mutate({ id: entry.id }); return; }
+    update.mutate({
+      id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId: entry.agentId,
+      description: entry.description ?? undefined,
+      cashAmount: amount, terminalAmount: 0, clickAmount: 0,
+    });
+  }
+
+  function updateDraft(index: number, patch: Partial<DraftRow>) {
+    setDrafts(prev => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  /**
+   * Qator ichida Tab/klik bilan kataklar orasida yurish "qatordan chiqish" emas —
+   * shuning uchun blur bo'lgan zahoti emas, fokus chinakam boshqa joyga
+   * ko'chgani (document.activeElement shu qatorda emasligi) tasdiqlangandan
+   * keyin commit qilinadi. relatedTarget'ga tayanish avtomatlashtirilgan va
+   * ba'zi brauzer holatlarida ishonchsiz bo'lib, summa avval yozilganda
+   * qatorni vaqtidan oldin bo'shatib yuborardi.
+   */
+  function commitDraftRow(index: number, event: React.FocusEvent<HTMLTableRowElement>) {
+    const rowEl = event.currentTarget;
+    window.setTimeout(() => {
+      if (rowEl.contains(document.activeElement)) return;
+      setDrafts(current => {
+        const draft = current[index];
+        const categoriesToCommit = JOURNAL_COLUMNS.filter(name => Math.round(Number(draft.amounts[name] || 0)) > 0);
+        if (categoriesToCommit.length === 0) return current;
+        for (const category of categoriesToCommit) {
+          const type = CATEGORY_TYPE[category];
+          create.mutate({
+            entryDate: timestamp, type, category,
+            agentId: type === "income" && draft.agentId ? Number(draft.agentId) : undefined,
+            description: type === "expense" ? draft.reason.trim() || undefined : undefined,
+            cashAmount: Math.round(Number(draft.amounts[category])), terminalAmount: 0, clickAmount: 0,
+          });
+        }
+        return current.map((row, i) => (i === index ? emptyDraftRow() : row));
+      });
+    }, 0);
+  }
+
+  const totalColumns = JOURNAL_COLUMNS.length + 3;
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200">
       <table className="w-full min-w-[900px] text-sm">
         <thead>
           <tr className="bg-slate-50 text-xs font-semibold text-slate-500">
-            <th className="whitespace-nowrap px-3 py-2 text-left">Клиент</th>
-            {columns.map(name => <th key={name} className="whitespace-nowrap px-3 py-2 text-right">{name}</th>)}
+            <th className="whitespace-nowrap px-3 py-2 text-left">Агент</th>
+            {JOURNAL_COLUMNS.map(name => <th key={name} className="whitespace-nowrap px-3 py-2 text-right">{name}</th>)}
             <th className="whitespace-nowrap px-3 py-2 text-left">Нимага расход</th>
             <th className="w-11" />
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {sortedEntries.length === 0 ? (
-            <tr><td colSpan={columns.length + 3} className="px-3 py-4 text-center text-xs text-slate-400">Bugun hali yozuv qo'shilmagan.</td></tr>
-          ) : sortedEntries.map(entry => {
+          {sortedEntries.length === 0 && (
+            <tr><td colSpan={totalColumns} className="px-3 py-3 text-center text-xs text-slate-400">Bugun hali yozuv yo'q — pastdagi bo'sh qatorlarga yozing.</td></tr>
+          )}
+          {sortedEntries.map(entry => {
             const amount = entry.cashAmount + entry.terminalAmount + entry.clickAmount;
             return (
               <tr key={entry.id} className="text-xs">
-                <td className="max-w-40 truncate whitespace-nowrap px-3 py-2 text-slate-700">{entry.type === "income" ? entry.description || "—" : ""}</td>
-                {columns.map(name => (
-                  <td key={name} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-900">
-                    {entry.category === name ? formatMoney(amount) : ""}
+                <td className="px-1 py-1">
+                  {entry.type === "income" ? (
+                    <div>
+                      <select
+                        key={`agent-${entry.id}-${entry.agentId ?? ""}`}
+                        defaultValue={entry.agentId != null ? String(entry.agentId) : ""}
+                        className={selectInputClass}
+                        onChange={event => commitExistingAgent(entry, event.target.value)}
+                      >
+                        <option value="">Агент tanlanmagan</option>
+                        {agentList.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                      </select>
+                      {entry.agentId == null && entry.description ? (
+                        <p className="truncate px-1.5 text-[10px] text-slate-400">{entry.description}</p>
+                      ) : null}
+                    </div>
+                  ) : <span className="px-1.5 text-slate-300">—</span>}
+                </td>
+                {JOURNAL_COLUMNS.map(name => (
+                  <td key={name} className="px-1 py-1">
+                    {entry.category === name ? (
+                      <input
+                        key={`amount-${entry.id}-${amount}`}
+                        type="text" inputMode="numeric"
+                        defaultValue={String(amount)}
+                        className={`${cellInputClass} text-slate-900`}
+                        onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
+                        onBlur={event => commitExistingAmount(entry, event.target.value)}
+                        onKeyDown={event => event.key === "Enter" && event.currentTarget.blur()}
+                      />
+                    ) : null}
                   </td>
                 ))}
-                <td className="max-w-40 truncate whitespace-nowrap px-3 py-2 text-slate-700">{entry.type === "expense" ? entry.description || "—" : ""}</td>
+                <td className="px-1 py-1">
+                  {entry.type === "expense" ? (
+                    <input
+                      key={`reason-${entry.id}-${entry.description ?? ""}`}
+                      defaultValue={entry.description ?? ""}
+                      placeholder="Нимага расход"
+                      className={textInputClass}
+                      onBlur={event => commitExistingReason(entry, event.target.value)}
+                      onKeyDown={event => event.key === "Enter" && event.currentTarget.blur()}
+                    />
+                  ) : <span className="px-1.5 text-slate-300">—</span>}
+                </td>
                 <td className="px-1 py-1 text-right">
                   <button
                     type="button"
                     aria-label="O'chirish"
-                    className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                     onClick={() => del.mutate({ id: entry.id })}
                   >
                     <Trash2 className="size-3.5" />
@@ -194,15 +229,58 @@ function DailyJournalGrid({
               </tr>
             );
           })}
+          {drafts.map((draft, index) => (
+            <tr key={`draft-${index}`} className="bg-slate-50/40 text-xs" onBlur={event => commitDraftRow(index, event)}>
+              <td className="px-1 py-1">
+                <select
+                  value={draft.agentId}
+                  className={selectInputClass}
+                  onChange={event => updateDraft(index, { agentId: event.target.value })}
+                >
+                  <option value="">Агент tanlang</option>
+                  {agentList.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                </select>
+              </td>
+              {JOURNAL_COLUMNS.map(name => (
+                <td key={name} className="px-1 py-1">
+                  <input
+                    type="text" inputMode="numeric"
+                    value={draft.amounts[name]}
+                    placeholder="0"
+                    className={`${cellInputClass} text-slate-500`}
+                    onChange={event => updateDraft(index, { amounts: { ...draft.amounts, [name]: sanitizeIntegerInput(event.target.value) } })}
+                  />
+                </td>
+              ))}
+              <td className="px-1 py-1">
+                <input
+                  value={draft.reason}
+                  placeholder="Нимага расход"
+                  className={textInputClass}
+                  onChange={event => updateDraft(index, { reason: event.target.value })}
+                />
+              </td>
+              <td />
+            </tr>
+          ))}
         </tbody>
         <tfoot>
           <tr className="bg-slate-50/80 text-xs font-bold text-slate-900">
             <td className="whitespace-nowrap px-3 py-2">Jami</td>
-            {totals.map((value, index) => <td key={columns[index]} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(value)}</td>)}
+            {totals.map((value, index) => <td key={JOURNAL_COLUMNS[index]} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(value)}</td>)}
             <td colSpan={2} />
           </tr>
         </tfoot>
       </table>
+      <div className="border-t border-slate-100 px-3 py-2">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+          onClick={() => setDrafts(prev => [...prev, emptyDraftRow()])}
+        >
+          <Plus className="size-3.5" /> Qator qo'shish
+        </button>
+      </div>
     </div>
   );
 }
@@ -379,18 +457,6 @@ export default function Cash() {
   const daySummary = trpc.kassa.daySummary.useQuery({ date: timestamp });
   const prihodEntries = trpc.cash.byDate.useQuery({ date: timestamp });
   const cashSummary = trpc.cash.summary.useQuery();
-  const utils = trpc.useUtils();
-
-  const [actualCash, setActualCash] = useState("");
-  const [actualNote, setActualNote] = useState("");
-  const upsertActual = trpc.kassa.actualCash.upsert.useMutation({
-    onSuccess: async () => {
-      toast.success("Haqiqiy kassa saqlandi");
-      setActualCash(""); setActualNote("");
-      await utils.kassa.daySummary.invalidate({ date: timestamp });
-    },
-    onError: error => toast.error(error.message),
-  });
 
   const allEntries = prihodEntries.data ?? [];
 
@@ -400,7 +466,6 @@ export default function Cash() {
 
   const data = daySummary.data;
   const kassaQoldigi = data?.kassaQoldigi ?? 0;
-  const actualDiff = data?.actualDiff ?? null;
 
   return (
     <div className="mx-auto w-full max-w-[1500px]">
@@ -427,32 +492,7 @@ export default function Cash() {
 
       <div className="mt-5 rounded-2xl border border-slate-100 bg-white p-5">
         <h3 className="mb-3 text-sm font-bold text-slate-900">Kunlik jurnal</h3>
-        <DailyJournalGrid entries={allEntries} onDeleted={() => prihodEntries.refetch()} />
-
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <div>
-            <div className="mb-2 flex items-center gap-2"><Banknote className="size-4 text-emerald-600" /><h4 className="text-xs font-bold text-slate-700">Приход</h4></div>
-            <QuickEntryForm type="income" date={date} onSaved={() => prihodEntries.refetch()} />
-          </div>
-          <div>
-            <div className="mb-2 flex items-center gap-2"><Banknote className="size-4 text-rose-600" /><h4 className="text-xs font-bold text-slate-700">Расход</h4></div>
-            <QuickEntryForm type="expense" date={date} onSaved={() => prihodEntries.refetch()} />
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
-          <div className="space-y-1.5"><Label>Haqiqiy kassa (sanoq)</Label><Input className="finance-input w-44" type="text" inputMode="numeric" placeholder={data?.actualCash != null ? String(data.actualCash) : "Kiriting"} value={actualCash} onChange={event => setActualCash(sanitizeIntegerInput(event.target.value))} /></div>
-          <div className="min-w-[160px] flex-1 space-y-1.5"><Label>Izoh</Label><Input className="finance-input" value={actualNote} onChange={event => setActualNote(event.target.value)} placeholder={data?.actualCashNote || "Ixtiyoriy"} /></div>
-          <Button type="button" disabled={!actualCash || upsertActual.isPending} onClick={() => upsertActual.mutate({ date: timestamp, actualCash: Math.round(Number(actualCash)), note: actualNote || undefined })}>
-            {upsertActual.isPending ? "Saqlanmoqda..." : "Saqlash"}
-          </Button>
-          {actualDiff !== null && (
-            <div className={`flex items-center gap-2 rounded-xl border p-3 text-sm font-semibold ${actualDiff === 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
-              {actualDiff === 0 ? <CheckCircle2 className="size-4" /> : <Scale className="size-4" />}
-              {actualDiff === 0 ? "Kassa mos" : `Farq: ${formatMoney(Math.abs(actualDiff))} ${actualDiff > 0 ? "ortiqcha" : "kam"}`}
-            </div>
-          )}
-        </div>
+        <DailyJournalGrid entries={allEntries} date={date} onChanged={() => prihodEntries.refetch()} />
       </div>
 
       <div className="mt-5 rounded-2xl border border-slate-100 bg-white p-5">
