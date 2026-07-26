@@ -120,6 +120,40 @@ function DailyJournalGrid({
     setDrafts(prev => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
 
+  const REASON_COL = JOURNAL_COLUMNS.length + 1;
+  const totalJournalRows = sortedEntries.length + drafts.length;
+
+  /** Strelkalar bilan katakdan katakka o'tish: ustun bo'ylab Yuqori/Past, qator
+   * bo'ylab Chap/O'ng (faqat kursor matn chetida bo'lsa — aks holda oddiy
+   * matn ichida yurish ustunroq). Mavjud yozuvlarda faqat bitta toifa
+   * ustuni to'ldirilgani uchun bo'sh kataklar avtomatik o'tkazib yuboriladi. */
+  function focusJournalCell(row: number, col: number, dRow: number, dCol: number) {
+    let r = row;
+    let c = col;
+    const maxSteps = Math.max(totalJournalRows, REASON_COL + 1);
+    for (let step = 0; step < maxSteps; step += 1) {
+      r += dRow;
+      c += dCol;
+      if (r < 0 || r >= totalJournalRows || c < 0 || c > REASON_COL) return;
+      const target = document.querySelector<HTMLElement>(`[data-journal-cell="${r}-${c}"]`);
+      if (target) {
+        target.focus();
+        if (target instanceof HTMLInputElement) target.select();
+        return;
+      }
+      if (dRow === 0) return;
+    }
+  }
+
+  function onAmountKeyDown(event: React.KeyboardEvent<HTMLInputElement>, row: number, col: number) {
+    if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); focusJournalCell(row, col, 1, 0); return; }
+    if (event.key === "ArrowUp") { event.preventDefault(); focusJournalCell(row, col, -1, 0); return; }
+    if (event.key === "ArrowDown") { event.preventDefault(); focusJournalCell(row, col, 1, 0); return; }
+    const input = event.currentTarget;
+    if (event.key === "ArrowLeft" && input.selectionStart === 0) { event.preventDefault(); focusJournalCell(row, col, 0, -1); return; }
+    if (event.key === "ArrowRight" && input.selectionStart === input.value.length) { event.preventDefault(); focusJournalCell(row, col, 0, 1); }
+  }
+
   /**
    * Qator ichida Tab/klik bilan kataklar orasida yurish "qatordan chiqish" emas —
    * shuning uchun blur bo'lgan zahoti emas, fokus chinakam boshqa joyga
@@ -167,7 +201,7 @@ function DailyJournalGrid({
           {sortedEntries.length === 0 && (
             <tr><td colSpan={totalColumns} className="px-3 py-3 text-center text-xs text-slate-400">Bugun hali yozuv yo'q — pastdagi bo'sh qatorlarga yozing.</td></tr>
           )}
-          {sortedEntries.map(entry => {
+          {sortedEntries.map((entry, rowIndex) => {
             const amount = entry.cashAmount + entry.terminalAmount + entry.clickAmount;
             return (
               <tr key={entry.id} className="text-xs">
@@ -176,9 +210,11 @@ function DailyJournalGrid({
                     <div>
                       <select
                         key={`agent-${entry.id}-${entry.agentId ?? ""}`}
+                        data-journal-cell={`${rowIndex}-0`}
                         defaultValue={entry.agentId != null ? String(entry.agentId) : ""}
                         className={selectInputClass}
                         onChange={event => commitExistingAgent(entry, event.target.value)}
+                        onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}
                       >
                         <option value="">Агент tanlanmagan</option>
                         {agentList.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
@@ -189,17 +225,18 @@ function DailyJournalGrid({
                     </div>
                   ) : <span className="px-1.5 text-slate-300">—</span>}
                 </td>
-                {JOURNAL_COLUMNS.map(name => (
+                {JOURNAL_COLUMNS.map((name, colOffset) => (
                   <td key={name} className="px-1 py-1">
                     {entry.category === name ? (
                       <input
                         key={`amount-${entry.id}-${amount}`}
                         type="text" inputMode="numeric"
+                        data-journal-cell={`${rowIndex}-${colOffset + 1}`}
                         defaultValue={String(amount)}
                         className={`${cellInputClass} text-slate-900`}
                         onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
                         onBlur={event => commitExistingAmount(entry, event.target.value)}
-                        onKeyDown={event => event.key === "Enter" && event.currentTarget.blur()}
+                        onKeyDown={event => onAmountKeyDown(event, rowIndex, colOffset + 1)}
                       />
                     ) : null}
                   </td>
@@ -208,11 +245,17 @@ function DailyJournalGrid({
                   {entry.type === "expense" ? (
                     <input
                       key={`reason-${entry.id}-${entry.description ?? ""}`}
+                      data-journal-cell={`${rowIndex}-${REASON_COL}`}
                       defaultValue={entry.description ?? ""}
                       placeholder="Нимага расход"
                       className={textInputClass}
                       onBlur={event => commitExistingReason(entry, event.target.value)}
-                      onKeyDown={event => event.key === "Enter" && event.currentTarget.blur()}
+                      onKeyDown={event => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                        focusJournalCell(rowIndex, REASON_COL, 1, 0);
+                      }}
                     />
                   ) : <span className="px-1.5 text-slate-300">—</span>}
                 </td>
@@ -229,40 +272,54 @@ function DailyJournalGrid({
               </tr>
             );
           })}
-          {drafts.map((draft, index) => (
+          {drafts.map((draft, index) => {
+            const rowIndex = sortedEntries.length + index;
+            return (
             <tr key={`draft-${index}`} className="bg-slate-50/40 text-xs" onBlur={event => commitDraftRow(index, event)}>
               <td className="px-1 py-1">
                 <select
                   value={draft.agentId}
+                  data-journal-cell={`${rowIndex}-0`}
                   className={selectInputClass}
                   onChange={event => updateDraft(index, { agentId: event.target.value })}
+                  onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}
                 >
                   <option value="">Агент tanlang</option>
                   {agentList.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                 </select>
               </td>
-              {JOURNAL_COLUMNS.map(name => (
+              {JOURNAL_COLUMNS.map((name, colOffset) => (
                 <td key={name} className="px-1 py-1">
                   <input
                     type="text" inputMode="numeric"
+                    data-journal-cell={`${rowIndex}-${colOffset + 1}`}
                     value={draft.amounts[name]}
                     placeholder="0"
                     className={`${cellInputClass} text-slate-500`}
                     onChange={event => updateDraft(index, { amounts: { ...draft.amounts, [name]: sanitizeIntegerInput(event.target.value) } })}
+                    onKeyDown={event => onAmountKeyDown(event, rowIndex, colOffset + 1)}
                   />
                 </td>
               ))}
               <td className="px-1 py-1">
                 <input
                   value={draft.reason}
+                  data-journal-cell={`${rowIndex}-${REASON_COL}`}
                   placeholder="Нимага расход"
                   className={textInputClass}
                   onChange={event => updateDraft(index, { reason: event.target.value })}
+                  onKeyDown={event => {
+                    if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, REASON_COL, 1, 0); return; }
+                    if (event.key === "ArrowLeft" && event.currentTarget.selectionStart === 0) { event.preventDefault(); focusJournalCell(rowIndex, REASON_COL, 0, -1); return; }
+                    if (event.key === "ArrowUp") { event.preventDefault(); focusJournalCell(rowIndex, REASON_COL, -1, 0); return; }
+                    if (event.key === "ArrowDown") { event.preventDefault(); focusJournalCell(rowIndex, REASON_COL, 1, 0); }
+                  }}
                 />
               </td>
               <td />
             </tr>
-          ))}
+            );
+          })}
         </tbody>
         <tfoot>
           <tr className="bg-slate-50/80 text-xs font-bold text-slate-900">
