@@ -184,8 +184,6 @@ function DailyJournalGrid({
     }, 0);
   }
 
-  const totalColumns = JOURNAL_COLUMNS.length + 3;
-
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200">
       <table className="w-full min-w-[900px] text-sm">
@@ -198,9 +196,6 @@ function DailyJournalGrid({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {sortedEntries.length === 0 && (
-            <tr><td colSpan={totalColumns} className="px-3 py-3 text-center text-xs text-slate-400">Bugun hali yozuv yo'q — pastdagi bo'sh qatorlarga yozing.</td></tr>
-          )}
           {sortedEntries.map((entry, rowIndex) => {
             const amount = entry.cashAmount + entry.terminalAmount + entry.clickAmount;
             return (
