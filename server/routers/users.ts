@@ -3,8 +3,9 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { users } from "../../drizzle/schema";
 import { router } from "../_core/trpc";
+import { hashPassword } from "../_core/localAuth";
 import { ownerProcedure } from "../access";
-import { requireDb } from "../db";
+import { createUser, getUserByEmail, requireDb } from "../db";
 
 // The very first account ever registered (id = 1) is the permanent owner and
 // can't be demoted or have its role changed by another admin.
@@ -28,6 +29,26 @@ export const usersRouter = router({
       isOwner: row.id === OWNER_USER_ID,
     }));
   }),
+  /** Rahbar yoki buxgalter yangi xodim uchun login (email) va parolni to'g'ridan-to'g'ri shu yerda
+   * yaratadi — xodim keyin shu email/parol bilan tizimga kiradi. Joriy sessiyaga (adminning
+   * o'ziga) hech qanday ta'sir qilmaydi. */
+  create: ownerProcedure
+    .input(
+      z.object({
+        name: z.string().trim().min(1, "Ism kiritilishi shart.").max(180),
+        email: z.string().trim().toLowerCase().email("Email noto‘g‘ri."),
+        password: z.string().min(8, "Parol kamida 8 belgidan iborat bo‘lishi kerak."),
+        role: z.enum(["user", "accountant"]).default("user"),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const existing = await getUserByEmail(input.email);
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "Bu email allaqachon ro‘yxatdan o‘tgan." });
+      const passwordHash = await hashPassword(input.password);
+      const created = await createUser({ name: input.name, email: input.email, passwordHash, role: input.role });
+      if (!created) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Foydalanuvchi yaratilmadi." });
+      return { success: true, id: created.id };
+    }),
   setRole: ownerProcedure
     .input(z.object({ userId: z.number().int().positive(), role: z.enum(["user", "accountant"]) }))
     .mutation(async ({ input }) => {
