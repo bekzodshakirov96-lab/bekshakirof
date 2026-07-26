@@ -17,7 +17,7 @@ import {
   ReceiptText,
   WalletCards,
 } from "lucide-react";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { useLocation } from "wouter";
 
 const monthlyConfig = {
@@ -25,14 +25,21 @@ const monthlyConfig = {
   received: { label: "Tushum", color: "var(--chart-2)" },
 } satisfies ChartConfig;
 
-const debtConfig = {
-  debt: { label: "Qarzdorlik", color: "var(--chart-3)" },
-} satisfies ChartConfig;
+function monthOverMonthTrend(monthly: { sales: number; received: number }[] | undefined, key: "sales" | "received") {
+  if (!monthly || monthly.length < 2) return undefined;
+  const current = monthly[monthly.length - 1][key];
+  const previous = monthly[monthly.length - 2][key];
+  if (!previous) return undefined;
+  return { percent: ((current - previous) / previous) * 100, label: "o‘tgan oyga nisbatan" };
+}
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const overview = trpc.dashboard.overview.useQuery(undefined, { refetchOnWindowFocus: false });
   const data = overview.data;
+  const salesTrend = monthOverMonthTrend(data?.monthly, "sales");
+  const receivedTrend = monthOverMonthTrend(data?.monthly, "received");
+  const maxAgentDebt = Math.max(1, ...(data?.agentDebt ?? []).slice(0, 6).map(a => a.debt));
 
   if (overview.error) {
     return <div className="mx-auto w-full max-w-[1600px]"><PageHeader eyebrow="Kompaniya holati" title="Boshqaruv paneli" description="Savdo, to‘lovlar va qarzdorlik bo‘yicha asosiy ko‘rsatkichlar." /><QueryError description={overview.error.message} onRetry={() => overview.refetch()} /></div>;
@@ -57,8 +64,8 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-          <MetricCard label="Jami sotilgan tovar" value={formatMoney(data.summary.totalSales, true)} helper="Umumiy savdo aylanmasi" icon={ReceiptText} tone="blue" />
-          <MetricCard label="Jami tushum" value={formatMoney(data.summary.totalReceived, true)} helper="Barcha to‘lov kanallari" icon={HandCoins} tone="green" />
+          <MetricCard label="Jami sotilgan tovar" value={formatMoney(data.summary.totalSales, true)} helper="Umumiy savdo aylanmasi" icon={ReceiptText} tone="blue" trend={salesTrend} />
+          <MetricCard label="Jami tushum" value={formatMoney(data.summary.totalReceived, true)} helper="Barcha to‘lov kanallari" icon={HandCoins} tone="green" trend={receivedTrend} />
           <MetricCard label="Joriy qarzdorlik" value={formatMoney(data.summary.currentDebt, true)} helper="Mijozlar qoldiq qarzi" icon={CircleDollarSign} tone="rose" />
           <MetricCard label="Naqd tushum" value={formatMoney(data.summary.cashIncome, true)} helper="Naqd to‘lovlar" icon={Banknote} tone="amber" />
           <MetricCard label="Terminal tushumi" value={formatMoney(data.summary.terminalIncome, true)} helper={`Click: ${formatMoney(data.summary.clickIncome, true)}`} icon={CreditCard} tone="violet" />
@@ -91,16 +98,28 @@ export default function Dashboard() {
         <SectionCard title="Agentlar bo‘yicha qarz" description="Eng yuqori qarzdorlikka ega agent portfellari">
           {overview.isLoading ? (
             <div className="h-[300px] animate-pulse rounded-xl bg-slate-50" />
+          ) : (data?.agentDebt ?? []).length === 0 ? (
+            <p className="py-8 text-center text-xs text-slate-400">Qarzdorlik topilmadi.</p>
           ) : (
-            <ChartContainer config={debtConfig} className="h-[300px] w-full aspect-auto">
-              <BarChart data={(data?.agentDebt ?? []).slice(0, 6)} layout="vertical" margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
-                <CartesianGrid horizontal={false} strokeDasharray="4 4" />
-                <YAxis type="category" dataKey="agentName" tickLine={false} axisLine={false} width={92} tick={{ fontSize: 11 }} />
-                <XAxis type="number" hide />
-                <ChartTooltip cursor={{ fill: "rgba(15, 91, 123, 0.05)" }} content={<ChartTooltipContent formatter={value => <span className="ml-auto font-mono font-semibold">{formatMoney(Number(value))}</span>} />} />
-                <Bar dataKey="debt" fill="var(--color-debt)" radius={[0, 8, 8, 0]} barSize={22} />
-              </BarChart>
-            </ChartContainer>
+            <div className="space-y-3">
+              {(data?.agentDebt ?? []).slice(0, 6).map((agent, index) => (
+                <div key={agent.agentId} className="flex items-center gap-3">
+                  <span className="w-4 shrink-0 text-right text-[11px] font-bold text-slate-400">{index + 1}</span>
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-rose-50 to-red-50 text-[11px] font-bold text-rose-700 ring-1 ring-rose-100">
+                    {agent.agentName.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="truncate text-xs font-semibold text-slate-800">{agent.agentName}</p>
+                      <p className="shrink-0 font-mono text-xs font-bold text-slate-900">{formatMoney(agent.debt)}</p>
+                    </div>
+                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-full rounded-full bg-rose-400" style={{ width: `${Math.max(4, (agent.debt / maxAgentDebt) * 100)}%` }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </SectionCard>
       </div>

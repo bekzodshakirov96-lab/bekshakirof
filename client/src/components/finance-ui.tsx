@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, RefreshCw, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, RefreshCw, TrendingDown, TrendingUp, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 export function PageHeader({
@@ -34,12 +34,14 @@ export function MetricCard({
   helper,
   icon: Icon,
   tone = "blue",
+  trend,
 }: {
   label: string;
   value: string;
   helper?: string;
   icon: LucideIcon;
   tone?: "blue" | "green" | "amber" | "violet" | "rose" | "cyan";
+  trend?: { percent: number; label: string };
 }) {
   const tones = {
     blue: "from-blue-50 to-cyan-50 text-blue-700 ring-blue-100",
@@ -49,6 +51,7 @@ export function MetricCard({
     rose: "from-rose-50 to-red-50 text-rose-700 ring-rose-100",
     cyan: "from-cyan-50 to-sky-50 text-cyan-700 ring-cyan-100",
   };
+  const trendUp = trend ? trend.percent >= 0 : null;
   return (
     <Card className="group overflow-hidden rounded-2xl border-slate-200/70 bg-white shadow-[0_6px_24px_rgba(27,52,76,0.06)] transition-transform duration-200 hover:-translate-y-0.5">
       <CardContent className="p-5">
@@ -56,7 +59,16 @@ export function MetricCard({
           <div className="min-w-0">
             <p className="text-xs font-semibold text-slate-500">{label}</p>
             <p className="mt-2 truncate text-[22px] font-bold tracking-[-0.035em] text-slate-950">{value}</p>
-            {helper ? <p className="mt-2 text-[11px] text-slate-400">{helper}</p> : null}
+            <div className="mt-2 flex items-center gap-2">
+              {trend ? (
+                <span className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[11px] font-bold ${trendUp ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                  {trendUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                  {trendUp ? "+" : ""}
+                  {trend.percent.toFixed(1)}%
+                </span>
+              ) : null}
+              {helper ? <p className="truncate text-[11px] text-slate-400">{trend ? trend.label : helper}</p> : null}
+            </div>
           </div>
           <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ring-1 ${tones[tone]}`}>
             <Icon className="h-5 w-5" />

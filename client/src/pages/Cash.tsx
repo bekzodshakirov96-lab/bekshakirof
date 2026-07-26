@@ -160,8 +160,13 @@ function EntryList({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <span className="font-bold tabular-nums text-slate-900">{formatMoney(total)}</span>
-              <button type="button" aria-label="O'chirish" className="rounded-lg p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-600" onClick={() => del.mutate({ id: entry.id })}>
-                <Trash2 className="size-3.5" />
+              <button
+                type="button"
+                aria-label="O'chirish"
+                className="flex size-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                onClick={() => del.mutate({ id: entry.id })}
+              >
+                <Trash2 className="size-4" />
               </button>
             </div>
           </div>
@@ -318,7 +323,7 @@ function AgentProductMatrix({ date }: { date: string }) {
                 return (
                   <td key={agent.id} className="px-2 py-1">
                     <Input
-                      className="finance-input h-8 w-20 text-right"
+                      className="finance-input h-10 w-20 text-right"
                       type="text" inputMode="decimal"
                       defaultValue={existing ? String(Number(existing.quantity)) : ""}
                       key={`${agent.id}:${product.id}:${existing?.quantity ?? ""}`}
@@ -349,7 +354,7 @@ function AgentProductMatrix({ date }: { date: string }) {
               return (
                 <td key={agent.id} className="px-2 py-1.5">
                   <Input
-                    className="finance-input h-8 w-24 text-right"
+                    className="finance-input h-10 w-24 text-right"
                     type="text" inputMode="numeric"
                     defaultValue={row?.submittedAmount ?? ""}
                     key={`kassa:${agent.id}:${row?.submittedAmount ?? ""}`}

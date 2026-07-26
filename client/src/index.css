@@ -161,7 +161,7 @@
     @apply border-slate-100;
   }
   .finance-input {
-    @apply h-10 rounded-xl border-slate-200 bg-white text-sm shadow-none focus-visible:ring-2 focus-visible:ring-primary/20;
+    @apply h-10 rounded-xl border-slate-200 bg-white text-sm shadow-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/50;
   }
   div.overflow-hidden:has(> [data-slot="table-container"]) {
     overflow-x: auto !important;
