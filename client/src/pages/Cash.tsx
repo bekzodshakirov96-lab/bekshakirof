@@ -36,8 +36,11 @@ type CashEntryRow = {
   clickAmount: number;
 };
 
-type DraftRow = { agentId: string; reason: string; amounts: Record<string, string> };
-const emptyDraftRow = (): DraftRow => ({ agentId: "", reason: "", amounts: Object.fromEntries(JOURNAL_COLUMNS.map(name => [name, ""])) });
+type DraftRow = { agentId: string; reason: string; terminal: string; click: string; amounts: Record<string, string> };
+const emptyDraftRow = (): DraftRow => ({
+  agentId: "", reason: "", terminal: "", click: "",
+  amounts: Object.fromEntries(JOURNAL_COLUMNS.map(name => [name, ""])),
+});
 
 const cellInputClass =
   "w-full min-w-[64px] rounded-md border border-transparent bg-slate-50/70 px-1.5 py-1.5 text-right tabular-nums outline-none transition-colors hover:border-slate-200 hover:bg-slate-100 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/25";
@@ -85,6 +88,8 @@ function DailyJournalGrid({
     () => JOURNAL_COLUMNS.map(name => entries.filter(entry => entry.category === name).reduce((sum, entry) => sum + entry.cashAmount + entry.terminalAmount + entry.clickAmount, 0)),
     [entries],
   );
+  const terminalTotal = useMemo(() => entries.reduce((sum, entry) => sum + entry.terminalAmount, 0), [entries]);
+  const clickTotal = useMemo(() => entries.reduce((sum, entry) => sum + entry.clickAmount, 0), [entries]);
 
   function commitExistingAgent(entry: CashEntryRow, value: string) {
     const agentId = value ? Number(value) : null;
@@ -106,15 +111,28 @@ function DailyJournalGrid({
     });
   }
 
-  function commitExistingAmount(entry: CashEntryRow, value: string) {
-    const amount = Math.round(Number(value || 0));
-    const current = entry.cashAmount + entry.terminalAmount + entry.clickAmount;
-    if (amount === current) return;
-    if (amount <= 0) { del.mutate({ id: entry.id }); return; }
+  function commitExistingCash(entry: CashEntryRow, value: string) {
+    const cashAmount = Math.round(Number(value || 0));
+    if (cashAmount === entry.cashAmount) return;
+    if (cashAmount + entry.terminalAmount + entry.clickAmount <= 0) { del.mutate({ id: entry.id }); return; }
     update.mutate({
       id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId: entry.agentId,
       description: entry.description ?? undefined,
-      cashAmount: amount, terminalAmount: 0, clickAmount: 0,
+      cashAmount, terminalAmount: entry.terminalAmount, clickAmount: entry.clickAmount,
+    });
+  }
+
+  function commitExistingChannel(entry: CashEntryRow, channel: "terminal" | "click", value: string) {
+    const amount = Math.round(Number(value || 0));
+    const current = channel === "terminal" ? entry.terminalAmount : entry.clickAmount;
+    if (amount === current) return;
+    const terminalAmount = channel === "terminal" ? amount : entry.terminalAmount;
+    const clickAmount = channel === "click" ? amount : entry.clickAmount;
+    if (entry.cashAmount + terminalAmount + clickAmount <= 0) { del.mutate({ id: entry.id }); return; }
+    update.mutate({
+      id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId: entry.agentId,
+      description: entry.description ?? undefined,
+      cashAmount: entry.cashAmount, terminalAmount, clickAmount,
     });
   }
 
@@ -122,7 +140,9 @@ function DailyJournalGrid({
     setDrafts(prev => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
 
-  const REASON_COL = JOURNAL_COLUMNS.length + 1;
+  const TERMINAL_COL = JOURNAL_COLUMNS.length + 1;
+  const CLICK_COL = JOURNAL_COLUMNS.length + 2;
+  const REASON_COL = JOURNAL_COLUMNS.length + 3;
   const totalJournalRows = sortedEntries.length + drafts.length;
 
   /** Strelkalar bilan katakdan katakka o'tish: ustun bo'ylab Yuqori/Past, qator
@@ -178,7 +198,9 @@ function DailyJournalGrid({
             entryDate: timestamp, type, category,
             agentId: type === "income" && draft.agentId ? Number(draft.agentId) : undefined,
             description: type === "expense" ? draft.reason.trim() || undefined : undefined,
-            cashAmount: Math.round(Number(draft.amounts[category])), terminalAmount: 0, clickAmount: 0,
+            cashAmount: Math.round(Number(draft.amounts[category])),
+            terminalAmount: Math.round(Number(draft.terminal || 0)),
+            clickAmount: Math.round(Number(draft.click || 0)),
           });
         }
         return current.map((row, i) => (i === index ? emptyDraftRow() : row));
@@ -188,18 +210,19 @@ function DailyJournalGrid({
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200">
-      <table className="w-full min-w-[900px] text-sm">
+      <table className="w-full min-w-[1080px] text-sm">
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold tracking-wide text-slate-500">
             <th className="whitespace-nowrap px-3 py-2.5 text-left">Агент</th>
             {JOURNAL_COLUMNS.map(name => <th key={name} className="whitespace-nowrap px-3 py-2.5 text-right">{name}</th>)}
+            <th className="whitespace-nowrap px-3 py-2.5 text-right">Терминал</th>
+            <th className="whitespace-nowrap px-3 py-2.5 text-right">Click</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-left">Нимага расход</th>
             <th className="w-11" />
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {sortedEntries.map((entry, rowIndex) => {
-            const amount = entry.cashAmount + entry.terminalAmount + entry.clickAmount;
             return (
               <tr key={entry.id} className="text-xs even:bg-slate-50/40">
                 <td className="px-1.5 py-1">
@@ -226,18 +249,44 @@ function DailyJournalGrid({
                   <td key={name} className="px-1.5 py-1">
                     {entry.category === name ? (
                       <input
-                        key={`amount-${entry.id}-${amount}`}
+                        key={`cash-${entry.id}-${entry.cashAmount}`}
                         type="text" inputMode="numeric"
                         data-journal-cell={`${rowIndex}-${colOffset + 1}`}
-                        defaultValue={String(amount)}
+                        defaultValue={String(entry.cashAmount)}
                         className={`${cellInputClass} font-semibold text-slate-900`}
                         onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
-                        onBlur={event => commitExistingAmount(entry, event.target.value)}
+                        onBlur={event => commitExistingCash(entry, event.target.value)}
                         onKeyDown={event => onAmountKeyDown(event, rowIndex, colOffset + 1)}
                       />
                     ) : <span className={emptyCellClass}>—</span>}
                   </td>
                 ))}
+                <td className="px-1.5 py-1">
+                  <input
+                    key={`terminal-${entry.id}-${entry.terminalAmount}`}
+                    type="text" inputMode="numeric"
+                    data-journal-cell={`${rowIndex}-${TERMINAL_COL}`}
+                    defaultValue={entry.terminalAmount ? String(entry.terminalAmount) : ""}
+                    placeholder="0"
+                    className={cellInputClass}
+                    onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
+                    onBlur={event => commitExistingChannel(entry, "terminal", event.target.value)}
+                    onKeyDown={event => onAmountKeyDown(event, rowIndex, TERMINAL_COL)}
+                  />
+                </td>
+                <td className="px-1.5 py-1">
+                  <input
+                    key={`click-${entry.id}-${entry.clickAmount}`}
+                    type="text" inputMode="numeric"
+                    data-journal-cell={`${rowIndex}-${CLICK_COL}`}
+                    defaultValue={entry.clickAmount ? String(entry.clickAmount) : ""}
+                    placeholder="0"
+                    className={cellInputClass}
+                    onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
+                    onBlur={event => commitExistingChannel(entry, "click", event.target.value)}
+                    onKeyDown={event => onAmountKeyDown(event, rowIndex, CLICK_COL)}
+                  />
+                </td>
                 <td className="px-1.5 py-1">
                   {entry.type === "expense" ? (
                     <input
@@ -304,6 +353,28 @@ function DailyJournalGrid({
               ))}
               <td className="px-1.5 py-1">
                 <input
+                  type="text" inputMode="numeric"
+                  data-journal-cell={`${rowIndex}-${TERMINAL_COL}`}
+                  value={draft.terminal}
+                  placeholder="0"
+                  className={`${cellInputClass} text-slate-500`}
+                  onChange={event => updateDraft(index, { terminal: sanitizeIntegerInput(event.target.value) })}
+                  onKeyDown={event => onAmountKeyDown(event, rowIndex, TERMINAL_COL)}
+                />
+              </td>
+              <td className="px-1.5 py-1">
+                <input
+                  type="text" inputMode="numeric"
+                  data-journal-cell={`${rowIndex}-${CLICK_COL}`}
+                  value={draft.click}
+                  placeholder="0"
+                  className={`${cellInputClass} text-slate-500`}
+                  onChange={event => updateDraft(index, { click: sanitizeIntegerInput(event.target.value) })}
+                  onKeyDown={event => onAmountKeyDown(event, rowIndex, CLICK_COL)}
+                />
+              </td>
+              <td className="px-1.5 py-1">
+                <input
                   value={draft.reason}
                   data-journal-cell={`${rowIndex}-${REASON_COL}`}
                   placeholder="Нимага расход"
@@ -326,6 +397,8 @@ function DailyJournalGrid({
           <tr className="border-t-2 border-slate-200 bg-slate-50/80 text-xs font-bold text-slate-900">
             <td className="whitespace-nowrap px-3 py-2.5">Jami</td>
             {totals.map((value, index) => <td key={JOURNAL_COLUMNS[index]} className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(value)}</td>)}
+            <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(terminalTotal)}</td>
+            <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(clickTotal)}</td>
             <td colSpan={2} />
           </tr>
         </tfoot>
