@@ -495,15 +495,4 @@ export const transactionsRouter = router({
       await db.delete(transactions).where(eq(transactions.id, input.id));
       return { success: true } as const;
     }),
-  /**
-   * Deletes ALL transactions (and their cascaded container_movements). Owner-only —
-   * this is destructive and cannot be undone. Client currentDebt is computed live
-   * from openingDebt + sales - payments, so it updates correctly with no extra step.
-   */
-  clearAll: ownerProcedure.mutation(async () => {
-    const db = await requireDb();
-    const [{ total }] = await db.select({ total: count() }).from(transactions);
-    await db.delete(transactions);
-    return { success: true, deletedCount: total } as const;
-  }),
 });

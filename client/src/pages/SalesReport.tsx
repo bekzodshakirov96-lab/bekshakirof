@@ -11,7 +11,6 @@ import { trpc } from "@/lib/trpc";
 import { ArrowDown, ArrowUp, ArrowUpDown, RotateCcw, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useAuth } from "@/_core/hooks/useAuth";
 
 type TransactionSortBy = "transactionDate" | "agentName" | "clientName" | "productName" | "quantity" | "totalAmount";
 type SortOrder = "asc" | "desc";
@@ -26,7 +25,6 @@ function containerLabel(value: string | null | undefined) {
 
 export default function SalesReport() {
   const utils = trpc.useUtils();
-  const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [agentFilter, setAgentFilter] = useState("");
   const [clientFilter, setClientFilter] = useState("");
@@ -38,7 +36,6 @@ export default function SalesReport() {
   const [page, setPage] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; label: string } | null>(null);
-  const [clearAllOpen, setClearAllOpen] = useState(false);
 
   const agents = trpc.agents.options.useQuery();
   const clients = trpc.clients.options.useQuery();
@@ -59,18 +56,6 @@ export default function SalesReport() {
     onSuccess: async () => {
       toast.success("Operatsiya o‘chirildi.");
       setDeleteTarget(null);
-      await Promise.all([
-        utils.transactions.list.invalidate(), utils.dashboard.overview.invalidate(),
-        utils.debts.list.invalidate(), utils.containers.invalidate(),
-      ]);
-    },
-    onError: error => toast.error(error.message),
-  });
-
-  const clearAllTransactions = trpc.transactions.clearAll.useMutation({
-    onSuccess: async result => {
-      toast.success(`${result.deletedCount} ta operatsiya o‘chirildi.`);
-      setClearAllOpen(false);
       await Promise.all([
         utils.transactions.list.invalidate(), utils.dashboard.overview.invalidate(),
         utils.debts.list.invalidate(), utils.containers.invalidate(),
@@ -154,7 +139,7 @@ export default function SalesReport() {
   if (journal.error) return <div className="mx-auto w-full max-w-[1650px]"><PageHeader eyebrow="Hisobot" title="Sotuv bo‘yicha hisobot" description="Barcha savdo operatsiyalari jurnali." /><QueryError description={journal.error.message} onRetry={() => journal.refetch()} /></div>;
 
   return <div className="mx-auto w-full max-w-[1650px]">
-    <PageHeader eyebrow="Hisobot" title="Sotuv bo‘yicha hisobot" description="Barcha savdo operatsiyalarini ko‘rish, qidirish, filtrlash va eksport qilish." action={<div className="flex flex-wrap gap-2"><ExportMenu onExcel={() => exportReport("xlsx")} onPdf={() => exportReport("pdf")} isLoading={isExporting} disabled={journal.isLoading} />{user?.role === "admin" && <Button variant="outline" className="h-10 gap-2 rounded-xl border-rose-200 bg-white text-xs font-semibold text-rose-600 hover:bg-rose-50" onClick={() => setClearAllOpen(true)}><Trash2 className="size-4" />Barchasini tozalash</Button>}</div>} />
+    <PageHeader eyebrow="Hisobot" title="Sotuv bo‘yicha hisobot" description="Barcha savdo operatsiyalarini ko‘rish, qidirish, filtrlash va eksport qilish." action={<ExportMenu onExcel={() => exportReport("xlsx")} onPdf={() => exportReport("pdf")} isLoading={isExporting} disabled={journal.isLoading} />} />
     <SectionCard title="Operatsiyalar jurnali" description="Qidiruv, filter va ustun sarlavhalari orqali saralang">
       <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(210px,1fr)_160px_180px_180px_145px_145px_auto]">
         <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" /><Input className="finance-input pl-9" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Mijoz, agent yoki mahsulot..." /></div>
@@ -190,26 +175,6 @@ export default function SalesReport() {
             onClick={() => deleteTarget && deleteTransaction.mutate({ id: deleteTarget.id })}
           >
             {deleteTransaction.isPending ? "O‘chirilmoqda..." : "Ha, o‘chirish"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-
-    <Dialog open={clearAllOpen} onOpenChange={setClearAllOpen}>
-      <DialogContent className="rounded-2xl sm:max-w-md">
-        <DialogHeader><DialogTitle>Barcha operatsiyalarni tozalash</DialogTitle><DialogDescription>
-          Jurnaldagi <strong className="text-slate-900">barcha</strong> savdo operatsiyalari va ularga bog‘liq tara
-          harakatlari butunlay o‘chiriladi. Mijozlarning boshlang‘ich qarzi (openingDebt) va boshqa bo‘limlar
-          (Kassa, Agentlar) o‘zgarmaydi. <strong className="text-rose-600">Bu amalni ortga qaytarib bo‘lmaydi.</strong>
-        </DialogDescription></DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setClearAllOpen(false)}>Bekor qilish</Button>
-          <Button
-            className="bg-rose-600 hover:bg-rose-700"
-            disabled={clearAllTransactions.isPending}
-            onClick={() => clearAllTransactions.mutate()}
-          >
-            {clearAllTransactions.isPending ? "Tozalanmoqda..." : "Ha, barchasini o‘chirish"}
           </Button>
         </DialogFooter>
       </DialogContent>

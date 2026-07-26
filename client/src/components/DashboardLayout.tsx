@@ -70,7 +70,7 @@ const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
     label: "Savdo va moliya",
     items: [
       { icon: Beer, label: "Tezkor KEG savdosi", path: "/tezkor-keg" },
-      { icon: ReceiptText, label: "Savdo jurnali", path: "/savdo" },
+      { icon: ReceiptText, label: "Yangi savdo", path: "/savdo" },
       { icon: BarChart3, label: "Sotuv bo‘yicha hisobot", path: "/sotuv-hisoboti" },
       { icon: WalletCards, label: "KASSA", path: "/kassa" },
       { icon: BarChart3, label: "Kassa hisobotlari", path: "/kassa-hisoboti" },

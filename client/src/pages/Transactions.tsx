@@ -176,7 +176,7 @@ export default function Transactions() {
   return <div className="mx-auto w-full max-w-[1200px]">
     <PageHeader
       eyebrow="Tezkor savdo"
-      title="Savdo jurnali"
+      title="Yangi savdo"
       description="Mijozni tanlang, bir nechta mahsulot qo‘shing va bitta operatsiyada saqlang."
       action={<Button variant="outline" className="h-10 gap-2 rounded-xl bg-white" onClick={() => navigate("/sotuv-hisoboti")}><BarChart3 className="size-4" />Sotuv bo‘yicha hisobot</Button>}
     />
