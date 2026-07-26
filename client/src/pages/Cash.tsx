@@ -1,9 +1,12 @@
 import { MetricCard, PageHeader, QueryError } from "@/components/finance-ui";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import {
   Banknote,
+  ChevronLeft,
+  ChevronRight,
   Landmark,
   Plus,
   Trash2,
@@ -14,6 +17,11 @@ import { toast } from "sonner";
 
 const today = localDateInputValue;
 const dateToTimestamp = (value: string) => new Date(`${value}T12:00:00`).getTime();
+function shiftDate(value: string, days: number): string {
+  const shifted = new Date(dateToTimestamp(value));
+  shifted.setDate(shifted.getDate() + days);
+  return localDateInputValue(shifted);
+}
 
 const INCOME_CATEGORIES = ["Приход кег", "Приход пет"];
 const EXPENSE_CATEGORIES = ["Ойлик", "Обед", "Газ", "Расход"];
@@ -622,7 +630,6 @@ export default function Cash() {
         eyebrow="Pul oqimi"
         title="КАССА"
         description="Kunlik jurnal va agentlar bo'yicha tezkor nazorat."
-        action={<Input className="finance-input h-10 w-44" type="date" value={date} onChange={event => setDate(event.target.value)} />}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -640,7 +647,36 @@ export default function Cash() {
       </div>
 
       <div className="mt-5 rounded-2xl border border-slate-100 bg-white p-5">
-        <h3 className="mb-3 text-sm font-bold text-slate-900">Kunlik jurnal</h3>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-sm font-bold text-slate-900">Kunlik jurnal</h3>
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button" variant="outline" size="icon" className="size-8 bg-white"
+              aria-label="Oldingi kun"
+              onClick={() => setDate(prev => shiftDate(prev, -1))}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Input
+              className="finance-input h-8 w-[150px] text-center"
+              type="date" value={date}
+              onChange={event => setDate(event.target.value)}
+            />
+            <Button
+              type="button" variant="outline" size="icon" className="size-8 bg-white"
+              aria-label="Keyingi kun"
+              onClick={() => setDate(prev => shiftDate(prev, 1))}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+            <Button
+              type="button" variant="outline" size="sm" className="h-8 bg-white text-xs font-semibold"
+              onClick={() => setDate(today())}
+            >
+              Bugun
+            </Button>
+          </div>
+        </div>
         <DailyJournalGrid entries={allEntries} date={date} onChanged={() => prihodEntries.refetch()} />
       </div>
 
