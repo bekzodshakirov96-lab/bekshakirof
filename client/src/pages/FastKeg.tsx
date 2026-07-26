@@ -490,7 +490,7 @@ export default function FastKeg() {
                     <div className="p-3"><QueryError description={clients.error.message} onRetry={() => clients.refetch()} /></div>
                   ) : (
                     <ScrollArea className="max-h-[320px]">
-                      <div className="grid grid-cols-1 gap-1 p-2 sm:grid-cols-2">
+                      <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-1.5 p-2">
                         {clients.isLoading ? <div className="col-span-full py-8 text-center text-xs text-slate-400"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Mijozlar yuklanmoqda...</div> : null}
                         {!clients.isLoading && filteredClients.length === 0 ? <div className="col-span-full py-8 text-center text-xs text-slate-400">Mijoz topilmadi.</div> : null}
                         {filteredClients.map(client => {
