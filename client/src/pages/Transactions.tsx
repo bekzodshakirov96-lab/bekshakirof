@@ -1,3 +1,4 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { PageHeader, SectionCard } from "@/components/finance-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,9 +34,11 @@ type CartLine = {
 export default function Transactions() {
   const utils = trpc.useUtils();
   const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const isAgentRole = user?.role === "agent";
 
   const [date, setDate] = useState(today());
-  const [agentId, setAgentId] = useState("");
+  const [agentId, setAgentId] = useState(() => (isAgentRole && user?.agentId ? String(user.agentId) : ""));
   const [clientId, setClientId] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [productSearch, setProductSearch] = useState("");
@@ -49,6 +52,10 @@ export default function Transactions() {
   const agents = trpc.agents.options.useQuery();
   const clients = trpc.clients.options.useQuery();
   const products = trpc.products.list.useQuery({});
+
+  useEffect(() => {
+    if (isAgentRole && user?.agentId && !agentId) setAgentId(String(user.agentId));
+  }, [isAgentRole, user?.agentId, agentId]);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -185,7 +192,18 @@ export default function Transactions() {
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2"><Label>Sana</Label><Input className="finance-input" type="date" value={date} onChange={event => setDate(event.target.value)} /></div>
         <div />
-        <div className="space-y-2"><Label>Agent</Label><select className="finance-input w-full border px-3" value={agentId} onChange={event => { setAgentId(event.target.value); setClientId(""); }}><option value="">Tanlang</option>{(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></div>
+        <div className="space-y-2">
+          <Label>Agent</Label>
+          <select
+            className="finance-input w-full border px-3 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
+            value={agentId}
+            disabled={isAgentRole}
+            onChange={event => { setAgentId(event.target.value); setClientId(""); }}
+          >
+            <option value="">Tanlang</option>
+            {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+          </select>
+        </div>
         <div className="space-y-2"><Label>Mijoz</Label><select className="finance-input w-full border px-3" value={clientId} onChange={event => setClientId(event.target.value)} disabled={!agentId}><option value="">Tanlang</option>{availableClients.map(client => <option key={client.id} value={client.id}>{client.code} — {client.name}</option>)}</select></div>
       </div>
     </SectionCard>

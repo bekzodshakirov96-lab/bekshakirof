@@ -13,7 +13,7 @@ import {
   summarizeFastKegRows,
   type FastKegCurrentState,
 } from "../../shared/fastKeg";
-import { businessProcedure } from "../access";
+import { requireOwnAgent, salesProcedure } from "../access";
 import {
   normalizeContainerType,
   reconcileTransactionContainers,
@@ -139,7 +139,7 @@ async function loadAgentClientRows(db: FastKegDatabase, agentId: number) {
 }
 
 export const fastKegRouter = router({
-  setup: businessProcedure.query(async () => {
+  setup: salesProcedure.query(async () => {
     const db = await requireDb();
     const [agentRows, productRows] = await Promise.all([
       db
@@ -183,21 +183,23 @@ export const fastKegRouter = router({
     };
   }),
 
-  clientsByAgent: businessProcedure
+  clientsByAgent: salesProcedure
     .input(z.object({ agentId: z.number().int().positive() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      requireOwnAgent(ctx.user.role, ctx.user.agentId, input.agentId);
       const db = await requireDb();
       return loadAgentClientRows(db, input.agentId);
     }),
 
-  selectedDraft: businessProcedure
+  selectedDraft: salesProcedure
     .input(
       z.object({
         agentId: z.number().int().positive(),
         clientIds: z.array(z.number().int().positive()).min(1).max(150),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      requireOwnAgent(ctx.user.role, ctx.user.agentId, input.agentId);
       if (new Set(input.clientIds).size !== input.clientIds.length) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Mijozlar takrorlanmasligi kerak." });
       }
@@ -217,7 +219,8 @@ export const fastKegRouter = router({
       return selected;
     }),
 
-  saveBatch: businessProcedure.input(saveBatchSchema).mutation(async ({ input, ctx }) => {
+  saveBatch: salesProcedure.input(saveBatchSchema).mutation(async ({ input, ctx }) => {
+    requireOwnAgent(ctx.user.role, ctx.user.agentId, input.agentId);
     const db = await requireDb();
     return db.transaction(async tx => {
       const sourcePrefix = `fast-keg:${input.idempotencyKey}:`;

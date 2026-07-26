@@ -1,7 +1,7 @@
 import { and, asc, eq, gte, lt, lte } from "drizzle-orm";
 import { z } from "zod";
 import { agents, clients, containerMovements, transactions } from "../../drizzle/schema";
-import { businessProcedure } from "../access";
+import { businessProcedure, debtsViewProcedure } from "../access";
 import {
   enrichClientFinancialRows,
   getClientFinancialRows,
@@ -85,7 +85,7 @@ function summarizeDebtRows(rows: Awaited<ReturnType<typeof loadDebtRows>>) {
 }
 
 export const debtsRouter = router({
-  list: businessProcedure.input(listInput).query(async ({ input }) => {
+  list: debtsViewProcedure.input(listInput).query(async ({ input }) => {
     const rows = await loadDebtRows(input);
     return {
       ...paginate(rows, input.page, input.pageSize),
@@ -105,7 +105,7 @@ export const debtsRouter = router({
   /** Full ledger for one client — the source data for the "Akt sverka" reconciliation statement:
    * opening balance, every sale/payment in the period with a running balance, container (KEG)
    * issue/return movements with a running net, and the resulting closing balance. */
-  clientStatement: businessProcedure
+  clientStatement: debtsViewProcedure
     .input(z.object({ clientId: z.number().int().positive(), from: z.number().int().optional(), to: z.number().int().optional() }))
     .query(async ({ input }) => {
       const db = await requireDb();

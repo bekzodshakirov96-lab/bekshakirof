@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { asc, eq } from "drizzle-orm";
 import { clients } from "../../drizzle/schema";
-import { businessProcedure, ownerProcedure } from "../access";
+import { clientsViewProcedure, ownerProcedure } from "../access";
 import {
   enrichClientFinancialRows,
   getClientFinancialRows,
@@ -12,7 +12,7 @@ import { router } from "../_core/trpc";
 import { requireDb } from "../db";
 
 export const clientsRouter = router({
-  options: businessProcedure.query(async () => {
+  options: clientsViewProcedure.query(async () => {
     const db = await requireDb();
     return db
       .select({
@@ -25,7 +25,7 @@ export const clientsRouter = router({
       .where(eq(clients.isActive, true))
       .orderBy(asc(clients.name));
   }),
-  list: businessProcedure
+  list: clientsViewProcedure
     .input(
       z
         .object({
@@ -55,7 +55,7 @@ export const clientsRouter = router({
         .sort((a, b) => a.name.localeCompare(b.name));
       return paginate(rows, input.page, input.pageSize);
     }),
-  create: ownerProcedure
+  create: clientsViewProcedure
     .input(
       z.object({
         code: z.string().trim().min(1).max(64),

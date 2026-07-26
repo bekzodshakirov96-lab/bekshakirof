@@ -28,7 +28,10 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 255 }).notNull().unique(),
   /** bcrypt hash of the user's password. Never store or return plaintext. */
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
-  role: mysqlEnum("role", ["user", "admin", "accountant"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "admin", "accountant", "agent", "sklad"]).default("user").notNull(),
+  /** role="agent" bo'lganda — bu foydalanuvchi qaysi agent profiliga tegishli ekanini bildiradi;
+   * shu orqali uning savdo/KEG kiritishlari faqat o'z nomiga cheklanadi. */
+  agentId: int("agentId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

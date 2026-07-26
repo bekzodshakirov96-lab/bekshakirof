@@ -13,15 +13,26 @@ import { Eye, EyeOff, ShieldCheck, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-const emptyForm = { name: "", email: "", password: "", role: "user" as "user" | "accountant" };
+type RoleValue = "user" | "accountant" | "agent" | "sklad";
+
+const roleLabels: Record<RoleValue, string> = {
+  user: "Ruxsatsiz",
+  accountant: "Buxgalter",
+  agent: "Agent",
+  sklad: "Sklad xodimi",
+};
+
+const emptyForm = { name: "", email: "", password: "", role: "user" as RoleValue, agentId: "" as number | "" };
 
 export default function Users() {
   const { user } = useAuth();
   const utils = trpc.useUtils();
   const users = trpc.users.list.useQuery(undefined, { enabled: user?.role === "admin" });
+  const agentOptions = trpc.agents.options.useQuery(undefined, { enabled: user?.role === "admin" });
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [showPassword, setShowPassword] = useState(false);
+  const [roleDraft, setRoleDraft] = useState<Record<number, RoleValue>>({});
 
   const setRole = trpc.users.setRole.useMutation({
     onSuccess: async () => { toast.success("Foydalanuvchi roli yangilandi"); await utils.users.list.invalidate(); },
@@ -57,7 +68,8 @@ export default function Users() {
   }
 
   const rows = users.data ?? [];
-  const canSubmit = form.name.trim() && form.email.trim() && form.password.trim().length >= 8;
+  const canSubmit =
+    form.name.trim() && form.email.trim() && form.password.trim().length >= 8 && (form.role !== "agent" || form.agentId !== "");
 
   return (
     <div className="mx-auto w-full max-w-[1250px]">
@@ -100,23 +112,54 @@ export default function Users() {
                     <TableCell>{row.email || "—"}</TableCell>
                     <TableCell className="text-slate-500">{formatDate(row.lastSignedIn)}</TableCell>
                     <TableCell>
-                      <Badge className={row.role === "admin" ? "rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-50" : row.role === "accountant" ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-100"}>
-                        {row.role === "admin" ? "Rahbar" : row.role === "accountant" ? "Buxgalter" : "Ruxsatsiz"}
+                      <Badge className={row.role === "admin" ? "rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-50" : row.role === "accountant" ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : row.role === "agent" ? "rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-50" : row.role === "sklad" ? "rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-50" : "rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-100"}>
+                        {row.role === "admin" ? "Rahbar" : roleLabels[row.role as RoleValue] ?? "Ruxsatsiz"}
+                        {row.role === "agent" && row.agentId ? ` · ${agentOptions.data?.find(a => a.id === row.agentId)?.name ?? ""}` : ""}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       {row.isOwner ? (
                         <span className="text-xs text-slate-400">Doimiy rahbar</span>
                       ) : (
-                        <select
-                          disabled={setRole.isPending}
-                          className="finance-input w-full border px-3 text-xs"
-                          value={row.role === "accountant" ? "accountant" : "user"}
-                          onChange={event => setRole.mutate({ userId: row.id, role: event.target.value as "user" | "accountant" })}
-                        >
-                          <option value="user">Ruxsatsiz</option>
-                          <option value="accountant">Buxgalter</option>
-                        </select>
+                        <div className="flex items-center gap-2">
+                          <select
+                            disabled={setRole.isPending}
+                            className="finance-input w-full border px-3 text-xs"
+                            value={roleDraft[row.id] ?? (row.role === "admin" ? "user" : (row.role as RoleValue))}
+                            onChange={event => {
+                              const nextRole = event.target.value as RoleValue;
+                              if (nextRole === "agent") {
+                                setRoleDraft(prev => ({ ...prev, [row.id]: "agent" }));
+                                return;
+                              }
+                              setRoleDraft(prev => { const next = { ...prev }; delete next[row.id]; return next; });
+                              setRole.mutate({ userId: row.id, role: nextRole });
+                            }}
+                          >
+                            <option value="user">Ruxsatsiz</option>
+                            <option value="accountant">Buxgalter</option>
+                            <option value="agent">Agent</option>
+                            <option value="sklad">Sklad xodimi</option>
+                          </select>
+                          {(roleDraft[row.id] === "agent" || (!roleDraft[row.id] && row.role === "agent")) && (
+                            <select
+                              disabled={setRole.isPending}
+                              className="finance-input w-40 border px-3 text-xs"
+                              value={row.role === "agent" ? row.agentId ?? "" : ""}
+                              onChange={event => {
+                                const agentId = Number(event.target.value);
+                                if (!agentId) return;
+                                setRole.mutate({ userId: row.id, role: "agent", agentId });
+                                setRoleDraft(prev => { const next = { ...prev }; delete next[row.id]; return next; });
+                              }}
+                            >
+                              <option value="">Agentni tanlang</option>
+                              {(agentOptions.data ?? []).map(agent => (
+                                <option key={agent.id} value={agent.id}>{agent.name}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>
@@ -158,15 +201,39 @@ export default function Users() {
             </div>
             <div className="space-y-2">
               <Label>Ruxsat</Label>
-              <select className="finance-input w-full border px-3 text-sm" value={form.role} onChange={event => setForm(prev => ({ ...prev, role: event.target.value as "user" | "accountant" }))}>
+              <select
+                className="finance-input w-full border px-3 text-sm"
+                value={form.role}
+                onChange={event => setForm(prev => ({ ...prev, role: event.target.value as RoleValue, agentId: "" }))}
+              >
                 <option value="user">Ruxsatsiz (keyinroq belgilanadi)</option>
                 <option value="accountant">Buxgalter</option>
+                <option value="agent">Agent</option>
+                <option value="sklad">Sklad xodimi</option>
               </select>
             </div>
+            {form.role === "agent" && (
+              <div className="space-y-2">
+                <Label>Qaysi agent nomidan</Label>
+                <select
+                  className="finance-input w-full border px-3 text-sm"
+                  value={form.agentId}
+                  onChange={event => setForm(prev => ({ ...prev, agentId: event.target.value ? Number(event.target.value) : "" }))}
+                >
+                  <option value="">Agentni tanlang</option>
+                  {(agentOptions.data ?? []).map(agent => (
+                    <option key={agent.id} value={agent.id}>{agent.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Bekor qilish</Button>
-            <Button disabled={!canSubmit || createUser.isPending} onClick={() => createUser.mutate(form)}>
+            <Button
+              disabled={!canSubmit || createUser.isPending}
+              onClick={() => createUser.mutate({ ...form, agentId: form.agentId === "" ? undefined : form.agentId })}
+            >
               {createUser.isPending ? "Yaratilmoqda..." : "Yaratish"}
             </Button>
           </DialogFooter>

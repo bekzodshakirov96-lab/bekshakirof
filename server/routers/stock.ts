@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { products, stockMovements } from "../../drizzle/schema";
-import { businessProcedure } from "../access";
+import { skladProcedure } from "../access";
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
@@ -12,7 +12,7 @@ function toMySqlDate(d: Date): string {
 
 export const stockRouter = router({
   /** Current stock per active product: running sum of in/out movements, never a cached column. */
-  list: businessProcedure.query(async () => {
+  list: skladProcedure.query(async () => {
     const db = await requireDb();
     const productRows = await db.select().from(products).where(eq(products.isActive, true)).orderBy(asc(products.name));
     const balanceRows = await db
@@ -39,7 +39,7 @@ export const stockRouter = router({
     });
   }),
   /** Movement history — all products or one, optionally date-filtered. */
-  movements: businessProcedure
+  movements: skladProcedure
     .input(
       z.object({
         productId: z.number().int().positive().optional(),
@@ -83,7 +83,7 @@ export const stockRouter = router({
       return { items, total, page: input.page, pageCount: Math.max(1, Math.ceil(total / input.pageSize)) };
     }),
   /** Manual kirim — production/purchase receipt, or any other stock increase not tied to a sale. */
-  stockIn: businessProcedure
+  stockIn: skladProcedure
     .input(
       z.object({
         productId: z.number().int().positive(),
@@ -107,7 +107,7 @@ export const stockRouter = router({
       return { success: true };
     }),
   /** Same as stockIn but for several products at once (e.g. one delivery covering multiple items) — one shared date/note, one atomic insert. */
-  stockInBatch: businessProcedure
+  stockInBatch: skladProcedure
     .input(
       z.object({
         movementDate: z.number().int(),
@@ -146,7 +146,7 @@ export const stockRouter = router({
       return { success: true, count: input.items.length };
     }),
   /** Manual chiqim — waste, damage, internal use. Sale-driven decreases happen automatically via reconcileTransactionStock. */
-  stockOut: businessProcedure
+  stockOut: skladProcedure
     .input(
       z.object({
         productId: z.number().int().positive(),
@@ -171,7 +171,7 @@ export const stockRouter = router({
       return { success: true };
     }),
   /** Deletes a manual movement. Automatic (sale-linked) movements can't be deleted directly — edit/delete the transaction instead. */
-  deleteMovement: businessProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
+  deleteMovement: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
     const db = await requireDb();
     const [existing] = await db
       .select({ id: stockMovements.id, isAutomatic: stockMovements.isAutomatic })
@@ -183,7 +183,7 @@ export const stockRouter = router({
     await db.delete(stockMovements).where(eq(stockMovements.id, input.id));
     return { success: true };
   }),
-  setMinLevel: businessProcedure
+  setMinLevel: skladProcedure
     .input(z.object({ id: z.number().int().positive(), minStockLevel: z.number().int().min(0).max(1_000_000) }))
     .mutation(async ({ input }) => {
       const db = await requireDb();
@@ -191,7 +191,7 @@ export const stockRouter = router({
       return { success: true };
     }),
   /** Per-product kirim/chiqim totals for a period, plus each product's current (all-time) ending stock. */
-  report: businessProcedure
+  report: skladProcedure
     .input(z.object({ from: z.number().int().optional(), to: z.number().int().optional(), productId: z.number().int().positive().optional() }))
     .query(async ({ input }) => {
       const db = await requireDb();
@@ -254,7 +254,7 @@ export const stockRouter = router({
       };
     }),
   /** Full (non-paginated) movement list for Excel/PDF export, guarded by the row limit. */
-  exportData: businessProcedure
+  exportData: skladProcedure
     .input(
       z.object({
         productId: z.number().int().positive().optional(),

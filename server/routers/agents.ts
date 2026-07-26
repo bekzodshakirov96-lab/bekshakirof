@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, cashEntries, transactions } from "../../drizzle/schema";
-import { businessProcedure, ownerProcedure } from "../access";
+import { businessProcedure, ownerProcedure, salesProcedure } from "../access";
 import {
   enrichClientFinancialRows,
   getClientFinancialRows,
@@ -102,7 +102,7 @@ function summarizeAgentRows(rows: Awaited<ReturnType<typeof loadAgentRows>>) {
 }
 
 export const agentsRouter = router({
-  options: businessProcedure.query(async () => {
+  options: salesProcedure.query(async () => {
     const db = await requireDb();
     const rows = await db
       .select({ id: agents.id, name: agents.name, isActive: agents.isActive })

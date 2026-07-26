@@ -1,12 +1,12 @@
 import { asc, eq, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agentTakingEntries, products, transactions } from "../../drizzle/schema";
-import { businessProcedure, ownerProcedure } from "../access";
+import { ownerProcedure, productsViewProcedure, skladProcedure } from "../access";
 import { requireDb } from "../db";
 import { router } from "../_core/trpc";
 
 export const productsRouter = router({
-  list: businessProcedure
+  list: productsViewProcedure
     .input(z.object({ search: z.string().max(120).optional() }).default({}))
     .query(async ({ input }) => {
       const db = await requireDb();
@@ -23,7 +23,7 @@ export const productsRouter = router({
     }),
   /** Bitta mahsulotni ro'yxatda bir pog'ona yuqoriga/pastga suradi — qo'shni
    * mahsulot bilan sortOrder qiymatlarini almashtiradi. */
-  reorder: businessProcedure
+  reorder: skladProcedure
     .input(z.object({ id: z.number().int().positive(), direction: z.enum(["up", "down"]) }))
     .mutation(async ({ input }) => {
       const db = await requireDb();
@@ -38,7 +38,7 @@ export const productsRouter = router({
       await db.update(products).set({ sortOrder: current.sortOrder }).where(eq(products.id, neighbor.id));
       return { success: true };
     }),
-  updatePrice: businessProcedure
+  updatePrice: skladProcedure
     .input(
       z.object({
         id: z.number().int().positive(),
@@ -55,7 +55,7 @@ export const productsRouter = router({
    * agent taking entries), so every section reflects the new name immediately — not just
    * future records. Price/quantity history is untouched; only the display name text changes.
    */
-  rename: businessProcedure
+  rename: skladProcedure
     .input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(240) }))
     .mutation(async ({ input }) => {
       const db = await requireDb();
@@ -87,7 +87,7 @@ export const productsRouter = router({
         .where(eq(products.id, input.id));
       return { success: true };
     }),
-  create: businessProcedure
+  create: skladProcedure
     .input(
       z.object({
         code: z.string().trim().min(1).max(64),

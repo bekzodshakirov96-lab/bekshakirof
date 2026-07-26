@@ -20,6 +20,7 @@ export const usersRouter = router({
         name: users.name,
         email: users.email,
         role: users.role,
+        agentId: users.agentId,
         lastSignedIn: users.lastSignedIn,
       })
       .from(users)
@@ -34,23 +35,46 @@ export const usersRouter = router({
    * o'ziga) hech qanday ta'sir qilmaydi. */
   create: ownerProcedure
     .input(
-      z.object({
-        name: z.string().trim().min(1, "Ism kiritilishi shart.").max(180),
-        email: z.string().trim().toLowerCase().email("Email noto‘g‘ri."),
-        password: z.string().min(8, "Parol kamida 8 belgidan iborat bo‘lishi kerak."),
-        role: z.enum(["user", "accountant"]).default("user"),
-      }),
+      z
+        .object({
+          name: z.string().trim().min(1, "Ism kiritilishi shart.").max(180),
+          email: z.string().trim().toLowerCase().email("Email noto‘g‘ri."),
+          password: z.string().min(8, "Parol kamida 8 belgidan iborat bo‘lishi kerak."),
+          role: z.enum(["user", "accountant", "agent", "sklad"]).default("user"),
+          agentId: z.number().int().positive().optional(),
+        })
+        .refine(value => value.role !== "agent" || value.agentId !== undefined, {
+          message: "Agent rolidagi xodim uchun agent tanlanishi shart.",
+          path: ["agentId"],
+        }),
     )
     .mutation(async ({ input }) => {
       const existing = await getUserByEmail(input.email);
       if (existing) throw new TRPCError({ code: "CONFLICT", message: "Bu email allaqachon ro‘yxatdan o‘tgan." });
       const passwordHash = await hashPassword(input.password);
-      const created = await createUser({ name: input.name, email: input.email, passwordHash, role: input.role });
+      const created = await createUser({
+        name: input.name,
+        email: input.email,
+        passwordHash,
+        role: input.role,
+        agentId: input.role === "agent" ? input.agentId ?? null : null,
+      });
       if (!created) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Foydalanuvchi yaratilmadi." });
       return { success: true, id: created.id };
     }),
   setRole: ownerProcedure
-    .input(z.object({ userId: z.number().int().positive(), role: z.enum(["user", "accountant"]) }))
+    .input(
+      z
+        .object({
+          userId: z.number().int().positive(),
+          role: z.enum(["user", "accountant", "agent", "sklad"]),
+          agentId: z.number().int().positive().optional(),
+        })
+        .refine(value => value.role !== "agent" || value.agentId !== undefined, {
+          message: "Agent rolidagi xodim uchun agent tanlanishi shart.",
+          path: ["agentId"],
+        }),
+    )
     .mutation(async ({ input }) => {
       const db = await requireDb();
       const [target] = await db.select().from(users).where(eq(users.id, input.userId)).limit(1);
@@ -58,7 +82,10 @@ export const usersRouter = router({
       if (target.id === OWNER_USER_ID) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Rahbar rolini o‘zgartirib bo‘lmaydi." });
       }
-      await db.update(users).set({ role: input.role }).where(eq(users.id, input.userId));
+      await db
+        .update(users)
+        .set({ role: input.role, agentId: input.role === "agent" ? input.agentId ?? null : null })
+        .where(eq(users.id, input.userId));
       return { success: true };
     }),
 });

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, clients, products, transactions } from "../../drizzle/schema";
-import { businessProcedure, ownerProcedure } from "../access";
+import { businessProcedure, ownerProcedure, requireOwnAgent, salesProcedure } from "../access";
 import {
   normalizeContainerType,
   reconcileTransactionContainers,
@@ -198,7 +198,7 @@ export const transactionsRouter = router({
     );
     return { rows, summary, filters: input, generatedAt: Date.now() };
   }),
-  create: businessProcedure
+  create: salesProcedure
     .input(
       z
         .object({
@@ -221,6 +221,7 @@ export const transactionsRouter = router({
         ),
     )
     .mutation(async ({ input, ctx }) => {
+      requireOwnAgent(ctx.user.role, ctx.user.agentId, input.agentId);
       const db = await requireDb();
       return db.transaction(async tx => {
         const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).limit(1);

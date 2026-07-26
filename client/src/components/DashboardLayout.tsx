@@ -51,40 +51,52 @@ import { useState, type ComponentType, type FormEvent, type ReactNode } from "re
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 
+type AppRole = "admin" | "accountant" | "agent" | "sklad" | "user";
+
 type MenuItem = {
   icon: ComponentType<{ className?: string }>;
   label: string;
   path: string;
-  adminOnly?: boolean;
+  /** Rollar ro'yxati — kim shu bo'limni ko'ra oladi. "admin" har doim qo'shilib turadi.
+   * Berilmasa, standart holatda faqat rahbar va buxgalter uchun (biznes ma'lumotlari). */
+  roles?: AppRole[];
 };
+
+const defaultRoles: AppRole[] = ["admin", "accountant"];
+
+function canSeeMenuItem(item: MenuItem, role: AppRole | undefined) {
+  if (!role) return false;
+  if (role === "admin") return true;
+  return (item.roles ?? defaultRoles).includes(role);
+}
 
 const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
   {
     label: "Umumiy",
     items: [
       { icon: LayoutDashboard, label: "Boshqaruv paneli", path: "/" },
-      { icon: CircleDollarSign, label: "Qarzdorlik hisoboti", path: "/qarzdorlik" },
+      { icon: CircleDollarSign, label: "Qarzdorlik hisoboti", path: "/qarzdorlik", roles: ["admin", "accountant", "agent"] },
     ],
   },
   {
     label: "Savdo va moliya",
     items: [
-      { icon: Beer, label: "Tezkor KEG savdosi", path: "/tezkor-keg" },
-      { icon: ReceiptText, label: "Yangi savdo", path: "/savdo" },
+      { icon: Beer, label: "Tezkor KEG savdosi", path: "/tezkor-keg", roles: ["admin", "accountant", "agent"] },
+      { icon: ReceiptText, label: "Yangi savdo", path: "/savdo", roles: ["admin", "accountant", "agent"] },
       { icon: BarChart3, label: "Sotuv bo‘yicha hisobot", path: "/sotuv-hisoboti" },
       { icon: WalletCards, label: "KASSA", path: "/kassa" },
       { icon: BarChart3, label: "Kassa hisobotlari", path: "/kassa-hisoboti" },
-      { icon: PackageOpen, label: "Mahsulotlar", path: "/mahsulotlar" },
-      { icon: Warehouse, label: "Sklad", path: "/sklad" },
-      { icon: BarChart3, label: "Sklad hisoboti", path: "/sklad-hisoboti" },
+      { icon: PackageOpen, label: "Mahsulotlar", path: "/mahsulotlar", roles: ["admin", "accountant", "sklad"] },
+      { icon: Warehouse, label: "Sklad", path: "/sklad", roles: ["admin", "accountant", "sklad"] },
+      { icon: BarChart3, label: "Sklad hisoboti", path: "/sklad-hisoboti", roles: ["admin", "accountant", "sklad"] },
     ],
   },
   {
     label: "Hamkorlar",
     items: [
       { icon: UsersRound, label: "Agentlar", path: "/agentlar" },
-      { icon: Building2, label: "Mijozlar", path: "/mijozlar" },
-      { icon: FileText, label: "Akt sverka", path: "/akt-sverka" },
+      { icon: Building2, label: "Mijozlar", path: "/mijozlar", roles: ["admin", "accountant", "agent"] },
+      { icon: FileText, label: "Akt sverka", path: "/akt-sverka", roles: ["admin", "accountant", "agent"] },
     ],
   },
   {
@@ -92,7 +104,7 @@ const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
     items: [
       { icon: Boxes, label: "Tara nazorati", path: "/tara" },
       { icon: FileSpreadsheet, label: "Excel import", path: "/import" },
-      { icon: UserCog, label: "Foydalanuvchilar", path: "/foydalanuvchilar", adminOnly: true },
+      { icon: UserCog, label: "Foydalanuvchilar", path: "/foydalanuvchilar", roles: ["admin"] },
     ],
   },
 ];
@@ -265,7 +277,7 @@ function AccessPending({ onLogout }: { onLogout: () => void }) {
         </div>
         <h1 className="mt-6 text-2xl font-bold text-slate-950">Kirish hali tasdiqlanmagan</h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
-          Bu hisob tizimga kirdi, ammo rahbar unga hali “Buxgalter” rolini bermagan. Rahbar foydalanuvchilar bo‘limidan ruxsat berishi mumkin.
+          Bu hisob tizimga kirdi, ammo rahbar unga hali ruxsat rolini bermagan. Rahbar foydalanuvchilar bo‘limidan ruxsat berishi mumkin.
         </p>
         <Button onClick={onLogout} variant="outline" className="mt-7 rounded-xl">
           <LogOut className="mr-2 h-4 w-4" /> Boshqa hisob bilan kirish
@@ -279,7 +291,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { loading, user, logout } = useAuth();
   if (loading) return <DashboardLayoutSkeleton />;
   if (!user) return <LoginScreen />;
-  if (user.role !== "admin" && user.role !== "accountant") return <AccessPending onLogout={logout} />;
+  if (user.role !== "admin" && user.role !== "accountant" && user.role !== "agent" && user.role !== "sklad") {
+    return <AccessPending onLogout={logout} />;
+  }
 
   return (
     <SidebarProvider defaultOpen>
@@ -291,12 +305,21 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout: () => void }) {
   const { user } = useAuth();
   const [location, setLocation] = useLocation();
-  const visibleGroups = menuGroups.map(group => ({
-    ...group,
-    items: group.items.filter(item => !item.adminOnly || user?.role === "admin"),
-  }));
+  const visibleGroups = menuGroups
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => canSeeMenuItem(item, user?.role as AppRole | undefined)),
+    }))
+    .filter(group => group.items.length > 0);
   const activeItem = visibleGroups.flatMap(group => group.items).find(item => item.path === location);
-  const roleLabel = user?.role === "admin" ? "Rahbar" : "Buxgalter";
+  const roleLabels: Record<AppRole, string> = {
+    admin: "Rahbar",
+    accountant: "Buxgalter",
+    agent: "Agent",
+    sklad: "Sklad xodimi",
+    user: "Ruxsatsiz",
+  };
+  const roleLabel = roleLabels[(user?.role as AppRole | undefined) ?? "user"];
 
   return (
     <>

@@ -1,3 +1,4 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { PageHeader, QueryError, SectionCard } from "@/components/finance-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -103,6 +104,8 @@ const entryFields: Array<{ key: keyof EntryValue; label: string; tone: string }>
 
 export default function FastKeg() {
   const utils = trpc.useUtils();
+  const { user } = useAuth();
+  const isAgentRole = user?.role === "agent";
   const [agentId, setAgentId] = useState<number | null>(null);
   const [transactionDate, setTransactionDate] = useState(() => inputDateValue());
   const [search, setSearch] = useState("");
@@ -133,6 +136,10 @@ export default function FastKeg() {
     setSaveFeedback(null);
     setIdempotencyKey(createIdempotencyKey());
   }, [agentId]);
+
+  useEffect(() => {
+    if (isAgentRole && user?.agentId && agentId !== user.agentId) setAgentId(user.agentId);
+  }, [isAgentRole, user?.agentId, agentId]);
 
   useEffect(() => {
     if (!clientPickerOpen) return;
@@ -455,8 +462,12 @@ export default function FastKeg() {
           <div className="grid gap-3 sm:grid-cols-[260px_1fr]">
             <div>
               <Label className="text-[11px] text-slate-500">Agent</Label>
-              <Select value={agentId ? String(agentId) : undefined} onValueChange={value => setAgentId(Number(value))}>
-                <SelectTrigger className="mt-1 h-10 w-full rounded-xl"><SelectValue placeholder="Agentni tanlang" /></SelectTrigger>
+              <Select
+                value={agentId ? String(agentId) : undefined}
+                onValueChange={value => setAgentId(Number(value))}
+                disabled={isAgentRole}
+              >
+                <SelectTrigger className="mt-1 h-10 w-full rounded-xl disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"><SelectValue placeholder="Agentni tanlang" /></SelectTrigger>
                 <SelectContent>{(setup.data?.agents ?? []).map(agent => <SelectItem key={agent.id} value={String(agent.id)}>{agent.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
