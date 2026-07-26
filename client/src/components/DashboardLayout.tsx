@@ -34,6 +34,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   FileSpreadsheet,
+  FileText,
   LayoutDashboard,
   Landmark,
   LockKeyhole,
@@ -83,6 +84,7 @@ const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
     items: [
       { icon: UsersRound, label: "Agentlar", path: "/agentlar" },
       { icon: Building2, label: "Mijozlar", path: "/mijozlar" },
+      { icon: FileText, label: "Akt sverka", path: "/akt-sverka" },
     ],
   },
   {

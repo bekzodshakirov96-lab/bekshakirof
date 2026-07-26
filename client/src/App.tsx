@@ -6,6 +6,7 @@ import DashboardLayout from "./components/DashboardLayout";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Agents from "./pages/Agents";
+import AktSverka from "./pages/AktSverka";
 import Cash from "./pages/Cash";
 import Clients from "./pages/Clients";
 import Containers from "./pages/Containers";
@@ -29,6 +30,7 @@ function Router() {
       <Route path={"/qarzdorlik"} component={Debts} />
       <Route path={"/agentlar"} component={Agents} />
       <Route path={"/mijozlar"} component={Clients} />
+      <Route path={"/akt-sverka"} component={AktSverka} />
       <Route path={"/savdo"} component={Transactions} />
       <Route path={"/sotuv-hisoboti"} component={SalesReport} />
       <Route path={"/tezkor-keg"} component={FastKeg} />
