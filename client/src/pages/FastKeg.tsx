@@ -17,7 +17,6 @@ import {
   Boxes,
   CalendarDays,
   CheckCircle2,
-  ChevronRight,
   CircleDollarSign,
   Eraser,
   Loader2,
@@ -496,7 +495,7 @@ export default function FastKeg() {
                         {filteredClients.map(client => {
                           const selected = selectedSet.has(client.id);
                           const order = selectedIds.indexOf(client.id) + 1;
-                          return <button key={client.id} onClick={() => toggleClient(client.id)} className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-all ${selected ? "border-cyan-200 bg-cyan-50/70" : "border-transparent hover:border-slate-200 hover:bg-slate-50"}`}><Checkbox checked={selected} /><div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-slate-800">{client.name}</p><p className="mt-0.5 truncate text-[10px] text-slate-400">{client.code} • qarz {formatMoney(client.currentDebt)}</p></div>{selected ? <Badge className="h-6 min-w-6 justify-center rounded-lg bg-cyan-700 px-1.5">{order}</Badge> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />}</button>;
+                          return <button key={client.id} onClick={() => toggleClient(client.id)} className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-all ${selected ? "border-cyan-200 bg-cyan-50/70" : "border-transparent hover:border-slate-200 hover:bg-slate-50"}`}><Checkbox checked={selected} /><div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-slate-800">{client.name}</p><p className="mt-0.5 truncate text-[10px] text-slate-400">{client.code} • qarz {formatMoney(client.currentDebt)}</p></div>{selected ? <Badge className="h-6 min-w-6 shrink-0 justify-center rounded-lg bg-cyan-700 px-1.5">{order}</Badge> : null}</button>;
                         })}
                       </div>
                     </ScrollArea>
