@@ -1,0 +1,125 @@
+# Project TODO
+
+- [x] Excel faylidagi Dashboard, Agentlar, Tovarlar, Mijozlar, Tovar_berish, Qarzdorlik, Kassa va Tara_harakati varaqlarining ustunlarini yakuniy ma’lumot modeliga xaritalash
+- [x] Admin va buxgalter rollarini qo‘llab-quvvatlaydigan foydalanuvchi ruxsatlari modelini yaratish
+- [x] Agentlar, mijozlar, mahsulotlar, savdo/to‘lov operatsiyalari, kassa yozuvlari va importlar uchun Drizzle jadvallarini yaratish
+- [x] Drizzle migratsiyasini generatsiya qilish, SQL-ni bazaga qo‘llash va sxema mosligini tekshirish
+- [x] Faqat autentifikatsiyadan o‘tgan admin va buxgalterga biznes ma’lumotlarini ko‘rsatish
+- [x] Admin uchun barcha yozuvlarni yaratish, tahrirlash va ko‘rish ruxsatlarini joriy qilish
+- [x] Buxgalter uchun moliyaviy yozuvlarni boshqarish, lekin tizim rollarini o‘zgartira olmaslik cheklovini joriy qilish
+- [x] Dashboard KPI API-sini yaratish: jami savdo, jami tushum, joriy qarz, naqd tushum, terminal tushum va faol mijozlar
+- [x] Dashboard uchun davrlar kesimidagi savdo/tushum grafigi va agentlar bo‘yicha qarzdorlik taqsimoti API-sini yaratish
+- [x] Qarzdorlik hisobotini qidirish, agent bo‘yicha filtrlash va qarz holati bo‘yicha filtrlash bilan yaratish
+- [x] Agentlar ro‘yxati va har bir agentning savdo, to‘lov, qarz hamda qarzdor mijozlar statistikasini yaratish
+- [x] Mijozlar katalogini qidirish, agent bo‘yicha filtrlash va qarz holati bilan yaratish
+- [x] Mahsulotlar ro‘yxatini ko‘rish va narxini yangilash funksiyasini yaratish
+- [x] Tovar berish va to‘lov jurnalini ko‘rish, qidirish, filtrlash va yangi yozuv qo‘shish funksiyasini yaratish
+- [x] Yangi savdo yozuvida miqdor, narx, summa, naqd va terminal to‘lovlarini validatsiya qilish
+- [x] Kassa jurnalini naqd, terminal va Click kanallari, kirim/chiqim hamda yillik jami ko‘rsatkichlari bilan yaratish
+- [x] Excel faylini brauzerdan yuklash va serverda tahlil qilish oqimini yaratish
+- [x] Birinchi import va takroriy importlarda dublikatlarni oldini oladigan upsert strategiyasini yaratish
+- [x] Import natijasida qo‘shilgan, yangilangan, o‘tkazib yuborilgan va xatoli qatorlar sonini ko‘rsatish
+- [x] Importlar tarixini fayl nomi, vaqt, foydalanuvchi va natija bilan saqlash
+- [x] O‘zbekcha sidebar navigatsiyasini Lucide ikonkalari bilan yaratish
+- [x] Premium vizual uslub uchun ranglar, tipografiya, radiuslar, soyalar va responsive spacing tokenlarini yaratish
+- [x] Dashboard sahifasini jozibali KPI kartalari, chiziqli/ustunli grafiklar va qarzdorlik taqsimoti bilan yaratish
+- [x] Qarzdorlik, agentlar, mijozlar, jurnal, mahsulotlar, kassa va import sahifalarini to‘liq o‘zbekcha yaratish
+- [x] Barcha jadvallarda yuklanish, bo‘sh holat, xatolik holati va sahifalashni ko‘rsatish
+- [x] Mobil va planshet ekranlarida sidebar va jadvallarning responsive ishlashini ta’minlash
+- [x] Backend hisob-kitoblari, rol nazorati va import normalizatsiyasi uchun Vitest testlarini yozish
+- [x] TypeScript tekshiruvi va barcha Vitest testlarini muvaffaqiyatli ishga tushirish
+- [x] Desktop va mobil ko‘rinishlarda vizual screenshot tekshiruvlarini bajarish
+- [x] Mavjud Excel ma’lumotlarini bazaga import qilib, dashboard yig‘indilarini Excel bilan solishtirish
+- [x] todo.md holatini yakuniy tekshirish va loyiha checkpointini yaratish
+- [x] Dashboard, qarzdorlik, agentlar, mijozlar, mahsulotlar, savdo, kassa va import sahifalariga o‘zbekcha query xatolik holatini qo‘shish
+- [x] Sidebar, autentifikatsiya, NotFound va umumiy UI matnlarining to‘liq o‘zbekchaligini tekshirish va tuzatish
+- [x] Premium dizayn tokenlari hamda responsive spacingni kod va vizual ko‘rinishda yakuniy tekshirish
+- [x] requireDb runtime muammosi yo‘qligini toza server ishga tushirish va loglar orqali tasdiqlash
+- [x] Barcha keng jadval wrapperlarini mobil gorizontal scroll uchun overflow-x-auto va overflow-y-hidden bilan yangilash
+- [x] Client interfeysida faqat foydalanuvchiga ko‘rinadigan matnlarni audit qilib qolgan inglizcha matnlarni o‘zbekchalashtirish
+- [x] requireDb eksporti mavjudligini kodda va restartdan keyingi yangi log vaqt oralig‘ida tasdiqlash
+- [x] Yakuniy checkpointni yaratib version identifikatorini olish
+- [x] Foydalanuvchi so‘roviga ko‘ra o‘tkazib yuborildi: faol bo‘lmagan ComponentShowcase namuna sahifasidagi inglizcha demo matnlarni o‘zbekchalashtirish
+- [x] Foydalanuvchi so‘roviga ko‘ra o‘tkazib yuborildi: faylma-fayl parallel til auditi muvaffaqiyatsiz bo‘lgan bandlarni qayta tekshirish
+- [x] Mahsulotlar jadvaliga tara turi va bir mahsulotga tara soni metama’lumotlarini qo‘shish
+- [x] Tara harakatlarini savdo tranzaksiyasiga bog‘lash va avtomatik yozuvlarni dublikatdan himoyalash sxemasini qo‘shish
+- [x] Yangi Drizzle migratsiyasini generatsiya qilish, tekshirish va bazaga qo‘llash
+- [x] KEG 30 va KEG 50 mahsulot nomlarini normalizatsiya qiladigan umumiy containerAccounting servis yaratish
+- [x] KEG savdosi uchun issued va formadagi tara qaytishi uchun returned harakatini bitta database transaction ichida saqlash
+- [x] Savdo operatsiyasini yangilaganda unga bog‘liq avtomatik tara harakatlarini dublikatlarsiz reconcile qilish
+- [x] Mavjud qoldiqdan ortiq tara qaytarishni o‘zbekcha validatsiya xabari bilan bloklash
+- [x] Excel importda KEG savdosi va explicit Tara_harakati yozuvlarini solishtirib ikki marta hisoblashni oldini olish
+- [x] Tarixiy Rozlivnoy KEG 30/50 savdolarini mahsulot va tara yozuvlariga xavfsiz backfill qilish
+- [x] Mijozlar qarzdorligi API-siga saralash, min/max qarz va filtrlangan umumiy summary qo‘shish
+- [x] Agentlar API-siga qidiruv, faol/qarz holati filtri, saralash, pagination va summary qo‘shish
+- [x] Savdo jurnaliga mijoz, mahsulot, sana va saralash filtrlari qo‘shish
+- [x] Qarzdorlik, agentlar va savdo uchun filtrlangan barcha qatorlarni qaytaradigan xavfsiz exportData querylari yaratish
+- [x] XLSX eksport helperini xulosa va ma’lumotlar varaqlari, formatlar hamda muzlatilgan sarlavha bilan yaratish
+- [x] PDF eksport helperini Unicode/kirill shrift, landscape jadval, filter tavsifi va sahifa raqami bilan yaratish
+- [x] Qarzdorlik va savdo sahifalariga Excel/PDF eksport menyularini qo‘shish
+- [x] Mijozlar qarzdorligi jadvaliga sortable sarlavhalar, qo‘shimcha filtrlar va filtrlarni tozalash tugmasi qo‘shish
+- [x] Agentlar jadvaliga qidiruv, filtr, sortable sarlavhalar va pagination qo‘shish
+- [x] Yangi savdo operatsiyasi formasiga tara turi va qaytgan dona soni maydonlarini qo‘shish
+- [x] Savdo formasida KEG berildi, qaytdi va sof tara o‘zgarishini jonli ko‘rsatish
+- [x] Savdo jurnalida operatsiyaning tara ta’sirini ko‘rsatish
+- [x] Mahsulotlar sahifasida admin uchun tara turini va koeffitsiyentini boshqarish imkoniyatini qo‘shish
+- [x] KEG 30/50 avtomatik berish, qaytarish, update, ortiqcha qaytarish va oddiy mahsulot holatlari uchun Vitest testlari yozish
+- [x] Qidiruv, filtr, saralash va export datasetlari uchun Vitest testlari yozish
+- [x] Haqiqiy bazada 2026-07-01 Разливной КЕГ 50 miqdor 4 operatsiyasining tara qoldig‘iga ta’sirini tekshirish
+- [x] TypeScript, barcha Vitest testlari va production buildni muvaffaqiyatli yakunlash
+- [x] Desktop va mobil ko‘rinishda export, sortable jadvallar va yangi tara formasini screenshot orqali tekshirish
+- [x] todo.md ni yakuniy o‘qish va yangilangan loyiha checkpointini yaratish
+- [x] Agentlar exportData querysiga 10 000 yozuv limiti va tushunarli o‘zbekcha xato qo‘shish
+- [x] ExportData dataset va maksimal limit xavfsizligini Vitest bilan tekshirish
+- [x] Savdo formasidagi tara previewda KEG 30 va KEG 50 sof o‘zgarishini alohida sonli ko‘rsatish
+- [x] Bir xil va turli KEG turlaridagi jonli tara preview hisobini test bilan tekshirish
+- [x] Debts, agents va transactions exportData querylarining filter hamda saralash dataset paritysini Vitest bilan tekshirish
+- [x] ExportData limitini va o‘zbekcha limit xatosini router darajasida tasdiqlash
+- [x] Excel import/backfillda explicit Tara_harakati yozuvlarini agent va deterministik tartib asosida bir martalik matching qilish
+- [x] Bir mijozda bir kunda bir xil miqdordagi bir nechta KEG savdolari uchun noto‘g‘ri linklash va dublikatga qarshi Vitest yozish
+- [x] Backfilldan keyingi tarixiy KEG savdolar va tara qoldiqlarini audit hisobotida solishtirish
+- [x] KEG auditini mijoz va tara turi kesimida issued, returned va yakuniy balans reconciliation bilan kengaytirish
+- [x] 627 ta tranzaksiyaga ulanmagan tarixiy issued tara yozuvlarini mustaqil opening-history yoki shubhali yozuv sifatida tasniflash
+- [x] Audit hisobotiga ambiguous, duplicate va mismatch holatlari uchun aniq pass/fail mezonlarini qo‘shish
+- [x] XLSX writeFile va PDF createPdf/download oqimini mocklangan browser unit-testi bilan tasdiqlash
+- [x] Yakuniy export, filter va KEG o‘zgarishlaridan keyin yangi checkpoint yaratish va version identifikatorini qayd etish
+- [x] NAMUNA.xlsx dagi varaq, sarlavha, mijoz qatorlari, KEG, tara, kassa, qoldiq va qarz kataklarini aniq xaritalash
+- [x] NAMUNA.xlsx asosidagi tezkor KEG ish oqimini loyiha ichida hujjatlashtirish
+- [x] Agent tanlanganda faqat shu agentga biriktirilgan faol mijozlarni qaytaradigan backend query yaratish
+- [x] Bir nechta mijoz ID sini qabul qilib tanlash tartibini saqlagan holda ommaviy KEG draftini qaytaradigan backend query yaratish
+- [x] KEG 30, KEG 50, qaytgan tara 30/50 va kassa qiymatlarini har bir mijoz uchun validatsiya qiladigan schema yaratish
+- [x] Ommaviy KEG operatsiyalarini barcha mijozlar uchun bitta database transaction ichida atomik saqlash
+- [x] Har bir mijoz uchun KEG savdosidan savdo summasi, to‘lov va qarz o‘zgarishini avtomatik hisoblash
+- [x] Har bir mijoz uchun berilgan va qaytgan KEG 30/50 asosida tara qoldig‘ini avtomatik hisoblash
+- [x] Mavjud qoldiqdan ortiq KEG tara qaytarishni bloklash va qaysi mijozda xato borligini ko‘rsatish
+- [x] Ommaviy saqlashda takroriy yuborishdan dublikat operatsiya yaratilishini oldini olish
+- [x] Sidebar navigatsiyasiga alohida “Tezkor KEG savdosi” bo‘limini ikonka bilan qo‘shish
+- [x] Tezkor KEG sahifasida sana va agent tanlash blokini yaratish
+- [x] Agent mijozlarini qidirish va checkbox orqali bir nechta tanlash interfeysini yaratish
+- [x] Tanlangan mijozlarni tanlash ketma-ketligida bitta tahrirlanadigan jadvalga joylash
+- [x] Har bir mijoz qatoriga KEG 30, KEG 50, tara qaytdi 30, tara qaytdi 50 va kassa inputlarini qo‘shish
+- [x] Har bir qatorga avtomatik savdo summasi, tara qoldig‘i va yakuniy qarz previewini qo‘shish
+- [x] Jadvalga klaviatura bilan tez yurish, Tab/Enter navigatsiyasi va sonli input fokusini optimallashtirish
+- [x] Barcha tanlangan mijozlar bo‘yicha umumiy KEG, tara, kassa va qarz summarysini ko‘rsatish
+- [x] Ommaviy saqlash natijasini muvaffaqiyatli va xatoli mijozlar kesimida o‘zbekcha ko‘rsatish
+- [x] KEG narxlari va tara koeffitsiyentlarini mavjud mahsulot sozlamalaridan avtomatik olish
+- [x] Ommaviy KEG hisoblari, atomik saqlash, ortiqcha tara qaytarish va dublikatdan himoya uchun Vitest testlari yozish
+- [x] NAMUNA.xlsx da sonli namuna qiymatlari yo‘qligini tasdiqlab, formulalarni real baza tranzaksiyasi va deterministik Vitest qiymatlari bilan solishtirish
+- [x] TypeScript, barcha Vitest testlari va production buildni muvaffaqiyatli yakunlash
+- [x] Desktop va mobil ko‘rinishda agent-mijoz tanlash boshqaruvlari, tezkor jadval konteyneri va summaryni screenshot orqali tekshirish
+- [x] todo.md ni yakuniy o‘qish va yangi loyiha checkpointini yaratish
+- [x] Tezkor KEG saveBatch oqimida faqat kassa kiritilgan qatorni soxta KEG 30 mahsulotisiz to‘g‘ri saqlash yoki aniq bloklash
+- [x] Tezkor KEG saveBatch uchun faqat kassa, aralash KEG 30/50 va ortiqcha tara qaytarish edge-case’larini Vitest bilan qamrab olish
+- [x] saveBatch muvaffaqiyatidan keyin saqlangan mijozlar ro‘yxati va har birining qisqa natijasini o‘zbekcha panelda ko‘rsatish
+- [x] saveBatch xatosida xatoli mijozni alohida ajratib, atomik bekor qilingan qolgan mijozlar saqlanmaganini ko‘rsatish
+- [x] Desktop summary kartalarida KEG o‘zgarishi va sotilgan son ikkilamchi matnini kesmasdan ko‘rsatish
+- [x] NAMUNA.xlsx faylini kod orqali haqiqatan o‘qib, sonli namuna qiymatlar bor-yo‘qligini audit hisobotida isbotlash
+- [x] Desktop autentifikatsiyalangan FastKeg sahifasining summary kartalarini inspectable screenshot evidence bilan qayta tekshirish
+- [x] Desktop va mobil `/tezkor-keg` ichki sahifasidagi agent/mijoz boshqaruvlari, jadval konteyneri va summary matnlarini inspectable evidence fayliga chiqarish
+- [x] FastKeg desktop summary screenshotidan helper matnlar kesilmaganini OCR yoki DOM matn dalili bilan isbotlash
+- [x] FastKeg desktop summary kartalari uchun haqiqiy OCR chiqishini audit fayliga saqlab, helper matnlar kesilmasligini isbotlash
+- [x] FastKeg desktop va mobil audit screenshotlarini loyiha ichidan webdev static asset storage’ga ko‘chirib, hisobotdagi havolalarni yangilash
+- [x] Sidebar brend matnini `Distribyutsiya 360` dan `NOKDAUN mchj` ga o‘zgartirilganini kodda tekshirish
+- [x] Sidebar brend o‘zgarishini TypeScript, Vitest va autentifikatsiyalangan vizual preview orqali tasdiqlash
+- [x] Yangilangan sidebar brendi uchun yangi checkpoint yaratish
+- [x] Autentifikatsiyalangan sidebar screenshotidan `NOKDAUN mchj` va foydalanuvchi holatini haqiqiy OCR bilan auditga saqlash

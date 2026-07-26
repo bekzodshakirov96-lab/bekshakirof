@@ -1,0 +1,46 @@
+{
+  "activeKegProducts": [
+    {
+      "id": 18,
+      "name": "Разливной КЕГ 50",
+      "price": 0,
+      "containerType": "keg_50",
+      "unitsPerItem": 1
+    },
+    {
+      "id": 19,
+      "name": "Разливной КЕГ 30",
+      "price": 0,
+      "containerType": "keg_30",
+      "unitsPerItem": 1
+    }
+  ],
+  "activeAgentCount": 4,
+  "activeAgentClientLinks": 404,
+  "workbookObservation": "NAMUNA.xlsx da sarlavhalardan tashqari sonli namuna qiymatlari mavjud emas.",
+  "latestKegTransaction": {
+    "transactionId": 4,
+    "transactionDate": "2026-07-01T00:00:00.000Z",
+    "clientName": "Азамат машин бозор",
+    "agentName": "Rasul",
+    "productName": "Разливной КЕГ 50",
+    "containerType": "keg_50",
+    "unitsPerItem": 1,
+    "quantity": 4,
+    "salePrice": 0,
+    "storedTotalAmount": 0,
+    "cashPayment": 0,
+    "expectedTotalAmount": 0,
+    "totalAmountMatches": true,
+    "expectedIssuedContainers": 4,
+    "actualIssuedContainers": 4,
+    "issuedContainersMatch": true,
+    "movementRows": [
+      {
+        "movementType": "issued",
+        "quantity": 4,
+        "containerType": "KEG 50"
+      }
+    ]
+  }
+}

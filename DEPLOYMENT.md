@@ -1,0 +1,140 @@
+# NOKDAUN mchj — Moliyaviy boshqaruv tizimi
+
+Distribyutsiya biznesi uchun savdo, qarzdorlik, kassa va mijozlar boshqaruv tizimi.
+Bu loyiha dastlab Manus'da yaratilgan, so'ng Manus infratuzilmasidan (OAuth, fayl
+saqlash) mustaqil ishlaydigan holga o'tkazilgan — endi istalgan oddiy Node.js
+serverida ishlaydi.
+
+## Talab qilinadigan narsalar
+
+- **Node.js 20+** (tavsiya etiladi: 22)
+- **MySQL 8+** bazasi (o'zingizning serveringizda, yoki Railway/PlanetScale/RDS
+  kabi xizmatlarda)
+- Fayllarni saqlash uchun doimiy disk joyi (Excel importlar shu yerga yoziladi)
+
+## 1. O'rnatish
+
+```bash
+npm install --legacy-peer-deps
+```
+
+(`--legacy-peer-deps` kerak, chunki bitta dev-dependency eski Vite versiyasini
+kutadi — bu funksionallikka ta'sir qilmaydi.)
+
+## 2. Muhit o'zgaruvchilari
+
+`.env.example` faylini `.env` deb nusxalang va to'ldiring:
+
+```bash
+cp .env.example .env
+```
+
+- `DATABASE_URL` — MySQL bog'lanish satri: `mysql://user:parol@host:3306/baza_nomi`
+- `JWT_SECRET` — uzun, tasodifiy satr (login sessiyalarini imzolash uchun).
+  Generatsiya qilish uchun:
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+  ```
+- `PORT` — server porti (standart: 3000)
+- `UPLOADS_DIR` — yuklangan Excel fayllari saqlanadigan papka (standart: `./uploads`)
+- `TZ` — server vaqt mintaqasi (standart: `Asia/Tashkent`). **Bulutli serverga
+  o'tayotganda bu qatorni albatta saqlab qoling** — ko'pchilik bulutli xizmatlar
+  (Railway, RDS va h.k.) standart holda UTC bilan ishlaydi, agar `TZ`
+  o'rnatilmasa Kassa va hisobotlardagi "kun" chegaralari 5 soatga siljib
+  ketadi (masalan, tungi soat 00:00–05:00 orasidagi yozuvlar noto'g'ri kunga
+  tushib qolishi mumkin).
+
+  > MySQL bazaning o'zi (agar boshqa serverga/xizmatga ko'chirilsa) uchun
+  > qo'shimcha sozlash shart emas — `server/db.ts` har bir ulanishda avtomatik
+  > `SET time_zone = '+05:00'` yuboradi, shuning uchun baza qayerda joylashgan
+  > bo'lishidan qat'iy nazar mavjud va yangi yozuvlar to'g'ri vaqt bilan
+  > saqlanadi/o'qiladi.
+
+## 3. Bazani tayyorlash
+
+Bo'sh MySQL bazasi yarating, so'ng migratsiyalarni qo'llang:
+
+```bash
+npx drizzle-kit migrate
+```
+
+Bu `drizzle/` papkasidagi barcha SQL migratsiyalarni (0000'dan 0004'gacha)
+ketma-ket ishga tushiradi va kerakli jadvallarni yaratadi.
+
+> **Eslatma:** agar avvalgi Manus versiyasidan mavjud `users` jadvali va undagi
+> qatorlar bo'lsa, `0004_flat_peter_quill.sql` migratsiyasi (parol ustunini
+> qo'shadigan) xato beradi, chunki mavjud qatorlarga standart qiymatsiz
+> `NOT NULL` ustun qo'shib bo'lmaydi. Bunday holda avval o'sha jadvalni
+> tozalang (`TRUNCATE TABLE users;`) — barcha hisoblar qaytadan ro'yxatdan
+> o'tishi kerak bo'ladi — yoki bizga ayting, biz backfill migratsiyasini
+> yozib beramiz.
+
+## 4. Build va ishga tushirish
+
+```bash
+npm run build
+npm start
+```
+
+Yoki development rejimida (avtomatik qayta yuklash bilan):
+
+```bash
+npm run dev
+```
+
+Birinchi marta `/` manzilini ochganingizda **"Ro'yxatdan o'tish"** tabidan
+hisob yarating — **birinchi ro'yxatdan o'tgan hisob avtomatik rahbar (admin)
+bo'ladi**. Keyingi hisoblar "Foydalanuvchilar" bo'limida rahbar tomonidan
+"Buxgalter" roliga tasdiqlanishi kerak.
+
+## 5. Productionda doimiy ishlatish (tavsiya)
+
+**PM2 bilan** (server qayta ishga tushganda avtomatik qayta ko'tariladi):
+
+```bash
+npm install -g pm2
+pm2 start dist/index.js --name nokdaun-finance
+pm2 save
+pm2 startup   # server reboot bo'lganda avtomatik ishga tushishi uchun
+```
+
+**Nginx orqali (HTTPS bilan, tavsiya etiladi):**
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name sizning-domeningiz.uz;
+
+    ssl_certificate     /etc/letsencrypt/live/sizning-domeningiz.uz/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sizning-domeningiz.uz/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+HTTPS bo'lsa, login cookie'si avtomatik `Secure` rejimda ishlaydi (kod buni
+o'zi aniqlaydi — `X-Forwarded-Proto` sarlavhasi orqali). HTTPS'siz (masalan
+faqat ichki tarmoqda) ham ishlayveradi, faqat shifrlanmagan bo'ladi — tashqi
+internetga ochiq bo'lgan har qanday joyda **albatta HTTPS ishlating**,
+chunki login parollari himoyasiz uzatilmasligi kerak.
+
+## Arxitektura haqida qisqacha
+
+- **Frontend:** React + TypeScript, Vite bilan yig'iladi
+- **Backend:** Express + tRPC
+- **Baza:** MySQL, Drizzle ORM orqali
+- **Autentifikatsiya:** email + parol (bcrypt bilan xeshlangan), JWT sessiya
+  cookie'si — hech qanday tashqi xizmatga bog'liq emas
+- **Fayl saqlash:** local disk (`UPLOADS_DIR`), `/uploads/...` orqali serveriladi
+- **Testlar:** Vitest, `npm test` bilan ishga tushiriladi (48 test)
+
+## Zaxira nusxa olish
+
+Muntazam ravishda:
+1. MySQL bazasining dump'ini oling (`mysqldump`)
+2. `UPLOADS_DIR` papkasini zaxiralang (yuklangan Excel fayllar shu yerda)

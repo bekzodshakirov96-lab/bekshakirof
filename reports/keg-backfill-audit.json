@@ -1,0 +1,38 @@
+{
+  "generatedAt": "2026-07-23T14:30:56.357Z",
+  "summary": {
+    "auditStatus": "pass",
+    "kegSales": 1,
+    "matchedSales": 1,
+    "mismatchedSales": 0,
+    "linkedMovements": 1,
+    "unlinkedExplicitIssuedMovements": 627,
+    "independentHistoryIssuedMovements": 627,
+    "ambiguousUnlinkedIssuedMovements": 0,
+    "duplicateTransactionMovementKeys": 0,
+    "clientContainerBalances": 55,
+    "reconciliationMismatches": 0
+  },
+  "criteria": {
+    "allKegSalesMatched": true,
+    "noDuplicateTransactionMovementKeys": true,
+    "noAmbiguousUnlinkedIssuedMovements": true,
+    "allClientContainerBalancesReconcile": true
+  },
+  "verifiedSale": {
+    "transactionId": 4,
+    "transactionDate": "2026-07-01T00:00:00.000Z",
+    "productName": "Разливной КЕГ 50",
+    "containerType": "keg_50",
+    "agentId": 4,
+    "clientId": 361,
+    "saleQuantity": 4,
+    "issuedQuantity": 4,
+    "returnedQuantity": 0,
+    "netContainerDebt": 4,
+    "linkedMovementIds": [60001],
+    "status": "matched"
+  },
+  "classification": "627 ta ulanmagan issued yozuvning hech biri KEG savdosiga agent+sana+mijoz+tara turi+miqdor bo‘yicha mos kelmadi; ular mustaqil tarixiy Tara_harakati yozuvlari sifatida saqlandi.",
+  "reconciliation": "55 ta mijoz–tara turi balansining barchasida total balance va linked+independent komponentlar farqi 0."
+}

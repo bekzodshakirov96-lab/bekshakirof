@@ -1,0 +1,65 @@
+{
+  "source": "/home/ubuntu/upload/NAMUNA.xlsx",
+  "sheetCount": 2,
+  "sheetNames": [
+    "KEG sotish va tara uchun",
+    "Mahsulot sotish uchun"
+  ],
+  "totalNonEmptyCellCount": 7,
+  "totalNumericCellCount": 0,
+  "totalFormulaCellCount": 0,
+  "conclusion": "Workbookda sonli namuna qiymatlari ham, formulalar ham topilmadi.",
+  "sheets": [
+    {
+      "name": "KEG sotish va tara uchun",
+      "maxRow": 30,
+      "maxColumn": 17,
+      "nonEmptyCellCount": 7,
+      "numericCellCount": 0,
+      "formulaCellCount": 0,
+      "nonEmptyCells": [
+        {
+          "cell": "E9",
+          "value": "AGENT"
+        },
+        {
+          "cell": "G9",
+          "value": "MIJOZLAR"
+        },
+        {
+          "cell": "H9",
+          "value": "KEG 30"
+        },
+        {
+          "cell": "I9",
+          "value": "KEG 50"
+        },
+        {
+          "cell": "J9",
+          "value": "KASSA"
+        },
+        {
+          "cell": "K9",
+          "value": "Qoldiqtara"
+        },
+        {
+          "cell": "M9",
+          "value": "QARZ SUMMA"
+        }
+      ],
+      "numericCells": [],
+      "formulaCells": []
+    },
+    {
+      "name": "Mahsulot sotish uchun",
+      "maxRow": 1,
+      "maxColumn": 1,
+      "nonEmptyCellCount": 0,
+      "numericCellCount": 0,
+      "formulaCellCount": 0,
+      "nonEmptyCells": [],
+      "numericCells": [],
+      "formulaCells": []
+    }
+  ]
+}
