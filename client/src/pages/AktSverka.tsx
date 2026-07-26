@@ -4,12 +4,19 @@ import { Input } from "@/components/ui/input";
 import { formatMoney } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { FileText, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 export default function AktSverka() {
   const [search, setSearch] = useState("");
+  const [agentId, setAgentId] = useState("");
   const [statementClient, setStatementClient] = useState<{ id: number; name: string } | null>(null);
-  const clients = trpc.debts.list.useQuery({ search: search.trim() || undefined, page: 1, pageSize: 50 });
+  const agents = trpc.agents.options.useQuery();
+  const clients = trpc.debts.list.useQuery({
+    search: search.trim() || undefined,
+    agentId: agentId ? Number(agentId) : undefined,
+    page: 1,
+    pageSize: 50,
+  });
 
   const items = clients.data?.items ?? [];
 
@@ -27,9 +34,15 @@ export default function AktSverka() {
       <PageHeader eyebrow="Moliyaviy nazorat" title="Akt sverka" description="Mijozni tanlang, so‘ng davr oralig‘ini belgilab o‘zaro hisob-kitob hujjatini ko‘ring yoki PDF sifatida yuklab oling." />
 
       <SectionCard title="Mijozni tanlang" description="Kod, nom yoki agent bo‘yicha qidiring">
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Kod yoki mijoz nomi..." className="finance-input pl-9" />
+        <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_220px]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Kod yoki mijoz nomi..." className="finance-input pl-9" />
+          </div>
+          <select value={agentId} onChange={event => setAgentId(event.target.value)} className="finance-input border px-3 text-slate-600">
+            <option value="">Barcha agentlar</option>
+            {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+          </select>
         </div>
 
         {clients.isLoading ? (
