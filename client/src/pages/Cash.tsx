@@ -12,7 +12,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const today = localDateInputValue;
@@ -44,10 +44,17 @@ type CashEntryRow = {
   clickAmount: number;
 };
 
-type DraftRow = { agentId: string; reason: string; terminal: string; click: string; amounts: Record<string, string> };
+type DraftRow = {
+  agentId: string; reason: string; terminal: string; click: string;
+  amounts: Record<string, string>;
+  /** Har bir toifa uchun avtomatik saqlangandan keyingi cashEntries.id — bor bo'lsa,
+   * keyingi o'zgarishlar yangi yozuv yaratmaydi, mavjudini yangilaydi. */
+  entryIds: Record<string, number | null>;
+};
 const emptyDraftRow = (): DraftRow => ({
   agentId: "", reason: "", terminal: "", click: "",
   amounts: Object.fromEntries(JOURNAL_COLUMNS.map(name => [name, ""])),
+  entryIds: Object.fromEntries(JOURNAL_COLUMNS.map(name => [name, null])),
 });
 
 const cellInputClass =
@@ -79,6 +86,10 @@ function DailyJournalGrid({
   const agentList = agents.data ?? [];
   const openingBalanceQuery = trpc.cash.openingBalance.useQuery({ date: timestamp });
   const [drafts, setDrafts] = useState<DraftRow[]>(() => Array.from({ length: DRAFT_ROWS }, emptyDraftRow));
+  /** `drafts` state ko'zguси — async avtomatik-saqlash funksiyalari React render
+   * siklidan qat'i nazar har doim eng so'nggi qiymatni sinxron o'qishi uchun. */
+  const draftsRef = useRef(drafts);
+  const autoSaveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
   const invalidate = () =>
     Promise.all([
@@ -153,8 +164,87 @@ function DailyJournalGrid({
   }
 
   function updateDraft(index: number, patch: Partial<DraftRow>) {
-    setDrafts(prev => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+    const next = draftsRef.current.map((row, i) => (i === index ? { ...row, ...patch } : row));
+    draftsRef.current = next;
+    setDrafts(next);
   }
+
+  /**
+   * Bitta qatordagi hozirgi qiymatlarni bazaga yozadi: toifa summasi bo'lgan
+   * har bir ustun uchun — birinchi marta bo'lsa yangi yozuv, keyingi safar
+   * o'sha yozuvni yangilaydi (entryIds orqali kuzatiladi). Summa 0'ga
+   * qaytarilsa, avval avtomatik saqlangan yozuv o'chiriladi.
+   * `resetAfter` — qator butunlay tark etilganda (fokus chiqqanda) qatorni
+   * bo'shatib, endi haqiqiy yozuv sifatida yuqorida ko'rinishini ta'minlaydi.
+   */
+  async function flushDraftRow(index: number, resetAfter: boolean) {
+    const draft = draftsRef.current[index];
+    if (!draft) return;
+    const nextEntryIds = { ...draft.entryIds };
+    let idsChanged = false;
+    for (const category of JOURNAL_COLUMNS) {
+      const amount = Math.round(Number(draft.amounts[category] || 0));
+      const existingId = draft.entryIds[category];
+      const type = CATEGORY_TYPE[category];
+      try {
+        if (amount <= 0) {
+          if (existingId) {
+            await del.mutateAsync({ id: existingId });
+            nextEntryIds[category] = null;
+            idsChanged = true;
+          }
+          continue;
+        }
+        const payload = {
+          entryDate: timestamp, type, category,
+          agentId: type === "income" && draft.agentId ? Number(draft.agentId) : undefined,
+          description: type === "expense" ? draft.reason.trim() || undefined : undefined,
+          cashAmount: amount,
+          terminalAmount: Math.round(Number(draft.terminal || 0)),
+          clickAmount: Math.round(Number(draft.click || 0)),
+        };
+        if (existingId) {
+          await update.mutateAsync({ id: existingId, ...payload });
+        } else {
+          const result = await create.mutateAsync(payload);
+          nextEntryIds[category] = result.id;
+          idsChanged = true;
+        }
+      } catch {
+        // xato bo'lsa ham (toast allaqachon ko'rsatildi), qolgan toifalarni saqlashda davom etamiz
+      }
+    }
+    if (resetAfter) {
+      updateDraft(index, emptyDraftRow());
+    } else if (idsChanged) {
+      updateDraft(index, { entryIds: nextEntryIds });
+    }
+  }
+
+  /** Yozayotganda ~700ms jimlikdan keyin fonda avtomatik saqlaydi — brauzer
+   * yopilsa yoki sana almashtirilsa ham, kiritilgan summa yo'qolib qolmasin. */
+  function scheduleAutoSave(index: number) {
+    if (autoSaveTimers.current[index]) clearTimeout(autoSaveTimers.current[index]);
+    autoSaveTimers.current[index] = setTimeout(() => {
+      delete autoSaveTimers.current[index];
+      void flushDraftRow(index, false);
+    }, 700);
+  }
+
+  /** Sana almashtirilishidan oldin: kutilayotgan avtomatik saqlashlarni
+   * kechiktirmasdan bajarib, keyin yangi kun uchun bo'sh qatorlarga
+   * o'tadi — eski kunning yozuvi yo'qolib qolmaydi va yangi kunga
+   * tasodifan sizib o'tmaydi. */
+  useEffect(() => {
+    return () => {
+      const count = draftsRef.current.length;
+      for (let index = 0; index < count; index += 1) {
+        if (autoSaveTimers.current[index]) { clearTimeout(autoSaveTimers.current[index]); delete autoSaveTimers.current[index]; }
+        void flushDraftRow(index, true);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
 
   const TERMINAL_COL = JOURNAL_COLUMNS.length + 1;
   const CLICK_COL = JOURNAL_COLUMNS.length + 2;
@@ -204,23 +294,8 @@ function DailyJournalGrid({
     const rowEl = event.currentTarget;
     window.setTimeout(() => {
       if (rowEl.contains(document.activeElement)) return;
-      setDrafts(current => {
-        const draft = current[index];
-        const categoriesToCommit = JOURNAL_COLUMNS.filter(name => Math.round(Number(draft.amounts[name] || 0)) > 0);
-        if (categoriesToCommit.length === 0) return current;
-        for (const category of categoriesToCommit) {
-          const type = CATEGORY_TYPE[category];
-          create.mutate({
-            entryDate: timestamp, type, category,
-            agentId: type === "income" && draft.agentId ? Number(draft.agentId) : undefined,
-            description: type === "expense" ? draft.reason.trim() || undefined : undefined,
-            cashAmount: Math.round(Number(draft.amounts[category])),
-            terminalAmount: Math.round(Number(draft.terminal || 0)),
-            clickAmount: Math.round(Number(draft.click || 0)),
-          });
-        }
-        return current.map((row, i) => (i === index ? emptyDraftRow() : row));
-      });
+      if (autoSaveTimers.current[index]) { clearTimeout(autoSaveTimers.current[index]); delete autoSaveTimers.current[index]; }
+      void flushDraftRow(index, true);
     }, 0);
   }
 
@@ -352,7 +427,7 @@ function DailyJournalGrid({
                   value={draft.agentId}
                   data-journal-cell={`${rowIndex}-0`}
                   className={`${selectInputClass} ${draft.agentId ? "text-slate-700" : "text-slate-400"}`}
-                  onChange={event => updateDraft(index, { agentId: event.target.value })}
+                  onChange={event => { updateDraft(index, { agentId: event.target.value }); scheduleAutoSave(index); }}
                   onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}
                 >
                   <option value="">Агент tanlang</option>
@@ -367,7 +442,7 @@ function DailyJournalGrid({
                     value={draft.amounts[name]}
                     placeholder="0"
                     className={`${cellInputClass} text-slate-500`}
-                    onChange={event => updateDraft(index, { amounts: { ...draft.amounts, [name]: sanitizeIntegerInput(event.target.value) } })}
+                    onChange={event => { updateDraft(index, { amounts: { ...draft.amounts, [name]: sanitizeIntegerInput(event.target.value) } }); scheduleAutoSave(index); }}
                     onKeyDown={event => onAmountKeyDown(event, rowIndex, colOffset + 1)}
                   />
                 </td>
@@ -379,7 +454,7 @@ function DailyJournalGrid({
                   value={draft.terminal}
                   placeholder="0"
                   className={`${cellInputClass} text-slate-500`}
-                  onChange={event => updateDraft(index, { terminal: sanitizeIntegerInput(event.target.value) })}
+                  onChange={event => { updateDraft(index, { terminal: sanitizeIntegerInput(event.target.value) }); scheduleAutoSave(index); }}
                   onKeyDown={event => onAmountKeyDown(event, rowIndex, TERMINAL_COL)}
                 />
               </td>
@@ -390,7 +465,7 @@ function DailyJournalGrid({
                   value={draft.click}
                   placeholder="0"
                   className={`${cellInputClass} text-slate-500`}
-                  onChange={event => updateDraft(index, { click: sanitizeIntegerInput(event.target.value) })}
+                  onChange={event => { updateDraft(index, { click: sanitizeIntegerInput(event.target.value) }); scheduleAutoSave(index); }}
                   onKeyDown={event => onAmountKeyDown(event, rowIndex, CLICK_COL)}
                 />
               </td>
@@ -400,7 +475,7 @@ function DailyJournalGrid({
                   data-journal-cell={`${rowIndex}-${REASON_COL}`}
                   placeholder="Нимага расход"
                   className={textInputClass}
-                  onChange={event => updateDraft(index, { reason: event.target.value })}
+                  onChange={event => { updateDraft(index, { reason: event.target.value }); scheduleAutoSave(index); }}
                   onKeyDown={event => {
                     if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, REASON_COL, 1, 0); return; }
                     if (event.key === "ArrowLeft" && event.currentTarget.selectionStart === 0) { event.preventDefault(); focusJournalCell(rowIndex, REASON_COL, 0, -1); return; }
@@ -433,7 +508,7 @@ function DailyJournalGrid({
         <button
           type="button"
           className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/5 hover:underline"
-          onClick={() => setDrafts(prev => [...prev, emptyDraftRow()])}
+          onClick={() => { const next = [...draftsRef.current, emptyDraftRow()]; draftsRef.current = next; setDrafts(next); }}
         >
           <Plus className="size-3.5" /> Qator qo'shish
         </button>

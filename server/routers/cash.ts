@@ -220,20 +220,23 @@ export const cashRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
-      await db.insert(cashEntries).values({
-        sourceKey: `manual:${randomUUID()}`,
-        entryDate: new Date(input.entryDate),
-        type: input.type,
-        category: input.category,
-        agentId: input.agentId ?? null,
-        description: input.description,
-        cashAmount: input.cashAmount,
-        terminalAmount: input.terminalAmount,
-        clickAmount: input.clickAmount,
-        source: "manual",
-        createdBy: ctx.user.id,
-      });
-      return { success: true };
+      const [created] = await db
+        .insert(cashEntries)
+        .values({
+          sourceKey: `manual:${randomUUID()}`,
+          entryDate: new Date(input.entryDate),
+          type: input.type,
+          category: input.category,
+          agentId: input.agentId ?? null,
+          description: input.description,
+          cashAmount: input.cashAmount,
+          terminalAmount: input.terminalAmount,
+          clickAmount: input.clickAmount,
+          source: "manual",
+          createdBy: ctx.user.id,
+        })
+        .$returningId();
+      return { success: true, id: created.id };
     }),
   update: businessProcedure
     .input(
