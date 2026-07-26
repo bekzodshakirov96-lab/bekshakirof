@@ -28,7 +28,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type EntryValue = {
@@ -108,6 +108,8 @@ export default function FastKeg() {
   const [transactionDate, setTransactionDate] = useState(() => inputDateValue());
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [clientPickerOpen, setClientPickerOpen] = useState(false);
+  const clientPickerRef = useRef<HTMLDivElement>(null);
   const [entries, setEntries] = useState<Record<number, EntryValue>>({});
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
   const [saveFeedback, setSaveFeedback] = useState<SaveFeedback | null>(null);
@@ -132,6 +134,22 @@ export default function FastKeg() {
     setSaveFeedback(null);
     setIdempotencyKey(createIdempotencyKey());
   }, [agentId]);
+
+  useEffect(() => {
+    if (!clientPickerOpen) return;
+    function handleOutsideClick(event: MouseEvent) {
+      if (clientPickerRef.current && !clientPickerRef.current.contains(event.target as Node)) setClientPickerOpen(false);
+    }
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setClientPickerOpen(false);
+    }
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [clientPickerOpen]);
 
   const saveBatch = trpc.fastKeg.saveBatch.useMutation({
     onSuccess: async result => {
@@ -443,31 +461,54 @@ export default function FastKeg() {
                 <SelectContent>{(setup.data?.agents ?? []).map(agent => <SelectItem key={agent.id} value={String(agent.id)}>{agent.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div>
+            <div className="relative" ref={clientPickerRef}>
               <Label className="text-[11px] text-slate-500">Mijoz qidirish</Label>
-              <div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Kod yoki mijoz nomi..." className="h-10 rounded-xl pl-9" disabled={!agentId} /></div>
+              <div className="relative mt-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={search}
+                  onChange={event => { setSearch(event.target.value); setClientPickerOpen(true); }}
+                  onFocus={() => setClientPickerOpen(true)}
+                  placeholder={agentId ? "Kod yoki mijoz nomi..." : "Avval agentni tanlang"}
+                  className="h-10 rounded-xl pl-9"
+                  disabled={!agentId}
+                />
+                {selectedIds.length > 0 ? (
+                  <Badge className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-cyan-700 px-2">{selectedIds.length} ta tanlandi</Badge>
+                ) : null}
+              </div>
+
+              {clientPickerOpen && agentId ? (
+                <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+                    <button onClick={toggleVisibleClients} className="flex items-center gap-2 text-left text-xs font-semibold text-slate-600 hover:text-slate-900">
+                      <Checkbox checked={filteredClients.length > 0 && filteredClients.every(client => selectedSet.has(client.id))} /> Ko‘rinayotganlarning barchasini tanlash
+                    </button>
+                    <button type="button" className="text-xs font-semibold text-primary hover:underline" onClick={() => setClientPickerOpen(false)}>Tayyor</button>
+                  </div>
+                  {clients.isError ? (
+                    <div className="p-3"><QueryError description={clients.error.message} onRetry={() => clients.refetch()} /></div>
+                  ) : (
+                    <ScrollArea className="max-h-[320px]">
+                      <div className="grid grid-cols-1 gap-1 p-2 sm:grid-cols-2">
+                        {clients.isLoading ? <div className="col-span-full py-8 text-center text-xs text-slate-400"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Mijozlar yuklanmoqda...</div> : null}
+                        {!clients.isLoading && filteredClients.length === 0 ? <div className="col-span-full py-8 text-center text-xs text-slate-400">Mijoz topilmadi.</div> : null}
+                        {filteredClients.map(client => {
+                          const selected = selectedSet.has(client.id);
+                          const order = selectedIds.indexOf(client.id) + 1;
+                          return <button key={client.id} onClick={() => toggleClient(client.id)} className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-all ${selected ? "border-cyan-200 bg-cyan-50/70" : "border-transparent hover:border-slate-200 hover:bg-slate-50"}`}><Checkbox checked={selected} /><div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-slate-800">{client.name}</p><p className="mt-0.5 truncate text-[10px] text-slate-400">{client.code} • qarz {formatMoney(client.currentDebt)}</p></div>{selected ? <Badge className="h-6 min-w-6 justify-center rounded-lg bg-cyan-700 px-1.5">{order}</Badge> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />}</button>;
+                        })}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </div>
+              ) : null}
             </div>
           </div>
 
           {!agentId ? (
             <div className="py-10 text-center"><UsersRound className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-700">Avval agentni tanlang</p><p className="mt-1 text-xs text-slate-400">Faqat shu agentga tegishli mijozlar ochiladi.</p></div>
-          ) : clients.isError ? (
-            <QueryError description={clients.error.message} onRetry={() => clients.refetch()} />
-          ) : (
-            <>
-              <button onClick={toggleVisibleClients} className="mt-4 flex w-full items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-600 hover:bg-slate-100"><Checkbox checked={filteredClients.length > 0 && filteredClients.every(client => selectedSet.has(client.id))} /> Ko‘rinayotganlarning barchasini tanlash</button>
-              <ScrollArea className="mt-2 max-h-[320px] pr-3">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {clients.isLoading ? <div className="col-span-full py-8 text-center text-xs text-slate-400"><Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />Mijozlar yuklanmoqda...</div> : null}
-                  {filteredClients.map(client => {
-                    const selected = selectedSet.has(client.id);
-                    const order = selectedIds.indexOf(client.id) + 1;
-                    return <button key={client.id} onClick={() => toggleClient(client.id)} className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-all ${selected ? "border-cyan-200 bg-cyan-50/70" : "border-transparent hover:border-slate-200 hover:bg-slate-50"}`}><Checkbox checked={selected} /><div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-slate-800">{client.name}</p><p className="mt-0.5 truncate text-[10px] text-slate-400">{client.code} • qarz {formatMoney(client.currentDebt)}</p></div>{selected ? <Badge className="h-6 min-w-6 justify-center rounded-lg bg-cyan-700 px-1.5">{order}</Badge> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />}</button>;
-                  })}
-                </div>
-              </ScrollArea>
-            </>
-          )}
+          ) : null}
         </SectionCard>
 
         <Card className="overflow-hidden rounded-2xl border-slate-200/70 bg-white shadow-[0_8px_30px_rgba(27,52,76,0.07)]">
