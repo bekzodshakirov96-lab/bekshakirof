@@ -128,11 +128,16 @@ function QuickEntryForm({
   );
 }
 
-function EntryList({
+/**
+ * Excel "Kunlik jurnal" A1:H16 diapazoniga mos: har bir yozuv — alohida qator
+ * (Клиент yoki Нимага расход ustunida izoh, mos toifa ustunida summasi),
+ * 16-qator — Jami.
+ */
+function DailyJournalGrid({
   entries,
   onDeleted,
 }: {
-  entries: Array<{ id: number; category: string; agentName: string | null; description: string | null; cashAmount: number; terminalAmount: number; clickAmount: number }>;
+  entries: Array<{ id: number; type: "income" | "expense"; category: string; description: string | null; cashAmount: number; terminalAmount: number; clickAmount: number }>;
   onDeleted: () => void;
 }) {
   const utils = trpc.useUtils();
@@ -144,81 +149,59 @@ function EntryList({
     onError: error => toast.error(error.message),
   });
 
-  if (entries.length === 0) return <p className="px-1 py-3 text-xs text-slate-400">Bugun hali yozuv qo'shilmagan.</p>;
-
-  return (
-    <div className="mt-2 divide-y divide-slate-100">
-      {entries.map(entry => {
-        const total = entry.cashAmount + entry.terminalAmount + entry.clickAmount;
-        return (
-          <div key={entry.id} className="flex items-center justify-between gap-2 py-2 text-sm">
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-slate-900">
-                {entry.category}
-                {entry.agentName && <span className="ml-1.5 font-normal text-slate-400">— {entry.agentName}</span>}
-              </p>
-              {entry.description && <p className="truncate text-xs text-slate-400">{entry.description}</p>}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="font-bold tabular-nums text-slate-900">{formatMoney(total)}</span>
-              <button
-                type="button"
-                aria-label="O'chirish"
-                className="flex size-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
-                onClick={() => del.mutate({ id: entry.id })}
-              >
-                <Trash2 className="size-4" />
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Excel "Приход/Расход" jurnalidagi 16-qatorga mos: har toifa bo'yicha kunlik jami + Қолдиқ. */
-function DailyJournalTotals({
-  entries,
-  kassaQoldigi,
-}: {
-  entries: Array<{ category: string; type: "income" | "expense"; cashAmount: number; terminalAmount: number; clickAmount: number }>;
-  kassaQoldigi: number;
-}) {
-  const totals = useMemo(() => {
-    const map = new Map<string, number>();
-    let clik = 0;
-    let terminal = 0;
-    for (const entry of entries) {
-      const amount = entry.cashAmount + entry.terminalAmount + entry.clickAmount;
-      map.set(entry.category, (map.get(entry.category) ?? 0) + amount);
-      clik += entry.clickAmount;
-      terminal += entry.terminalAmount;
-    }
-    return { byCategory: map, clik, terminal };
-  }, [entries]);
-
   const columns = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
+  const sortedEntries = useMemo(() => [...entries].sort((a, b) => a.id - b.id), [entries]);
+  const totals = useMemo(
+    () => columns.map(name => entries.filter(entry => entry.category === name).reduce((sum, entry) => sum + entry.cashAmount + entry.terminalAmount + entry.clickAmount, 0)),
+    [entries],
+  );
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200">
-      <table className="w-full min-w-[720px] text-sm">
+      <table className="w-full min-w-[900px] text-sm">
         <thead>
           <tr className="bg-slate-50 text-xs font-semibold text-slate-500">
+            <th className="whitespace-nowrap px-3 py-2 text-left">Клиент</th>
             {columns.map(name => <th key={name} className="whitespace-nowrap px-3 py-2 text-right">{name}</th>)}
-            <th className="whitespace-nowrap px-3 py-2 text-right">Терминаль</th>
-            <th className="whitespace-nowrap px-3 py-2 text-right">CLIK</th>
-            <th className="whitespace-nowrap bg-cyan-50 px-3 py-2 text-right text-cyan-700">Қолдиқ</th>
+            <th className="whitespace-nowrap px-3 py-2 text-left">Нимага расход</th>
+            <th className="w-11" />
           </tr>
         </thead>
-        <tbody>
-          <tr className="font-bold tabular-nums text-slate-900">
-            {columns.map(name => <td key={name} className="whitespace-nowrap px-3 py-2 text-right">{formatMoney(totals.byCategory.get(name) ?? 0)}</td>)}
-            <td className="whitespace-nowrap px-3 py-2 text-right">{formatMoney(totals.terminal)}</td>
-            <td className="whitespace-nowrap px-3 py-2 text-right">{formatMoney(totals.clik)}</td>
-            <td className="whitespace-nowrap bg-cyan-50/60 px-3 py-2 text-right text-cyan-800">{formatMoney(kassaQoldigi)}</td>
-          </tr>
+        <tbody className="divide-y divide-slate-100">
+          {sortedEntries.length === 0 ? (
+            <tr><td colSpan={columns.length + 3} className="px-3 py-4 text-center text-xs text-slate-400">Bugun hali yozuv qo'shilmagan.</td></tr>
+          ) : sortedEntries.map(entry => {
+            const amount = entry.cashAmount + entry.terminalAmount + entry.clickAmount;
+            return (
+              <tr key={entry.id} className="text-xs">
+                <td className="max-w-40 truncate whitespace-nowrap px-3 py-2 text-slate-700">{entry.type === "income" ? entry.description || "—" : ""}</td>
+                {columns.map(name => (
+                  <td key={name} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-900">
+                    {entry.category === name ? formatMoney(amount) : ""}
+                  </td>
+                ))}
+                <td className="max-w-40 truncate whitespace-nowrap px-3 py-2 text-slate-700">{entry.type === "expense" ? entry.description || "—" : ""}</td>
+                <td className="px-1 py-1 text-right">
+                  <button
+                    type="button"
+                    aria-label="O'chirish"
+                    className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                    onClick={() => del.mutate({ id: entry.id })}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
+        <tfoot>
+          <tr className="bg-slate-50/80 text-xs font-bold text-slate-900">
+            <td className="whitespace-nowrap px-3 py-2">Jami</td>
+            {totals.map((value, index) => <td key={columns[index]} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(value)}</td>)}
+            <td colSpan={2} />
+          </tr>
+        </tfoot>
       </table>
     </div>
   );
@@ -410,8 +393,6 @@ export default function Cash() {
   });
 
   const allEntries = prihodEntries.data ?? [];
-  const incomeEntries = allEntries.filter(row => row.type === "income");
-  const expenseEntries = allEntries.filter(row => row.type === "expense");
 
   if (daySummary.error) {
     return <div className="mx-auto w-full max-w-[1500px]"><PageHeader eyebrow="Pul oqimi" title="КАССА" description="Kunlik jurnal va agentlar bo'yicha tezkor nazorat." /><QueryError description={daySummary.error.message} onRetry={() => daySummary.refetch()} /></div>;
@@ -446,18 +427,16 @@ export default function Cash() {
 
       <div className="mt-5 rounded-2xl border border-slate-100 bg-white p-5">
         <h3 className="mb-3 text-sm font-bold text-slate-900">Kunlik jurnal</h3>
-        <DailyJournalTotals entries={allEntries} kassaQoldigi={kassaQoldigi} />
+        <DailyJournalGrid entries={allEntries} onDeleted={() => prihodEntries.refetch()} />
 
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <div>
             <div className="mb-2 flex items-center gap-2"><Banknote className="size-4 text-emerald-600" /><h4 className="text-xs font-bold text-slate-700">Приход</h4></div>
             <QuickEntryForm type="income" date={date} onSaved={() => prihodEntries.refetch()} />
-            <EntryList entries={incomeEntries} onDeleted={() => prihodEntries.refetch()} />
           </div>
           <div>
             <div className="mb-2 flex items-center gap-2"><Banknote className="size-4 text-rose-600" /><h4 className="text-xs font-bold text-slate-700">Расход</h4></div>
             <QuickEntryForm type="expense" date={date} onSaved={() => prihodEntries.refetch()} />
-            <EntryList entries={expenseEntries} onDeleted={() => prihodEntries.refetch()} />
           </div>
         </div>
 
