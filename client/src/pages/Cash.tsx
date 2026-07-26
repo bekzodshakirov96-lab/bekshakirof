@@ -69,12 +69,14 @@ function DailyJournalGrid({
   const timestamp = dateToTimestamp(date);
   const agents = trpc.agents.options.useQuery();
   const agentList = agents.data ?? [];
+  const openingBalanceQuery = trpc.cash.openingBalance.useQuery({ date: timestamp });
   const [drafts, setDrafts] = useState<DraftRow[]>(() => Array.from({ length: DRAFT_ROWS }, emptyDraftRow));
 
   const invalidate = () =>
     Promise.all([
       utils.cash.byDate.invalidate({ date: timestamp }),
       utils.cash.summary.invalidate(),
+      utils.cash.openingBalance.invalidate(),
       utils.kassa.daySummary.invalidate({ date: timestamp }),
       utils.dashboard.overview.invalidate(),
     ]).then(onChanged);
@@ -84,6 +86,12 @@ function DailyJournalGrid({
   const del = trpc.cash.delete.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
 
   const sortedEntries = useMemo(() => [...entries].sort((a, b) => a.id - b.id), [entries]);
+  const openingBalance = openingBalanceQuery.data?.openingBalance ?? 0;
+  const dayNetCash = useMemo(
+    () => entries.reduce((sum, entry) => sum + (entry.type === "income" ? entry.cashAmount : -entry.cashAmount), 0),
+    [entries],
+  );
+  const closingBalance = openingBalance + dayNetCash;
   const totals = useMemo(
     () => JOURNAL_COLUMNS.map(name => entries.filter(entry => entry.category === name).reduce((sum, entry) => sum + entry.cashAmount + entry.terminalAmount + entry.clickAmount, 0)),
     [entries],
@@ -222,6 +230,11 @@ function DailyJournalGrid({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
+          <tr className="border-b-2 border-sky-100 bg-sky-50/70 text-xs font-bold text-sky-900">
+            <td colSpan={REASON_COL} className="px-3 py-2">Boshlang'ich qoldiq (naqd)</td>
+            <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(openingBalance)}</td>
+            <td />
+          </tr>
           {sortedEntries.map((entry, rowIndex) => {
             return (
               <tr key={entry.id} className="text-xs even:bg-slate-50/40">
@@ -400,6 +413,11 @@ function DailyJournalGrid({
             <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(terminalTotal)}</td>
             <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(clickTotal)}</td>
             <td colSpan={2} />
+          </tr>
+          <tr className="border-t-2 border-sky-100 bg-sky-50/70 text-xs font-bold text-sky-900">
+            <td colSpan={REASON_COL} className="px-3 py-2">Yakuniy qoldiq (naqd)</td>
+            <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(closingBalance)}</td>
+            <td />
           </tr>
         </tfoot>
       </table>

@@ -56,6 +56,23 @@ export const cashRouter = router({
     await db.delete(cashEntries).where(eq(cashEntries.id, input.id));
     return { success: true } as const;
   }),
+  /** Tanlangan sanadan oldingi barcha kunlarning naqd (faqat cashAmount — terminal/click
+   * hisobga olinmaydi) qoldig'i — Kunlik jurnalning "Boshlang'ich qoldiq" qatori shundan
+   * boshlanadi va har kun avvalgi kunning yakuniy qoldig'i bilan davom etadi. */
+  openingBalance: businessProcedure.input(z.object({ date: z.number().int() })).query(async ({ input }) => {
+    const db = await requireDb();
+    const dayStart = new Date(input.date);
+    dayStart.setHours(0, 0, 0, 0);
+    const [row] = await db
+      .select({
+        balance: sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' then ${cashEntries.cashAmount} else -${cashEntries.cashAmount} end), 0)`.mapWith(
+          Number,
+        ),
+      })
+      .from(cashEntries)
+      .where(sql`${cashEntries.entryDate} < ${toMySqlDate(dayStart)}`);
+    return { openingBalance: row.balance };
+  }),
   summary: businessProcedure.query(async () => {
     const db = await requireDb();
     const [row] = await db
