@@ -83,4 +83,11 @@ export async function touchLastSignedIn(id: number) {
   await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, id));
 }
 
+/** Foydalanuvchi tanlagan interfeys alifbosini saqlaydi (lotin yoki kirill). */
+export async function setUserLanguage(id: number, language: "latin" | "cyrillic") {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ language }).where(eq(users.id, id));
+}
+
 // TODO: add feature queries here as your schema grows.

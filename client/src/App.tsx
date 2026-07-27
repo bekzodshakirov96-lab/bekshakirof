@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { LanguageProvider } from "@/lib/language";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import DashboardLayout from "./components/DashboardLayout";
@@ -63,12 +64,14 @@ function App() {
         defaultTheme="light"
         switchable
       >
-        <TooltipProvider>
-          <Toaster />
-          <DashboardLayout>
-            <Router />
-          </DashboardLayout>
-        </TooltipProvider>
+        <LanguageProvider>
+          <TooltipProvider>
+            <Toaster />
+            <DashboardLayout>
+              <Router />
+            </DashboardLayout>
+          </TooltipProvider>
+        </LanguageProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

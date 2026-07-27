@@ -58,11 +58,12 @@ Bo'sh MySQL bazasi yarating, so'ng migratsiyalarni qo'llang:
 npx drizzle-kit migrate
 ```
 
-Bu `drizzle/` papkasidagi barcha SQL migratsiyalarni (`0000`, `0001`, `0002`)
+Bu `drizzle/` papkasidagi barcha SQL migratsiyalarni (`0000`–`0003`)
 ketma-ket ishga tushiradi va kerakli jadval/ustunlarning barchasini yaratadi —
 `0002` migratsiyasi joriy kod talab qiladigan barcha jadvallarni (shu jumladan
 `factory_operations`, `stockMovements`, `daily_product_prices`) va
-ustunlarni (`users.agentId`, `products.sortOrder` va h.k.) o'z ichiga oladi.
+ustunlarni (`users.agentId`, `products.sortOrder` va h.k.), `0003` esa
+`users.language` (interfeys alifbosi) ustunini o'z ichiga oladi.
 
 > **Eslatma:** bu buyruq faqat **bo'sh** bazada ishlating. Agar bazada
 > allaqachon eski (masalan avvalgi Manus versiyasidan qolgan) `users` jadvali
@@ -137,7 +138,14 @@ chunki login parollari himoyasiz uzatilmasligi kerak.
 - **Autentifikatsiya:** email + parol (bcrypt bilan xeshlangan), JWT sessiya
   cookie'si — hech qanday tashqi xizmatga bog'liq emas
 - **Fayl saqlash:** local disk (`UPLOADS_DIR`), `/uploads/...` orqali serveriladi
-- **Testlar:** Vitest, `npm test` bilan ishga tushiriladi (49 test)
+- **Testlar:** Vitest, `npm test` bilan ishga tushiriladi (60 test)
+- **Interfeys alifbosi:** har bir foydalanuvchi o'zi uchun **O'zbekcha (lotin)**
+  yoki **Ўзбекча (кирилл)** ni tanlaydi (chap pastdagi hisob menyusidan yoki
+  kirish ekranidan). Tanlov hisobga bog'lanadi (`users.language`), shuning uchun
+  boshqa qurilmadan kirganda ham saqlanib qoladi va faqat foydalanuvchining o'zi
+  o'zgartirmaguncha o'zgarmaydi. Kirill matn qo'lda yozilmaydi — `client/src/lib/translit.ts`
+  lotin matnni avtomatik o'giradi, shuning uchun yangi qo'shilgan matnlar ham
+  qo'shimcha ishsiz ikkala alifboda ishlaydi.
 
 ## Zaxira nusxa olish
 

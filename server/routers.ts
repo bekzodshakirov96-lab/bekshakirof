@@ -99,6 +99,15 @@ export const appRouter = router({
         ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
         return { success: true, user: toSafeUser(user) } as const;
       }),
+    /** Interfeys alifbosini (lotin/kirill) saqlaydi — tanlov foydalanuvchi hisobiga
+     * bog'lanadi, shuning uchun boshqa qurilmada kirganda ham o'sha holatda qoladi. */
+    setLanguage: publicProcedure
+      .input(z.object({ language: z.enum(["latin", "cyrillic"]) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+        await db.setUserLanguage(ctx.user.id, input.language);
+        return { success: true } as const;
+      }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

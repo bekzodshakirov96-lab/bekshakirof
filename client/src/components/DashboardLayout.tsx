@@ -7,8 +7,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useLanguage } from "@/lib/language";
 import {
   Sidebar,
   SidebarContent,
@@ -31,6 +34,7 @@ import {
   Beer,
   Boxes,
   Building2,
+  Check,
   ChevronDown,
   CircleDollarSign,
   Eye,
@@ -130,6 +134,7 @@ function getInitials(name?: string | null) {
 
 function LoginScreen() {
   const { login, loginPending, loginError, register, registerPending, registerError } = useAuth();
+  const { language, setLanguage } = useLanguage();
   const needsSetup = trpc.auth.needsSetup.useQuery();
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [setupForm, setSetupForm] = useState({ name: "", email: "", password: "" });
@@ -170,9 +175,26 @@ function LoginScreen() {
           <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-[#176f9d] to-[#1ca58f] text-white shadow-lg shadow-cyan-950/15">
             <Landmark className="h-6 w-6" />
           </div>
-          <div>
-            <p className="text-lg font-bold tracking-tight text-slate-900">NOKDAUN mchj</p>
+          <div className="min-w-0 flex-1">
+            <p data-no-translit className="text-lg font-bold tracking-tight text-slate-900">NOKDAUN mchj</p>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Moliyaviy boshqaruv</p>
+          </div>
+          {/* Yozuvni tanlash — kirishdan oldin ham ishlaydi, tanlov brauzerda saqlanadi */}
+          <div data-no-translit className="flex shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-0.5 text-[11px] font-semibold">
+            <button
+              type="button"
+              onClick={() => setLanguage("latin")}
+              className={`rounded-lg px-2 py-1 transition-colors ${language === "latin" ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              O‘zb
+            </button>
+            <button
+              type="button"
+              onClick={() => setLanguage("cyrillic")}
+              className={`rounded-lg px-2 py-1 transition-colors ${language === "cyrillic" ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              Ўзб
+            </button>
           </div>
         </div>
         {needsSetup.isLoading ? (
@@ -365,6 +387,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
 function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout: () => void }) {
   const { user } = useAuth();
+  const { language, setLanguage } = useLanguage();
   const [location, setLocation] = useLocation();
   const visibleGroups = menuGroups
     .map(group => ({
@@ -391,7 +414,7 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
               <Landmark className="h-5 w-5" />
             </div>
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <p className="truncate text-[15px] font-bold tracking-tight text-white">NOKDAUN mchj</p>
+              <p data-no-translit className="truncate text-[15px] font-bold tracking-tight text-white">NOKDAUN mchj</p>
               <p className="truncate text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Biznes boshqaruvi</p>
             </div>
           </div>
@@ -440,6 +463,26 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" side="right" className="w-52 rounded-xl p-1.5">
+              <DropdownMenuLabel className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                Yozuv / Ёзув
+              </DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => setLanguage("latin")}
+                className="cursor-pointer rounded-lg"
+                data-no-translit
+              >
+                <Check className={`mr-2 h-4 w-4 ${language === "latin" ? "opacity-100" : "opacity-0"}`} />
+                O‘zbekcha (lotin)
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setLanguage("cyrillic")}
+                className="cursor-pointer rounded-lg"
+                data-no-translit
+              >
+                <Check className={`mr-2 h-4 w-4 ${language === "cyrillic" ? "opacity-100" : "opacity-0"}`} />
+                Ўзбекча (кирилл)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onLogout} className="cursor-pointer rounded-lg text-destructive focus:text-destructive">
                 <LogOut className="mr-2 h-4 w-4" /> Tizimdan chiqish
               </DropdownMenuItem>

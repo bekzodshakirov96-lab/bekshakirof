@@ -32,6 +32,9 @@ export const users = mysqlTable("users", {
   /** role="agent" bo'lganda — bu foydalanuvchi qaysi agent profiliga tegishli ekanini bildiradi;
    * shu orqali uning savdo/KEG kiritishlari faqat o'z nomiga cheklanadi. */
   agentId: int("agentId"),
+  /** Interfeys alifbosi: "latin" — O'zbekcha, "cyrillic" — Ўзбекча.
+   * Har bir foydalanuvchi o'zi tanlaydi; o'zgartirmaguncha saqlanib qoladi. */
+  language: mysqlEnum("language", ["latin", "cyrillic"]).default("latin").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

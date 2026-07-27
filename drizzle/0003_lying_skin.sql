@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `language` enum('latin','cyrillic') DEFAULT 'latin' NOT NULL;
