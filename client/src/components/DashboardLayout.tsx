@@ -87,6 +87,11 @@ const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
       { icon: BarChart3, label: "Sotuv bo‘yicha hisobot", path: "/sotuv-hisoboti" },
       { icon: WalletCards, label: "KASSA", path: "/kassa" },
       { icon: BarChart3, label: "Kassa hisobotlari", path: "/kassa-hisoboti" },
+    ],
+  },
+  {
+    label: "Ombor",
+    items: [
       { icon: PackageOpen, label: "Mahsulotlar", path: "/mahsulotlar", roles: ["admin", "accountant", "sklad"] },
       { icon: Warehouse, label: "Sklad", path: "/sklad", roles: ["admin", "accountant", "sklad"] },
       { icon: BarChart3, label: "Sklad hisoboti", path: "/sklad-hisoboti", roles: ["admin", "accountant", "sklad"] },
