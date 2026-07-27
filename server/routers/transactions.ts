@@ -7,6 +7,8 @@ import {
   normalizeContainerType,
   reconcileTransactionContainers,
 } from "../containerAccounting";
+import { summarizeProfit } from "../costing";
+import { fetchAverageCosts } from "../costingQueries";
 import { requireDb } from "../db";
 import { reconcileTransactionStock } from "../stockAccounting";
 
@@ -34,6 +36,49 @@ const listSchema = z
   .default({ sortBy: "transactionDate", sortOrder: "desc", page: 1, pageSize: 25 });
 
 export const transactionsRouter = router({
+  /**
+   * Tanlangan filter bo'yicha foyda hisobi: aylanma − sotilgan tovar tannarxi.
+   *
+   * `list` faqat joriy sahifani qaytaradi, foyda esa butun tanlov bo'yicha
+   * kerak — shuning uchun alohida so'rov. Tannarxi kiritilmagan savdolar
+   * alohida sanaladi, chunki ular foydani to'liq ko'rsatmaydi.
+   */
+  profitSummary: businessProcedure.input(listSchema).query(async ({ input }) => {
+    const db = await requireDb();
+    const conditions = [
+      input.agentId ? eq(transactions.agentId, input.agentId) : undefined,
+      input.clientId ? eq(transactions.clientId, input.clientId) : undefined,
+      input.productId ? eq(transactions.productId, input.productId) : undefined,
+      input.from ? sql`${transactions.transactionDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
+      input.to ? sql`${transactions.transactionDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+      input.search?.trim()
+        ? or(
+            like(transactions.productName, `%${input.search.trim()}%`),
+            like(clients.name, `%${input.search.trim()}%`),
+            like(agents.name, `%${input.search.trim()}%`),
+          )
+        : undefined,
+    ].filter(Boolean);
+    const where = conditions.length ? and(...conditions) : undefined;
+    const rows = await db
+      .select({
+        totalAmount: transactions.totalAmount,
+        quantity: transactions.quantity,
+        unitCost: transactions.unitCost,
+      })
+      .from(transactions)
+      .leftJoin(agents, eq(transactions.agentId, agents.id))
+      .leftJoin(clients, eq(transactions.clientId, clients.id))
+      .where(where);
+
+    return summarizeProfit(
+      rows.map(row => ({
+        totalAmount: row.totalAmount,
+        quantity: Number(row.quantity),
+        unitCost: row.unitCost,
+      })),
+    );
+  }),
   list: businessProcedure.input(listSchema).query(async ({ input }) => {
     const db = await requireDb();
     const conditions = [
@@ -229,6 +274,7 @@ export const transactionsRouter = router({
         if (product.containerType) throw new Error("KEG/tara mahsulotlarini Savdo jurnalida sotib bo‘lmaydi — Tezkor KEG savdosi bo‘limidan foydalaning.");
         const totalAmount = Math.round(input.quantity * input.salePrice);
         const transactionDate = new Date(input.transactionDate);
+        const unitCosts = await fetchAverageCosts(tx, [product.id]);
         const [created] = await tx
           .insert(transactions)
           .values({
@@ -242,6 +288,7 @@ export const transactionsRouter = router({
             quantity: input.quantity.toFixed(3),
             currentPrice: product.price,
             salePrice: input.salePrice,
+            unitCost: unitCosts.get(product.id) ?? 0,
             totalAmount,
             cashPayment: input.cashPayment,
             terminalPayment: input.terminalPayment,
@@ -339,6 +386,8 @@ export const transactionsRouter = router({
         let remainingTerminal = input.terminalPayment;
         let remainingClick = input.clickPayment;
         const transactionDate = new Date(input.transactionDate);
+        // Tannarx nusxasi savatdagi barcha mahsulotlar uchun bir marta olinadi.
+        const unitCosts = await fetchAverageCosts(tx, input.items.map(item => item.productId));
         let cartTotal = 0;
         const results: Array<{ productName: string; totalAmount: number }> = [];
 
@@ -373,6 +422,7 @@ export const transactionsRouter = router({
               quantity: item.quantity.toFixed(3),
               currentPrice: product.price,
               salePrice: item.salePrice,
+              unitCost: unitCosts.get(product.id) ?? 0,
               totalAmount,
               cashPayment: cashTake,
               terminalPayment: terminalTake,
@@ -441,6 +491,8 @@ export const transactionsRouter = router({
         if (product.containerType) throw new Error("KEG/tara mahsulotlarini Savdo jurnalida sotib bo‘lmaydi — Tezkor KEG savdosi bo‘limidan foydalaning.");
         const totalAmount = Math.round(input.quantity * input.salePrice);
         const transactionDate = new Date(input.transactionDate);
+        // Tahrirlashda mahsulot almashtirilgan bo'lishi mumkin — tannarx qaytadan olinadi.
+        const unitCosts = await fetchAverageCosts(tx, [product.id]);
         await tx
           .update(transactions)
           .set({
@@ -453,6 +505,7 @@ export const transactionsRouter = router({
             quantity: input.quantity.toFixed(3),
             currentPrice: product.price,
             salePrice: input.salePrice,
+            unitCost: unitCosts.get(product.id) ?? 0,
             totalAmount,
             cashPayment: input.cashPayment,
             terminalPayment: input.terminalPayment,

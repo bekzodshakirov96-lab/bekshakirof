@@ -118,6 +118,10 @@ export const transactions = mysqlTable(
     quantity: varchar("quantity", { length: 255 }).default("0").notNull(),
     currentPrice: int("currentPrice").default(0).notNull(),
     salePrice: int("salePrice").default(0).notNull(),
+    /** Sotuv paytidagi o'rtacha tannarx (bitta dona uchun) — foyda hisobi shu
+     * ustunga tayanadi. Nusxa sifatida saqlanadi: keyin tannarx o'zgarsa ham
+     * eski savdolarning foydasi o'zgarmaydi. 0 = tannarx ma'lum emas. */
+    unitCost: int("unitCost").default(0).notNull(),
     totalAmount: int("totalAmount").default(0).notNull(),
     cashPayment: int("cashPayment").default(0).notNull(),
     terminalPayment: int("terminalPayment").default(0).notNull(),
@@ -207,6 +211,9 @@ export const stockMovements = mysqlTable(
     productId: int("productId").references(() => products.id, { onDelete: "cascade" }).notNull(),
     movementType: mysqlEnum("movementType", ["in", "out"]).notNull(),
     quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull(),
+    /** Kirim uchun — bitta dona tannarxi (so'm). 0 = narx kiritilmagan, bunday
+     * kirimlar o'rtacha tannarx hisobiga qo'shilmaydi. */
+    unitCost: int("unitCost").default(0).notNull(),
     reason: varchar("reason", { length: 255 }),
     transactionId: int("transactionId").references(() => transactions.id, { onDelete: "cascade" }),
     isAutomatic: boolean("isAutomatic").default(false).notNull(),

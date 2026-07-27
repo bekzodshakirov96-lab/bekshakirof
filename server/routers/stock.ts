@@ -124,6 +124,9 @@ export const stockRouter = router({
             z.object({
               productId: z.number().int().positive(),
               quantity: z.number().positive().max(1_000_000),
+              /** Bitta dona tannarxi — foyda hisobi shu narxga tayanadi.
+               * Ixtiyoriy: kiritilmasa, bu kirim o'rtacha tannarxga qo'shilmaydi. */
+              unitCost: z.number().int().min(0).max(1_000_000_000).optional(),
             }),
           )
           .min(1, "Kamida bitta mahsulot tanlang.")
@@ -142,6 +145,7 @@ export const stockRouter = router({
             productId: item.productId,
             movementType: "in",
             quantity: item.quantity.toFixed(3),
+            unitCost: item.unitCost ?? 0,
             reason: "Qo'lda kirim",
             isAutomatic: false,
             movementDate,

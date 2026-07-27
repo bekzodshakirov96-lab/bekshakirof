@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDate, formatNumber, localDateInputValue, sanitizeDecimalInput } from "@/lib/format";
+import { formatDate, formatMoney, formatNumber, localDateInputValue, sanitizeDecimalInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { AlertTriangle, Package, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -38,7 +38,7 @@ function MinLevelCell({ productId, minStockLevel }: { productId: number; minStoc
   );
 }
 
-type StockCartLine = { key: string; productId: number; productName: string; unit: string; quantity: string };
+type StockCartLine = { key: string; productId: number; productName: string; unit: string; quantity: string; unitCost: string };
 
 /** Kirim uchun: bir nechta mahsulotni checkbox orqali tanlab, har biriga alohida miqdor kiritish. */
 function StockInBatchForm() {
@@ -80,11 +80,11 @@ function StockInBatchForm() {
       setCart(current => current.filter(line => line.productId !== product.id));
       return;
     }
-    setCart(current => [...current, { key: `${product.id}-${Date.now()}`, productId: product.id, productName: product.name, unit: product.unit, quantity: "" }]);
+    setCart(current => [...current, { key: `${product.id}-${Date.now()}`, productId: product.id, productName: product.name, unit: product.unit, quantity: "", unitCost: "" }]);
   }
 
-  function updateLineQuantity(key: string, quantity: string) {
-    setCart(current => current.map(line => (line.key === key ? { ...line, quantity } : line)));
+  function updateLine(key: string, patch: Partial<StockCartLine>) {
+    setCart(current => current.map(line => (line.key === key ? { ...line, ...patch } : line)));
   }
 
   function removeLine(key: string) {
@@ -110,7 +110,11 @@ function StockInBatchForm() {
     stockInBatch.mutate({
       movementDate: dateToTimestamp(date),
       note: note || undefined,
-      items: cart.map(line => ({ productId: line.productId, quantity: Number(line.quantity) })),
+      items: cart.map(line => ({
+        productId: line.productId,
+        quantity: Number(line.quantity),
+        unitCost: Number(line.unitCost || 0),
+      })),
     });
   }
 
@@ -161,7 +165,7 @@ function StockInBatchForm() {
         </div>
       ) : (
         <Table className="finance-table">
-          <TableHeader><TableRow><TableHead>Mahsulot</TableHead><TableHead className="w-40 text-right">Miqdor</TableHead><TableHead className="w-10" /></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Mahsulot</TableHead><TableHead className="w-40 text-right">Miqdor</TableHead><TableHead className="w-44 text-right">Olingan narx (1 dona)</TableHead><TableHead className="w-36 text-right">Jami</TableHead><TableHead className="w-10" /></TableRow></TableHeader>
           <TableBody>
             {cart.map(line => (
               <TableRow key={line.key}>
@@ -173,9 +177,22 @@ function StockInBatchForm() {
                     inputMode="decimal"
                     placeholder="0"
                     value={line.quantity}
-                    onChange={event => updateLineQuantity(line.key, sanitizeDecimalInput(event.target.value))}
+                    onChange={event => updateLine(line.key, { quantity: sanitizeDecimalInput(event.target.value) })}
                   />
                   <span className="mt-1 block text-[11px] text-muted-foreground">{line.unit}</span>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Input
+                    className="finance-input text-right"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Ixtiyoriy"
+                    value={line.unitCost}
+                    onChange={event => updateLine(line.key, { unitCost: event.target.value.replace(/[^0-9]/g, "") })}
+                  />
+                </TableCell>
+                <TableCell className="text-right font-semibold tabular-nums text-muted-foreground">
+                  {Number(line.unitCost || 0) > 0 ? formatMoney(Number(line.quantity || 0) * Number(line.unitCost)) : "—"}
                 </TableCell>
                 <TableCell><button type="button" aria-label="O'chirish" className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600" onClick={() => removeLine(line.key)}><Trash2 className="size-4" /></button></TableCell>
               </TableRow>
@@ -191,6 +208,12 @@ function StockInBatchForm() {
           {stockInBatch.isPending ? "Saqlanmoqda..." : cart.length > 1 ? `${cart.length} ta mahsulot kirim qilish` : "Kirim qo'shish"}
         </Button>
       </div>
+      {cart.some(line => Number(line.unitCost || 0) <= 0) && (
+        <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+          Narxi kiritilmagan kirimlar tannarx va foyda hisobiga qo'shilmaydi — foyda hisobotini
+          to'liq ko'rish uchun olingan narxni yozing.
+        </p>
+      )}
       {!canSubmit && !stockInBatch.isPending && blockingReasons.length > 0 && (
         <ul className="mt-2 text-right text-xs font-medium text-rose-600">
           {blockingReasons.map(reason => <li key={reason}>{reason}</li>)}
