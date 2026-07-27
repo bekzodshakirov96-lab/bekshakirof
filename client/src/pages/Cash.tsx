@@ -218,7 +218,7 @@ function DailyJournalGrid({
         }
         const payload = {
           entryDate: timestamp, type, category,
-          agentId: type === "income" && draft.agentId ? Number(draft.agentId) : undefined,
+          agentId: draft.agentId ? Number(draft.agentId) : undefined,
           description: type === "expense" ? draft.reason.trim() || undefined : undefined,
           cashAmount: amount,
           terminalAmount: Math.round(Number(draft.terminal || 0)),
@@ -345,24 +345,22 @@ function DailyJournalGrid({
             return (
               <tr key={entry.id} className="text-xs even:bg-slate-50/40">
                 <td className="px-1.5 py-1">
-                  {entry.type === "income" ? (
-                    <div>
-                      <select
-                        key={`agent-${entry.id}-${entry.agentId ?? ""}`}
-                        data-journal-cell={`${rowIndex}-0`}
-                        defaultValue={entry.agentId != null ? String(entry.agentId) : ""}
-                        className={selectInputClass}
-                        onChange={event => commitExistingAgent(entry, event.target.value)}
-                        onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}
-                      >
-                        <option value="">Агент tanlanmagan</option>
-                        {agentList.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-                      </select>
-                      {entry.agentId == null && entry.description ? (
-                        <p className="truncate px-1.5 pt-0.5 text-[10px] text-slate-400">{entry.description}</p>
-                      ) : null}
-                    </div>
-                  ) : <span className={emptyCellClassLeft}>—</span>}
+                  <div>
+                    <select
+                      key={`agent-${entry.id}-${entry.agentId ?? ""}`}
+                      data-journal-cell={`${rowIndex}-0`}
+                      defaultValue={entry.agentId != null ? String(entry.agentId) : ""}
+                      className={selectInputClass}
+                      onChange={event => commitExistingAgent(entry, event.target.value)}
+                      onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}
+                    >
+                      <option value="">Агент tanlanmagan</option>
+                      {agentList.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                    </select>
+                    {entry.agentId == null && entry.description ? (
+                      <p className="truncate px-1.5 pt-0.5 text-[10px] text-slate-400">{entry.description}</p>
+                    ) : null}
+                  </div>
                 </td>
                 {JOURNAL_COLUMNS.map((name, colOffset) => (
                   <td key={name} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40" : ""}`}>
