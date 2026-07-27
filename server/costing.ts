@@ -48,6 +48,20 @@ export type ProfitLine = {
   unitCost: number;
 };
 
+/**
+ * Tovar uchun to'lovni bildiruvchi rasxod toifalari.
+ *
+ * Bu toifalar operatsion xarajatlarga **qo'shilmaydi**: sotilgan tovarning
+ * qiymati allaqachon tannarx (COGS) orqali ayirilgan. Ikkalasini ham ayirsak,
+ * bir xil pul ikki marta hisobdan chiqib, foyda haqiqatdan past ko'rinadi.
+ */
+export const GOODS_PAYMENT_CATEGORIES = ["Завод", "Zavod", "Tovar uchun to'lov"];
+
+export function isGoodsPaymentCategory(category: string): boolean {
+  const normalized = category.trim().toLowerCase();
+  return GOODS_PAYMENT_CATEGORIES.some(name => name.toLowerCase() === normalized);
+}
+
 export type ProfitSummary = {
   revenue: number;
   /** Sotilgan tovarning tannarxi (faqat tannarxi ma'lum savdolar bo'yicha). */
@@ -97,5 +111,47 @@ export function summarizeProfit(lines: ProfitLine[]): ProfitSummary {
     revenueWithCost,
     linesWithoutCost,
     revenueWithoutCost,
+  };
+}
+
+export type ExpenseLine = { category: string; amount: number };
+
+export type OperatingExpenses = {
+  /** Sof foydadan ayiriladigan xarajatlar jami. */
+  total: number;
+  /** Tovar uchun to'lov sifatida hisobdan chiqarilgan summa — shaffoflik uchun. */
+  excludedGoodsPayments: number;
+};
+
+/**
+ * Rasxod yozuvlaridan operatsion xarajatni yig'adi.
+ * Tovar uchun to'lovlar (COGS'da hisobga olingan) chetlab o'tiladi.
+ */
+export function summarizeOperatingExpenses(lines: ExpenseLine[]): OperatingExpenses {
+  let total = 0;
+  let excludedGoodsPayments = 0;
+  for (const line of lines) {
+    if (isGoodsPaymentCategory(line.category)) excludedGoodsPayments += line.amount;
+    else total += line.amount;
+  }
+  return { total, excludedGoodsPayments };
+}
+
+/**
+ * To'liq foyda-zarar hisobi:
+ *   aylanma − tannarx = yalpi foyda
+ *   yalpi foyda − operatsion xarajat = sof foyda
+ */
+export function summarizeNetProfit(profit: ProfitSummary, expenses: OperatingExpenses) {
+  const netProfit = profit.profit - expenses.total;
+  return {
+    ...profit,
+    /** Aylanma − tannarx (xarajatlar ayirilmagan). */
+    grossProfit: profit.profit,
+    operatingExpenses: expenses.total,
+    excludedGoodsPayments: expenses.excludedGoodsPayments,
+    netProfit,
+    /** Sof foyda foizi — butun aylanmaga nisbatan. */
+    netMarginPercent: profit.revenue > 0 ? (netProfit / profit.revenue) * 100 : 0,
   };
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { averageCostByProduct, summarizeProfit } from "./costing";
+import {
+  averageCostByProduct,
+  summarizeNetProfit,
+  summarizeOperatingExpenses,
+  summarizeProfit,
+} from "./costing";
 
 describe("averageCostByProduct", () => {
   it("o'rtacha tortilgan narxni hisoblaydi", () => {
@@ -80,5 +85,57 @@ describe("summarizeProfit", () => {
     const result = summarizeProfit([]);
     expect(result.profit).toBe(0);
     expect(result.marginPercent).toBe(0);
+  });
+});
+
+describe("summarizeOperatingExpenses", () => {
+  it("oddiy xarajatlarni qo'shadi", () => {
+    const result = summarizeOperatingExpenses([
+      { category: "Ish haqi", amount: 15_000_000 },
+      { category: "Ombor ijarasi", amount: 2_500_000 },
+    ]);
+    expect(result.total).toBe(17_500_000);
+    expect(result.excludedGoodsPayments).toBe(0);
+  });
+
+  it("tovar uchun to'lovni xarajatga qo'shmaydi (ikki marta sanamaslik uchun)", () => {
+    const result = summarizeOperatingExpenses([
+      { category: "Ish haqi", amount: 15_000_000 },
+      { category: "Завод", amount: 55_000_000 },
+    ]);
+    expect(result.total).toBe(15_000_000);
+    expect(result.excludedGoodsPayments).toBe(55_000_000);
+  });
+
+  it("toifa nomini katta-kichik harfdan qat'i nazar taniydi", () => {
+    const result = summarizeOperatingExpenses([{ category: "  zavod ", amount: 1_000 }]);
+    expect(result.total).toBe(0);
+    expect(result.excludedGoodsPayments).toBe(1_000);
+  });
+});
+
+describe("summarizeNetProfit", () => {
+  it("yalpi foydadan xarajatlarni ayirib sof foydani beradi", () => {
+    const profit = summarizeProfit([{ totalAmount: 105_869_000, quantity: 1, unitCost: 62_000_000 }]);
+    const expenses = summarizeOperatingExpenses([
+      { category: "Ish haqi", amount: 15_000_000 },
+      { category: "Ombor ijarasi", amount: 2_500_000 },
+      { category: "Transport xarajatlari", amount: 800_000 },
+      { category: "Ofis xarajatlari", amount: 350_000 },
+    ]);
+    const result = summarizeNetProfit(profit, expenses);
+
+    expect(result.grossProfit).toBe(43_869_000);
+    expect(result.operatingExpenses).toBe(18_650_000);
+    expect(result.netProfit).toBe(25_219_000);
+  });
+
+  it("xarajat yalpi foydadan katta bo'lsa zarar chiqaradi", () => {
+    const profit = summarizeProfit([{ totalAmount: 1_000_000, quantity: 1, unitCost: 900_000 }]);
+    const expenses = summarizeOperatingExpenses([{ category: "Ish haqi", amount: 500_000 }]);
+    const result = summarizeNetProfit(profit, expenses);
+    expect(result.grossProfit).toBe(100_000);
+    expect(result.netProfit).toBe(-400_000);
+    expect(result.netMarginPercent).toBeCloseTo(-40, 5);
   });
 });

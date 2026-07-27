@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, clients, products, transactions } from "../../drizzle/schema";
+import { agents, cashEntries, clients, products, transactions } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure, requireOwnAgent, salesProcedure } from "../access";
 import {
   normalizeContainerType,
   reconcileTransactionContainers,
 } from "../containerAccounting";
-import { summarizeProfit } from "../costing";
+import { summarizeNetProfit, summarizeOperatingExpenses, summarizeProfit } from "../costing";
 import { fetchAverageCosts } from "../costingQueries";
 import { requireDb } from "../db";
 import { reconcileTransactionStock } from "../stockAccounting";
@@ -71,13 +71,40 @@ export const transactionsRouter = router({
       .leftJoin(clients, eq(transactions.clientId, clients.id))
       .where(where);
 
-    return summarizeProfit(
+    const profit = summarizeProfit(
       rows.map(row => ({
         totalAmount: row.totalAmount,
         quantity: Number(row.quantity),
         unitCost: row.unitCost,
       })),
     );
+
+    // Operatsion xarajatlar faqat sana bo'yicha ma'noga ega: ish haqi, ijara va
+    // gaz bitta agent yoki mijozga bo'linmaydi. Shu sababli agent/mijoz/mahsulot
+    // filtri qo'yilganda sof foyda ko'rsatilmaydi.
+    const hasNonDateFilter = Boolean(input.agentId || input.clientId || input.productId || input.search?.trim());
+    if (hasNonDateFilter) {
+      return { ...summarizeNetProfit(profit, { total: 0, excludedGoodsPayments: 0 }), expensesApplicable: false };
+    }
+
+    const expenseRows = await db
+      .select({
+        category: cashEntries.category,
+        amount: sql<number>`${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount}`,
+      })
+      .from(cashEntries)
+      .where(
+        and(
+          eq(cashEntries.type, "expense"),
+          input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
+          input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+        ),
+      );
+
+    const expenses = summarizeOperatingExpenses(
+      expenseRows.map(row => ({ category: row.category, amount: Number(row.amount) })),
+    );
+    return { ...summarizeNetProfit(profit, expenses), expensesApplicable: true };
   }),
   list: businessProcedure.input(listSchema).query(async ({ input }) => {
     const db = await requireDb();

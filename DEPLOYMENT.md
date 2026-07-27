@@ -141,7 +141,7 @@ chunki login parollari himoyasiz uzatilmasligi kerak.
 - **Autentifikatsiya:** email + parol (bcrypt bilan xeshlangan), JWT sessiya
   cookie'si — hech qanday tashqi xizmatga bog'liq emas
 - **Fayl saqlash:** local disk (`UPLOADS_DIR`), `/uploads/...` orqali serveriladi
-- **Testlar:** Vitest, `npm test` bilan ishga tushiriladi (74 test)
+- **Testlar:** Vitest, `npm test` bilan ishga tushiriladi (79 test)
 - **Interfeys alifbosi:** har bir foydalanuvchi o'zi uchun **O'zbekcha (lotin)**
   yoki **Ўзбекча (кирилл)** ni tanlaydi (chap pastdagi hisob menyusidan yoki
   kirish ekranidan). Tanlov hisobga bog'lanadi (`users.language`), shuning uchun

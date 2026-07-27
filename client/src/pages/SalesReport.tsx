@@ -143,34 +143,67 @@ export default function SalesReport() {
   return <div className="mx-auto w-full max-w-[1650px]">
     <PageHeader eyebrow="Hisobot" title="Sotuv bo‘yicha hisobot" description="Barcha savdo operatsiyalarini ko‘rish, qidirish, filtrlash va eksport qilish." action={<ExportMenu onExcel={() => exportReport("xlsx")} onPdf={() => exportReport("pdf")} isLoading={isExporting} disabled={journal.isLoading} />} />
 
-    <SectionCard title="Foyda hisobi" description="Tanlangan filter bo‘yicha aylanma, tannarx va foyda.">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <SectionCard title="Foyda–zarar hisobi" description="Aylanmadan tannarx, so‘ng operatsion xarajatlar ayirilib sof foyda chiqadi.">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <div className="rounded-2xl border border-border bg-muted/60 p-4">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Aylanma</p>
           <p className="mt-1 text-lg font-bold tabular-nums text-foreground">{formatMoney(profit.data?.revenue ?? 0)}</p>
         </div>
         <div className="rounded-2xl border border-border bg-muted/60 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sotilgan tovar tannarxi</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">− Sotilgan tovar tannarxi</p>
           <p className="mt-1 text-lg font-bold tabular-nums text-rose-600 dark:text-rose-400">{formatMoney(profit.data?.cost ?? 0)}</p>
         </div>
-        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Foyda</p>
-          <p className={`mt-1 text-lg font-bold tabular-nums ${(profit.data?.profit ?? 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-            {formatMoney(profit.data?.profit ?? 0)}
-          </p>
-        </div>
         <div className="rounded-2xl border border-border bg-muted/60 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Foyda foizi</p>
-          <p className={`mt-1 text-lg font-bold tabular-nums ${(profit.data?.marginPercent ?? 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-            {(profit.data?.marginPercent ?? 0).toFixed(1)}%
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">= Yalpi foyda</p>
+          <p className={`mt-1 text-lg font-bold tabular-nums ${(profit.data?.grossProfit ?? 0) >= 0 ? "text-foreground" : "text-rose-600 dark:text-rose-400"}`}>
+            {formatMoney(profit.data?.grossProfit ?? 0)}
           </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">Xarajatlar ayirilmagan</p>
         </div>
       </div>
+
+      {profit.data?.expensesApplicable === false ? (
+        <p className="mt-3 rounded-xl border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+          Agent, mijoz yoki mahsulot bo‘yicha filtr qo‘yilgan. Ish haqi, ijara va shunga o‘xshash
+          xarajatlarni bitta agent yoki mijozga bo‘lib bo‘lmaydi — shuning uchun sof foyda faqat
+          sana bo‘yicha (yoki filtrsiz) ko‘rsatiladi.
+        </p>
+      ) : (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-muted/60 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">− Operatsion xarajatlar</p>
+            <p className="mt-1 text-lg font-bold tabular-nums text-rose-600 dark:text-rose-400">{formatMoney(profit.data?.operatingExpenses ?? 0)}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">Ish haqi, ijara, gaz, transport…</p>
+          </div>
+          <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">= Sof foyda</p>
+            <p className={`mt-1 text-xl font-bold tabular-nums ${(profit.data?.netProfit ?? 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+              {formatMoney(profit.data?.netProfit ?? 0)}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-border bg-muted/60 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sof foyda foizi</p>
+            <p className={`mt-1 text-lg font-bold tabular-nums ${(profit.data?.netMarginPercent ?? 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+              {(profit.data?.netMarginPercent ?? 0).toFixed(1)}%
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">Aylanmaga nisbatan</p>
+          </div>
+        </div>
+      )}
+
+      {(profit.data?.excludedGoodsPayments ?? 0) > 0 && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Zavodga tovar uchun to‘langan {formatMoney(profit.data?.excludedGoodsPayments ?? 0)} xarajatlarga
+          qo‘shilmadi — u summa tovar tannarxida allaqachon hisobga olingan (aks holda bir pul ikki
+          marta ayirilardi).
+        </p>
+      )}
       {(profit.data?.linesWithoutCost ?? 0) > 0 && (
         <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
           {profit.data?.linesWithoutCost} ta savdoda ({formatMoney(profit.data?.revenueWithoutCost ?? 0)}) tannarx
-          yozilmagan — ular foyda hisobiga kirmadi. Tannarx Sklad → Kirim qo‘shishda “Olingan narx”
-          yozilganda paydo bo‘ladi va shundan keyingi savdolarga qo‘llanadi.
+          yozilmagan — ular yalpi foyda hisobiga kirmadi, shuning uchun sof foyda ham to‘liq emas.
+          Tannarx Sklad → Kirim qo‘shishda “Olingan narx” yozilganda paydo bo‘ladi va shundan keyingi
+          savdolarga qo‘llanadi.
         </p>
       )}
     </SectionCard>
