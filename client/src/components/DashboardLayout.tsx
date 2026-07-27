@@ -142,8 +142,15 @@ function LoginScreen() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#edf3f8] px-4">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_18%,rgba(32,116,162,0.14),transparent_31%),radial-gradient(circle_at_88%_78%,rgba(31,166,147,0.12),transparent_30%)]" />
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#eef4f8] px-4">
+      {/* Jonli fon: sekin suzuvchi, xiralashgan gradient sharlar (aurora uslubi) */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="login-blob absolute -left-40 -top-40 h-[560px] w-[560px] rounded-full bg-gradient-to-br from-cyan-400/45 to-teal-300/30 blur-3xl" />
+        <div className="login-blob login-blob-2 absolute -right-32 top-1/4 h-[480px] w-[480px] rounded-full bg-gradient-to-br from-sky-400/40 to-emerald-300/25 blur-3xl" />
+        <div className="login-blob login-blob-3 absolute -bottom-44 left-1/3 h-[600px] w-[600px] rounded-full bg-gradient-to-br from-teal-300/35 to-cyan-500/25 blur-3xl" />
+      </div>
+      {/* Nozik grid tekstura — chetlarga qarab so'nadi */}
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(15,23,42,0.035)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.035)_1px,transparent_1px)] bg-[size:44px_44px] [mask-image:radial-gradient(ellipse_at_center,black_35%,transparent_75%)]" />
       <div className="relative w-full max-w-md rounded-[28px] border border-white/80 bg-white/90 p-8 shadow-[0_24px_80px_rgba(19,50,77,0.16)] backdrop-blur-xl sm:p-10">
         <div className="mb-8 flex items-center gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-[#176f9d] to-[#1ca58f] text-white shadow-lg shadow-cyan-950/15">
