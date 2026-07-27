@@ -248,6 +248,36 @@ export const factoryOperations = mysqlTable(
   ],
 );
 
+/**
+ * Butilka harakati — yig'ilgan bo'sh butilkalarni zavodga sotish hisobi.
+ *
+ * Ikki xil yozuv bir jadvalda yuritiladi, chunki ular bitta hisob-kitobning
+ * (zavod qarzi) ikki tomoni:
+ *   - "sent"    — zavodga butilka yuborildi, zavod qarzi shu summaga ortadi
+ *   - "payment" — zavod pul berdi, qarz shu summaga kamayadi
+ *
+ * `unitPrice` har bir yozuvda saqlanadi: narx vaqt o'tishi bilan o'zgarsa ham
+ * eski yozuvlar o'sha kungi narx bo'yicha hisoblangan bo'lib qoladi.
+ */
+export const bottleMovements = mysqlTable(
+  "bottle_movements",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    movementDate: timestamp("movementDate").notNull(),
+    movementType: mysqlEnum("movementType", ["sent", "payment"]).notNull(),
+    /** Faqat "sent" uchun — yuborilgan butilka soni. */
+    quantity: int("quantity").default(0).notNull(),
+    /** Faqat "sent" uchun — bitta butilka narxi (so'm). */
+    unitPrice: int("unitPrice").default(0).notNull(),
+    /** "sent" uchun quantity × unitPrice, "payment" uchun olingan summa. */
+    amount: bigint("amount", { mode: "number" }).default(0).notNull(),
+    note: varchar("note", { length: 1_000 }),
+    createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("bottle_movements_date_idx").on(table.movementDate)],
+);
+
 export const importHistory = mysqlTable(
   "import_history",
   {

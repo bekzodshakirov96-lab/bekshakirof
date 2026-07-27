@@ -58,12 +58,13 @@ Bo'sh MySQL bazasi yarating, so'ng migratsiyalarni qo'llang:
 npx drizzle-kit migrate
 ```
 
-Bu `drizzle/` papkasidagi barcha SQL migratsiyalarni (`0000`–`0003`)
+Bu `drizzle/` papkasidagi barcha SQL migratsiyalarni (`0000`–`0004`)
 ketma-ket ishga tushiradi va kerakli jadval/ustunlarning barchasini yaratadi —
 `0002` migratsiyasi joriy kod talab qiladigan barcha jadvallarni (shu jumladan
 `factory_operations`, `stockMovements`, `daily_product_prices`) va
-ustunlarni (`users.agentId`, `products.sortOrder` va h.k.), `0003` esa
-`users.language` (interfeys alifbosi) ustunini o'z ichiga oladi.
+ustunlarni (`users.agentId`, `products.sortOrder` va h.k.), `0003`
+`users.language` (interfeys alifbosi) ustunini, `0004` esa
+`bottle_movements` (butilka harakati) jadvalini o'z ichiga oladi.
 
 > **Eslatma:** bu buyruq faqat **bo'sh** bazada ishlating. Agar bazada
 > allaqachon eski (masalan avvalgi Manus versiyasidan qolgan) `users` jadvali

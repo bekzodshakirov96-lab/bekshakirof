@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
-import { containerMovements, factoryOperations, products, stockMovements } from "../../drizzle/schema";
+import { bottleMovements, containerMovements, factoryOperations, products, stockMovements } from "../../drizzle/schema";
 import { skladProcedure } from "../access";
 import { normalizeContainerType } from "../containerAccounting";
 import { requireDb } from "../db";
@@ -237,5 +237,113 @@ export const factoryRouter = router({
       if (existing.stockMovementId) await tx.delete(stockMovements).where(eq(stockMovements.id, existing.stockMovementId));
     });
     return { success: true };
+  }),
+
+  /**
+   * Butilka harakati — yig'ilgan bo'sh butilkalarni zavodga sotish hisobi.
+   * Kassa bilan bog'lanmagan: zavoddan olingan pul shu yerda alohida yuritiladi.
+   */
+  bottles: router({
+    /** Umumiy holat: nechta butilka yuborilgan, qancha ishlangan, qancha pul
+     * olingan va zavod qancha qarzdor. */
+    summary: skladProcedure.query(async () => {
+      const db = await requireDb();
+      const [row] = await db
+        .select({
+          sentQuantity: sql<number>`coalesce(sum(case when ${bottleMovements.movementType} = 'sent' then ${bottleMovements.quantity} else 0 end), 0)`,
+          sentAmount: sql<number>`coalesce(sum(case when ${bottleMovements.movementType} = 'sent' then ${bottleMovements.amount} else 0 end), 0)`,
+          paidAmount: sql<number>`coalesce(sum(case when ${bottleMovements.movementType} = 'payment' then ${bottleMovements.amount} else 0 end), 0)`,
+        })
+        .from(bottleMovements);
+      const sentQuantity = Number(row?.sentQuantity ?? 0);
+      const sentAmount = Number(row?.sentAmount ?? 0);
+      const paidAmount = Number(row?.paidAmount ?? 0);
+      return { sentQuantity, sentAmount, paidAmount, outstanding: sentAmount - paidAmount };
+    }),
+
+    /** Yozuvlar ro'yxati — eng yangisi yuqorida, har biriga o'sha paytdagi
+     * zavod qarzi (yuguruvchi qoldiq) hisoblab qo'shiladi. */
+    list: skladProcedure
+      .input(z.object({ limit: z.number().int().positive().max(500).default(100) }).optional())
+      .query(async ({ input }) => {
+        const db = await requireDb();
+        const rows = await db
+          .select({
+            id: bottleMovements.id,
+            movementDate: bottleMovements.movementDate,
+            movementType: bottleMovements.movementType,
+            quantity: bottleMovements.quantity,
+            unitPrice: bottleMovements.unitPrice,
+            amount: bottleMovements.amount,
+            note: bottleMovements.note,
+          })
+          .from(bottleMovements)
+          .orderBy(asc(bottleMovements.movementDate), asc(bottleMovements.id));
+
+        // Qoldiqni eskisidan yangisiga qarab yig'amiz, so'ng ko'rsatish uchun teskari qilamiz.
+        let balance = 0;
+        const withBalance = rows.map(row => {
+          balance += row.movementType === "sent" ? Number(row.amount) : -Number(row.amount);
+          return { ...row, amount: Number(row.amount), balanceAfter: balance };
+        });
+        return withBalance.reverse().slice(0, input?.limit ?? 100);
+      }),
+
+    create: skladProcedure
+      .input(
+        z.discriminatedUnion("movementType", [
+          z.object({
+            movementType: z.literal("sent"),
+            movementDate: z.number(),
+            quantity: z.number().int().positive(),
+            unitPrice: z.number().int().positive(),
+            note: z.string().max(1000).optional(),
+          }),
+          z.object({
+            movementType: z.literal("payment"),
+            movementDate: z.number(),
+            amount: z.number().int().positive(),
+            note: z.string().max(1000).optional(),
+          }),
+        ]),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const db = await requireDb();
+        const shared = {
+          movementDate: new Date(input.movementDate),
+          note: input.note?.trim() || null,
+          createdBy: ctx.user.id,
+        };
+        if (input.movementType === "sent") {
+          await db.insert(bottleMovements).values({
+            ...shared,
+            movementType: "sent",
+            quantity: input.quantity,
+            unitPrice: input.unitPrice,
+            amount: input.quantity * input.unitPrice,
+          });
+        } else {
+          await db.insert(bottleMovements).values({
+            ...shared,
+            movementType: "payment",
+            quantity: 0,
+            unitPrice: 0,
+            amount: input.amount,
+          });
+        }
+        return { success: true };
+      }),
+
+    delete: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
+      const db = await requireDb();
+      const [existing] = await db
+        .select({ id: bottleMovements.id })
+        .from(bottleMovements)
+        .where(eq(bottleMovements.id, input.id))
+        .limit(1);
+      if (!existing) throw new Error("Yozuv topilmadi yoki allaqachon o'chirilgan.");
+      await db.delete(bottleMovements).where(eq(bottleMovements.id, input.id));
+      return { success: true };
+    }),
   }),
 });

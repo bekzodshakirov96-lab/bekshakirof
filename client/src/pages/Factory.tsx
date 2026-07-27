@@ -5,10 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDate, formatNumber, localDateInputValue } from "@/lib/format";
+import { formatDate, formatMoney, formatNumber, localDateInputValue } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, FileText, Factory as FactoryIcon, PackageCheck, RotateCcw, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, Banknote, FileText, Factory as FactoryIcon, PackageCheck, RotateCcw, Send, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -212,7 +212,215 @@ export default function Factory() {
         </div>
       </SectionCard>
 
+      <BottleLedger />
+
       <FactoryStatementDialog open={statementOpen} onOpenChange={setStatementOpen} />
     </div>
+  );
+}
+
+/** Zavodga sotilgan butilka narxi — yangi yozuvda shu qiymat taklif qilinadi,
+ * lekin narx o'zgarsa qo'lda tuzatish mumkin (har bir yozuv o'z narxini saqlaydi). */
+const DEFAULT_BOTTLE_PRICE = "1700";
+
+/**
+ * Butilka harakati: yig'ilgan bo'sh butilkalarni zavodga sotish va zavoddan
+ * pul olish hisobi. Kassa bilan bog'lanmagan — mustaqil hisob-kitob.
+ */
+function BottleLedger() {
+  const utils = trpc.useUtils();
+  const summary = trpc.factory.bottles.summary.useQuery();
+  const list = trpc.factory.bottles.list.useQuery({ limit: 100 });
+
+  const [entryType, setEntryType] = useState<"sent" | "payment">("sent");
+  const [date, setDate] = useState(() => localDateInputValue());
+  const [quantity, setQuantity] = useState("");
+  const [unitPrice, setUnitPrice] = useState(DEFAULT_BOTTLE_PRICE);
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+
+  const refresh = () =>
+    Promise.all([utils.factory.bottles.summary.invalidate(), utils.factory.bottles.list.invalidate()]);
+
+  const create = trpc.factory.bottles.create.useMutation({
+    onSuccess: async () => {
+      toast.success(entryType === "sent" ? "Butilka yuborilgani qayd etildi" : "Zavoddan olingan pul qayd etildi");
+      setQuantity(""); setAmount(""); setNote("");
+      await refresh();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const remove = trpc.factory.bottles.delete.useMutation({
+    onSuccess: async () => { toast.success("Yozuv o'chirildi"); await refresh(); },
+    onError: error => toast.error(error.message),
+  });
+
+  const quantityValue = Number(quantity || 0);
+  const priceValue = Number(unitPrice || 0);
+  const amountValue = Number(amount || 0);
+  /** "Yuborildi" uchun summa avtomatik chiqadi — foydalanuvchi ko'rib turadi. */
+  const computedTotal = quantityValue * priceValue;
+
+  const blockingReasons: string[] = [];
+  if (entryType === "sent") {
+    if (quantityValue <= 0) blockingReasons.push("Butilka soni kiritilmagan");
+    if (priceValue <= 0) blockingReasons.push("Narx kiritilmagan");
+  } else if (amountValue <= 0) {
+    blockingReasons.push("Summa kiritilmagan");
+  }
+  const canSubmit = blockingReasons.length === 0 && !create.isPending;
+
+  function submit() {
+    const movementDate = new Date(`${date}T12:00:00`).getTime();
+    if (entryType === "sent") {
+      create.mutate({ movementType: "sent", movementDate, quantity: quantityValue, unitPrice: priceValue, note: note || undefined });
+    } else {
+      create.mutate({ movementType: "payment", movementDate, amount: amountValue, note: note || undefined });
+    }
+  }
+
+  const rows = list.data ?? [];
+  const stats = summary.data;
+
+  return (
+    <SectionCard
+      title="Butilka harakati"
+      description="Yig'ilgan bo'sh butilkalarni zavodga sotish va zavoddan olingan pul hisobi."
+      className="mt-5"
+    >
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-border bg-muted/60 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Jami yuborilgan</p>
+          <p className="mt-1 text-lg font-bold tabular-nums text-foreground">{formatNumber(stats?.sentQuantity ?? 0, 0)} dona</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-muted/60 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Jami summa</p>
+          <p className="mt-1 text-lg font-bold tabular-nums text-foreground">{formatMoney(stats?.sentAmount ?? 0)}</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-muted/60 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Zavod to'lagan</p>
+          <p className="mt-1 text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatMoney(stats?.paidAmount ?? 0)}</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-muted/60 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Zavod qarzi</p>
+          <p className={`mt-1 text-lg font-bold tabular-nums ${(stats?.outstanding ?? 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
+            {formatMoney(stats?.outstanding ?? 0)}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        <div className="grid grid-cols-2 gap-2 sm:max-w-md">
+          <button
+            type="button"
+            onClick={() => setEntryType("sent")}
+            className={`flex h-14 flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition-colors ${entryType === "sent" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+          >
+            <Send className="size-4" />
+            Butilka yuborildi
+          </button>
+          <button
+            type="button"
+            onClick={() => setEntryType("payment")}
+            className={`flex h-14 flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition-colors ${entryType === "payment" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+          >
+            <Banknote className="size-4" />
+            Zavoddan pul olindi
+          </button>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {entryType === "sent" ? (
+            <>
+              <Input
+                className={`finance-input ${quantityValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
+                type="text" inputMode="numeric" placeholder="Butilka soni (dona)"
+                value={quantity} onChange={event => setQuantity(event.target.value.replace(/[^0-9]/g, ""))}
+              />
+              <Input
+                className={`finance-input ${priceValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
+                type="text" inputMode="numeric" placeholder="Bitta butilka narxi"
+                value={unitPrice} onChange={event => setUnitPrice(event.target.value.replace(/[^0-9]/g, ""))}
+              />
+            </>
+          ) : (
+            <Input
+              className={`finance-input md:col-span-2 ${amountValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
+              type="text" inputMode="numeric" placeholder="Olingan summa (so'm)"
+              value={amount} onChange={event => setAmount(event.target.value.replace(/[^0-9]/g, ""))}
+            />
+          )}
+          <Input className="finance-input" type="date" value={date} onChange={event => setDate(event.target.value)} />
+          <Button disabled={!canSubmit} onClick={submit}>{create.isPending ? "Saqlanmoqda..." : "Qo'shish"}</Button>
+        </div>
+
+        {entryType === "sent" && computedTotal > 0 ? (
+          <p className="text-right text-xs font-semibold text-muted-foreground">
+            Hisoblangan summa: <span className="text-foreground">{formatMoney(computedTotal)}</span>
+          </p>
+        ) : null}
+        {!canSubmit && !create.isPending && blockingReasons.length > 0 && (
+          <ul className="text-right text-xs font-medium text-rose-600">
+            {blockingReasons.map(item => <li key={item}>{item}</li>)}
+          </ul>
+        )}
+        <Input className="finance-input" placeholder="Izoh (ixtiyoriy)" value={note} onChange={event => setNote(event.target.value)} />
+      </div>
+
+      <div className="-mx-5 -mb-5 mt-5 overflow-hidden rounded-b-2xl border-t border-border">
+        {list.isLoading ? <TableLoading columns={6} /> : rows.length === 0 ? (
+          <EmptyState description="Hali butilka harakati yo'q. Yuqoridagi forma orqali qo'shing." />
+        ) : (
+          <Table className="finance-table min-w-[820px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Sana</TableHead>
+                <TableHead>Turi</TableHead>
+                <TableHead className="text-right">Soni</TableHead>
+                <TableHead className="text-right">Narx</TableHead>
+                <TableHead className="text-right">Summa</TableHead>
+                <TableHead className="text-right">Zavod qarzi</TableHead>
+                <TableHead>Izoh</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map(row => {
+                const isSent = row.movementType === "sent";
+                return (
+                  <TableRow key={row.id}>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.movementDate)}</TableCell>
+                    <TableCell>
+                      <Badge className={isSent
+                        ? "rounded-lg bg-muted text-muted-foreground hover:bg-muted"
+                        : "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-300"}>
+                        {isSent ? "Yuborildi" : "Pul olindi"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{isSent ? `${formatNumber(row.quantity, 0)} dona` : "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">{isSent ? formatMoney(row.unitPrice) : "—"}</TableCell>
+                    <TableCell className={`text-right font-semibold tabular-nums ${isSent ? "text-foreground" : "text-emerald-600 dark:text-emerald-400"}`}>
+                      {isSent ? "+" : "−"}{formatMoney(row.amount)}
+                    </TableCell>
+                    <TableCell className="text-right font-bold tabular-nums">{formatMoney(row.balanceAfter)}</TableCell>
+                    <TableCell className="max-w-56 truncate text-muted-foreground">{row.note ?? "—"}</TableCell>
+                    <TableCell className="text-right">
+                      <button
+                        type="button"
+                        aria-label="O'chirish"
+                        className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                        onClick={() => remove.mutate({ id: row.id })}
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+    </SectionCard>
   );
 }
