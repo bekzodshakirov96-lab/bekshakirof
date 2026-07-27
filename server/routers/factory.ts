@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { containerMovements, factoryOperations, products, stockMovements } from "../../drizzle/schema";
 import { skladProcedure } from "../access";
@@ -90,6 +90,90 @@ export const factoryRouter = router({
         .offset((input.page - 1) * input.pageSize);
       const [{ total }] = await db.select({ total: sql<number>`count(*)`.mapWith(Number) }).from(factoryOperations);
       return { items, total, page: input.page, pageCount: Math.max(1, Math.ceil(total / input.pageSize)) };
+    }),
+  /** Akt sverka uchun: davr boshidagi va oxiridagi taraPending/brakPending balanslari (har bir KEG
+   * turi bo'yicha) + davr ichidagi to'liq operatsiyalar ro'yxati, har bir qatordan keyingi joriy
+   * balans bilan. Bo'sh from/to — butun tarix. */
+  statement: skladProcedure
+    .input(z.object({ from: z.number().int().optional(), to: z.number().int().optional() }))
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const productRows = await db
+        .select({ id: products.id, name: products.name })
+        .from(products)
+        .where(sql`${products.isActive} = 1 and ${products.containerType} is not null`)
+        .orderBy(asc(products.name));
+
+      const fromDate = input.from ? new Date(input.from) : undefined;
+      const toDate = input.to ? new Date(input.to) : undefined;
+
+      const openingRows = fromDate
+        ? await db
+            .select({
+              productId: factoryOperations.productId,
+              operationType: factoryOperations.operationType,
+              total: sql<number>`coalesce(sum(${factoryOperations.quantity}), 0)`.mapWith(Number),
+            })
+            .from(factoryOperations)
+            .where(lt(factoryOperations.operationDate, fromDate))
+            .groupBy(factoryOperations.productId, factoryOperations.operationType)
+        : [];
+      const openingTotals = new Map<string, number>();
+      for (const row of openingRows) openingTotals.set(`${row.productId}:${row.operationType}`, row.total);
+
+      const running = new Map<number, { taraPending: number; brakPending: number }>();
+      for (const product of productRows) {
+        const taraSent = openingTotals.get(`${product.id}:tara_sent`) ?? 0;
+        const filledReceived = openingTotals.get(`${product.id}:filled_received`) ?? 0;
+        const brakReturned = openingTotals.get(`${product.id}:brak_returned`) ?? 0;
+        const brakReplaced = openingTotals.get(`${product.id}:brak_replaced`) ?? 0;
+        running.set(product.id, { taraPending: taraSent - filledReceived, brakPending: brakReturned - brakReplaced });
+      }
+      const opening = new Map(Array.from(running.entries()).map(([id, state]) => [id, { ...state }]));
+
+      const periodConditions = [
+        fromDate ? gte(factoryOperations.operationDate, fromDate) : undefined,
+        toDate ? lte(factoryOperations.operationDate, toDate) : undefined,
+      ].filter(Boolean);
+      const ledgerRows = await db
+        .select({
+          id: factoryOperations.id,
+          operationDate: factoryOperations.operationDate,
+          operationType: factoryOperations.operationType,
+          productId: factoryOperations.productId,
+          productName: products.name,
+          quantity: factoryOperations.quantity,
+          note: factoryOperations.note,
+        })
+        .from(factoryOperations)
+        .leftJoin(products, eq(factoryOperations.productId, products.id))
+        .where(periodConditions.length ? and(...periodConditions) : undefined)
+        .orderBy(asc(factoryOperations.operationDate), asc(factoryOperations.id));
+
+      const ledger = ledgerRows.map(row => {
+        const state = running.get(row.productId) ?? { taraPending: 0, brakPending: 0 };
+        if (row.operationType === "tara_sent") state.taraPending += row.quantity;
+        else if (row.operationType === "filled_received") state.taraPending -= row.quantity;
+        else if (row.operationType === "brak_returned") state.brakPending += row.quantity;
+        else if (row.operationType === "brak_replaced") state.brakPending -= row.quantity;
+        running.set(row.productId, state);
+        return { ...row, taraPendingAfter: state.taraPending, brakPendingAfter: state.brakPending };
+      });
+
+      const productSummaries = productRows.map(product => {
+        const openingState = opening.get(product.id) ?? { taraPending: 0, brakPending: 0 };
+        const closingState = running.get(product.id) ?? openingState;
+        return {
+          productId: product.id,
+          productName: product.name,
+          openingTaraPending: openingState.taraPending,
+          openingBrakPending: openingState.brakPending,
+          closingTaraPending: closingState.taraPending,
+          closingBrakPending: closingState.brakPending,
+        };
+      });
+
+      return { products: productSummaries, ledger, generatedAt: Date.now() };
     }),
   /** Bitta operatsiya yozadi (tara yuborish / to'la qabul qilish / brak qaytarish / brak evaziga qabul qilish).
    * Kerak bo'lganda tegishli Sklad kirim/chiqim yozuvini avtomatik yaratadi. */

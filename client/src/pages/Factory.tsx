@@ -1,11 +1,14 @@
+import { ExportMenu } from "@/components/ExportMenu";
+import { FactoryStatementDialog } from "@/components/FactoryStatementDialog";
 import { EmptyState, PageHeader, SectionCard, TableLoading } from "@/components/finance-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate, formatNumber, localDateInputValue } from "@/lib/format";
+import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, Factory as FactoryIcon, PackageCheck, RotateCcw, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, FileText, Factory as FactoryIcon, PackageCheck, RotateCcw, Send, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -29,6 +32,8 @@ export default function Factory() {
   const [quantity, setQuantity] = useState("");
   const [date, setDate] = useState(() => localDateInputValue());
   const [note, setNote] = useState("");
+  const [statementOpen, setStatementOpen] = useState(false);
+  const [isExportingHistory, setIsExportingHistory] = useState(false);
 
   const record = trpc.factory.record.useMutation({
     onSuccess: async () => {
@@ -61,12 +66,41 @@ export default function Factory() {
     });
   }
 
+  async function exportHistory(format: "xlsx" | "pdf") {
+    setIsExportingHistory(true);
+    try {
+      const data = await utils.factory.statement.fetch({});
+      type Row = (typeof data.ledger)[number];
+      const columns: ReportColumn<Row>[] = [
+        { title: "Sana", value: row => formatDate(row.operationDate), width: 48 },
+        { title: "Turi", value: row => factoryOperationMeta[row.operationType as FactoryOperationType]?.label ?? row.operationType, width: 90 },
+        { title: "KEG", value: row => row.productName ?? "—", width: 70 },
+        { title: "Miqdor", value: row => row.quantity, width: 45, align: "right", numberFormat: "#,##0" },
+        { title: "Tara qoldiq", value: row => row.taraPendingAfter, width: 50, align: "right", numberFormat: "#,##0" },
+        { title: "Brak qoldiq", value: row => row.brakPendingAfter, width: 50, align: "right", numberFormat: "#,##0" },
+        { title: "Izoh", value: row => row.note ?? "—", width: "*" },
+      ];
+      const options = {
+        title: "Zavod operatsiyalari tarixi",
+        fileName: `zavod_operatsiyalari_${localDateInputValue()}`,
+        rows: data.ledger, columns, generatedAt: data.generatedAt,
+      };
+      if (format === "xlsx") await exportReportXlsx(options); else await exportReportPdf(options);
+      toast.success(`${format === "xlsx" ? "Excel" : "PDF"} hisoboti yuklandi.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Hisobotni eksport qilib bo'lmadi.");
+    } finally {
+      setIsExportingHistory(false);
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1500px]">
       <PageHeader
         eyebrow="Ombor"
         title="Zavod hisob-kitobi"
         description="Bo'sh tara yuborish, to'la keg qabul qilish va brak (yaroqsiz) KEG almashinuvini zavod bilan kuzating."
+        action={<Button variant="outline" className="gap-2 bg-white" onClick={() => setStatementOpen(true)}><FileText className="size-4" />Akt sverka</Button>}
       />
 
       <SectionCard title="Joriy balanslar" description="Har bir KEG turi bo'yicha ombordagi, zavoddagi va brak evaziga kutilayotgan tara.">
@@ -131,7 +165,12 @@ export default function Factory() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Zavod operatsiyalari tarixi" description="So'nggi 20 ta yozuv" className="mt-5">
+      <SectionCard
+        title="Zavod operatsiyalari tarixi"
+        description="So'nggi 20 ta yozuv"
+        className="mt-5"
+        action={<ExportMenu onExcel={() => exportHistory("xlsx")} onPdf={() => exportHistory("pdf")} isLoading={isExportingHistory} disabled={operations.isLoading} />}
+      >
         <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
           {operations.isLoading ? <TableLoading columns={5} /> : operationRows.length === 0 ? <EmptyState description="Hali zavod operatsiyasi yo'q." /> : (
             <Table className="finance-table min-w-[760px]">
@@ -164,6 +203,8 @@ export default function Factory() {
           )}
         </div>
       </SectionCard>
+
+      <FactoryStatementDialog open={statementOpen} onOpenChange={setStatementOpen} />
     </div>
   );
 }
