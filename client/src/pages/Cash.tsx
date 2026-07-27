@@ -803,7 +803,7 @@ function AgentProductMatrix({ date }: { date: string }) {
                 </div>
               </td>
               <td className="whitespace-nowrap px-3 py-1.5 text-right text-slate-400">{formatMoney(product.price)}</td>
-              <td className="px-2 py-1">
+              <td className="px-2 py-1 text-right">
                 <Input
                   className={`finance-input h-10 w-24 text-right ${dayPrice != null ? "font-bold text-amber-700" : ""}`}
                   type="text" inputMode="numeric"
@@ -818,7 +818,7 @@ function AgentProductMatrix({ date }: { date: string }) {
               {visibleAgents.map((agent, columnIndex) => {
                 const existing = entryMap.get(`${agent.id}:${product.id}`);
                 return (
-                  <td key={agent.id} className="px-2 py-1">
+                  <td key={agent.id} className="px-2 py-1 text-right">
                     <Input
                       className="finance-input h-10 w-20 text-right"
                       type="text" inputMode="decimal"
@@ -850,7 +850,7 @@ function AgentProductMatrix({ date }: { date: string }) {
             {visibleAgents.map(agent => {
               const row = summaryByAgent.get(agent.id);
               return (
-                <td key={agent.id} className="px-2 py-1.5">
+                <td key={agent.id} className="px-2 py-1.5 text-right">
                   <Input
                     className="finance-input h-10 w-24 text-right"
                     type="text" inputMode="numeric"
