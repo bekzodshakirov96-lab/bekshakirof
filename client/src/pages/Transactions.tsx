@@ -161,6 +161,15 @@ export default function Transactions() {
   });
   const canSubmit = Boolean(agentId) && Boolean(clientId) && cart.length > 0 && !hasInvalidLine && paid <= cartTotal && !createMultiple.isPending;
 
+  const emptyQuantityLines = cart.filter(line => Number(line.quantity || 0) <= 0).length;
+  const invalidReturnLines = cart.filter(line => line.returnEnabled && (!line.returnContainerType || Number(line.returnQuantity || 0) <= 0)).length;
+  const blockingReasons: string[] = [];
+  if (!agentId) blockingReasons.push("Agent tanlanmagan");
+  if (!clientId) blockingReasons.push("Mijoz tanlanmagan");
+  if (emptyQuantityLines > 0) blockingReasons.push(`${emptyQuantityLines} ta mahsulotda miqdor kiritilmagan`);
+  if (invalidReturnLines > 0) blockingReasons.push("Tara qaytarish miqdori to‘liq kiritilmagan");
+  if (paid > cartTotal) blockingReasons.push("To‘lov summasi savat jamisidan katta bo‘lishi mumkin emas");
+
   function submit() {
     createMultiple.mutate({
       transactionDate: new Date(`${date}T12:00:00`).getTime(),
@@ -265,7 +274,7 @@ export default function Transactions() {
           <TableBody>
             {cart.map((line, index) => <TableRow key={line.key}>
               <TableCell><span className="font-semibold text-slate-900">{line.productName}</span><span className="ml-2 text-xs text-slate-400">{line.code}</span></TableCell>
-              <TableCell className="text-right"><Input className="finance-input text-right" type="text" inputMode="decimal" placeholder="0" value={line.quantity} onChange={event => updateLine(line.key, { quantity: sanitizeDecimalInput(event.target.value) })} /><span className="mt-1 block text-[11px] text-slate-400">{line.unit}</span></TableCell>
+              <TableCell className="text-right"><Input className={`finance-input text-right ${Number(line.quantity || 0) <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`} type="text" inputMode="decimal" placeholder="0" value={line.quantity} onChange={event => updateLine(line.key, { quantity: sanitizeDecimalInput(event.target.value) })} /><span className="mt-1 block text-[11px] text-slate-400">{line.unit}</span></TableCell>
               <TableCell className="text-right"><Input className="finance-input text-right" type="text" inputMode="numeric" value={line.salePrice} onChange={event => updateLine(line.key, { salePrice: sanitizeIntegerInput(event.target.value) })} /></TableCell>
               <TableCell className="text-right font-bold tabular-nums">{formatMoney(lineTotals[index])}</TableCell>
               <TableCell>
@@ -319,7 +328,12 @@ export default function Transactions() {
           </div>
         )}
 
-        <div className="mt-6 flex justify-end">
+        <div className="mt-6 flex flex-col items-end gap-2">
+          {!canSubmit && !createMultiple.isPending && blockingReasons.length > 0 && (
+            <ul className="text-right text-xs font-medium text-rose-600">
+              {blockingReasons.map(reason => <li key={reason}>{reason}</li>)}
+            </ul>
+          )}
           <Button size="lg" className="h-12 rounded-xl px-8 font-semibold" disabled={!canSubmit} onClick={submit}>
             {createMultiple.isPending ? "Saqlanmoqda..." : `Savdoni saqlash — ${formatMoney(cartTotal)}`}
           </Button>
