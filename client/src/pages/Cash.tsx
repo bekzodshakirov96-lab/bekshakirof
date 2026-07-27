@@ -637,6 +637,12 @@ function AgentProductMatrix({ date }: { date: string }) {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [newProductOpen]);
   const canCreateProduct = newProductForm.code.trim() && newProductForm.name.trim() && newProductForm.unit.trim() && newProductForm.price.trim();
+  const missingProductFields = [
+    !newProductForm.code.trim() && "Kodi",
+    !newProductForm.name.trim() && "Nomi",
+    !newProductForm.unit.trim() && "O'lchov birligi",
+    !newProductForm.price.trim() && "Narxi",
+  ].filter((value): value is string => Boolean(value));
   const entryMap = useMemo(() => {
     const map = new Map<string, { id: number; quantity: string; amount: number }>();
     for (const row of takingRows.data ?? []) map.set(`${row.agentId}:${row.productId}`, row);
@@ -755,14 +761,17 @@ function AgentProductMatrix({ date }: { date: string }) {
           </Button>
           {newProductOpen && (
             <div className="absolute z-20 mt-1 w-64 space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
-              <Input className="finance-input h-8 text-xs" placeholder="Kodi" value={newProductForm.code} onChange={event => setNewProductForm(prev => ({ ...prev, code: event.target.value }))} />
-              <Input className="finance-input h-8 text-xs" placeholder="Nomi" value={newProductForm.name} onChange={event => setNewProductForm(prev => ({ ...prev, name: event.target.value }))} />
-              <Input className="finance-input h-8 text-xs" placeholder="O'lchov birligi" value={newProductForm.unit} onChange={event => setNewProductForm(prev => ({ ...prev, unit: event.target.value }))} />
+              <Input className={`finance-input h-8 text-xs ${!newProductForm.code.trim() ? "border-rose-300" : ""}`} placeholder="Kodi" value={newProductForm.code} onChange={event => setNewProductForm(prev => ({ ...prev, code: event.target.value }))} />
+              <Input className={`finance-input h-8 text-xs ${!newProductForm.name.trim() ? "border-rose-300" : ""}`} placeholder="Nomi" value={newProductForm.name} onChange={event => setNewProductForm(prev => ({ ...prev, name: event.target.value }))} />
+              <Input className={`finance-input h-8 text-xs ${!newProductForm.unit.trim() ? "border-rose-300" : ""}`} placeholder="O'lchov birligi" value={newProductForm.unit} onChange={event => setNewProductForm(prev => ({ ...prev, unit: event.target.value }))} />
               <Input
-                className="finance-input h-8 text-xs" type="text" inputMode="numeric" placeholder="Narxi"
+                className={`finance-input h-8 text-xs ${!newProductForm.price.trim() ? "border-rose-300" : ""}`} type="text" inputMode="numeric" placeholder="Narxi"
                 value={newProductForm.price}
                 onChange={event => setNewProductForm(prev => ({ ...prev, price: sanitizeIntegerInput(event.target.value) }))}
               />
+              {missingProductFields.length > 0 && !createProduct.isPending && (
+                <p className="text-[11px] font-medium text-rose-600">To'ldirilmagan: {missingProductFields.join(", ")}</p>
+              )}
               <Button
                 type="button" size="sm" className="h-8 w-full text-xs"
                 disabled={!canCreateProduct || createProduct.isPending}

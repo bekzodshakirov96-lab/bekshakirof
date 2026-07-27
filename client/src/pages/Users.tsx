@@ -70,6 +70,11 @@ export default function Users() {
   const rows = users.data ?? [];
   const canSubmit =
     form.name.trim() && form.email.trim() && form.password.trim().length >= 8 && (form.role !== "agent" || form.agentId !== "");
+  const blockingReasons: string[] = [];
+  if (!form.name.trim()) blockingReasons.push("Ism kiritilmagan");
+  if (!form.email.trim()) blockingReasons.push("Email (login) kiritilmagan");
+  if (form.password.trim().length < 8) blockingReasons.push("Parol kamida 8 belgidan iborat bo‘lishi kerak");
+  if (form.role === "agent" && form.agentId === "") blockingReasons.push("Agent roli uchun qaysi agent ekanini tanlang");
 
   return (
     <div className="mx-auto w-full max-w-[1250px]">
@@ -228,6 +233,11 @@ export default function Users() {
               </div>
             )}
           </div>
+          {!canSubmit && !createUser.isPending && blockingReasons.length > 0 && (
+            <ul className="text-xs font-medium text-rose-600">
+              {blockingReasons.map(item => <li key={item}>{item}</li>)}
+            </ul>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Bekor qilish</Button>
             <Button

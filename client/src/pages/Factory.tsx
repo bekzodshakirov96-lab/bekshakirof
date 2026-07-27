@@ -55,6 +55,9 @@ export default function Factory() {
   const balanceRows = balances.data ?? [];
   const operationRows = operations.data?.items ?? [];
   const canSubmit = Boolean(productId) && Number(quantity) > 0 && !record.isPending;
+  const blockingReasons: string[] = [];
+  if (!productId) blockingReasons.push("KEG turi tanlanmagan");
+  if (Number(quantity) <= 0) blockingReasons.push("Miqdor kiritilmagan");
 
   function submit() {
     record.mutate({
@@ -153,14 +156,19 @@ export default function Factory() {
             })}
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <select className="finance-input border px-3 text-slate-700" value={productId} onChange={event => setProductId(event.target.value)}>
+            <select className={`finance-input border px-3 text-slate-700 ${!productId ? "border-rose-300" : ""}`} value={productId} onChange={event => setProductId(event.target.value)}>
               <option value="">KEG turini tanlang</option>
               {balanceRows.map(row => <option key={row.productId} value={row.productId}>{row.productName}</option>)}
             </select>
-            <Input className="finance-input" type="text" inputMode="numeric" placeholder="Miqdor (dona)" value={quantity} onChange={event => setQuantity(event.target.value.replace(/[^0-9]/g, ""))} />
+            <Input className={`finance-input ${Number(quantity) <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`} type="text" inputMode="numeric" placeholder="Miqdor (dona)" value={quantity} onChange={event => setQuantity(event.target.value.replace(/[^0-9]/g, ""))} />
             <Input className="finance-input" type="date" value={date} onChange={event => setDate(event.target.value)} />
             <Button disabled={!canSubmit} onClick={submit}>{record.isPending ? "Saqlanmoqda..." : "Qo'shish"}</Button>
           </div>
+          {!canSubmit && !record.isPending && blockingReasons.length > 0 && (
+            <ul className="text-right text-xs font-medium text-rose-600">
+              {blockingReasons.map(item => <li key={item}>{item}</li>)}
+            </ul>
+          )}
           <Input className="finance-input" placeholder="Izoh (ixtiyoriy)" value={note} onChange={event => setNote(event.target.value)} />
         </div>
       </SectionCard>

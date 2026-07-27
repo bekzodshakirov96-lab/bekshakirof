@@ -364,14 +364,21 @@ export default function FastKeg() {
         title="Tezkor KEG savdosi"
         description="Agent mijozlarini bir marta tanlang — KEG, tara va kassani ketma-ket kiriting; savdo, qoldiq tara va qarzni tizim avtomatik hisoblaydi."
         action={
-          <Button
-            onClick={submitBatch}
-            disabled={saveBatch.isPending || activeComputedRows.length === 0 || invalidRows.length > 0}
-            className="h-11 rounded-xl bg-gradient-to-r from-cyan-700 to-emerald-600 px-5 shadow-lg shadow-cyan-950/10"
-          >
-            {saveBatch.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            {activeComputedRows.length} ta qatorni saqlash
-          </Button>
+          <div className="flex flex-col items-end gap-1.5">
+            <Button
+              onClick={submitBatch}
+              disabled={saveBatch.isPending || activeComputedRows.length === 0 || invalidRows.length > 0}
+              className="h-11 rounded-xl bg-gradient-to-r from-cyan-700 to-emerald-600 px-5 shadow-lg shadow-cyan-950/10"
+            >
+              {saveBatch.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              {activeComputedRows.length} ta qatorni saqlash
+            </Button>
+            {!saveBatch.isPending && invalidRows.length > 0 ? (
+              <span className="text-xs font-medium text-rose-600">{invalidRows.length} ta qatorni tuzatish kerak</span>
+            ) : !saveBatch.isPending && activeComputedRows.length === 0 ? (
+              <span className="text-xs font-medium text-slate-500">Hali biror qator to‘ldirilmagan</span>
+            ) : null}
+          </div>
         }
       />
 

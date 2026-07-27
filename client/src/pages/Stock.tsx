@@ -102,6 +102,9 @@ function StockInBatchForm() {
 
   const hasInvalidLine = cart.some(line => Number(line.quantity || 0) <= 0);
   const canSubmit = cart.length > 0 && !hasInvalidLine && !stockInBatch.isPending;
+  const emptyQuantityLines = cart.filter(line => Number(line.quantity || 0) <= 0).length;
+  const blockingReasons: string[] = [];
+  if (emptyQuantityLines > 0) blockingReasons.push(`${emptyQuantityLines} ta mahsulotda miqdor kiritilmagan`);
 
   function submit() {
     stockInBatch.mutate({
@@ -165,7 +168,7 @@ function StockInBatchForm() {
                 <TableCell className="font-semibold text-slate-900">{line.productName}</TableCell>
                 <TableCell className="text-right">
                   <Input
-                    className="finance-input text-right"
+                    className={`finance-input text-right ${Number(line.quantity || 0) <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
                     type="text"
                     inputMode="decimal"
                     placeholder="0"
@@ -188,6 +191,11 @@ function StockInBatchForm() {
           {stockInBatch.isPending ? "Saqlanmoqda..." : cart.length > 1 ? `${cart.length} ta mahsulot kirim qilish` : "Kirim qo'shish"}
         </Button>
       </div>
+      {!canSubmit && !stockInBatch.isPending && blockingReasons.length > 0 && (
+        <ul className="mt-2 text-right text-xs font-medium text-rose-600">
+          {blockingReasons.map(reason => <li key={reason}>{reason}</li>)}
+        </ul>
+      )}
     </div>
   );
 }
@@ -213,24 +221,36 @@ function StockOutForm() {
 
   const productList = products.data ?? [];
   const canSubmit = productId && Number(quantity) > 0 && reason.trim().length >= 2 && !stockOut.isPending;
+  const blockingReasons: string[] = [];
+  if (!productId) blockingReasons.push("Mahsulot tanlanmagan");
+  if (Number(quantity) <= 0) blockingReasons.push("Miqdor kiritilmagan");
+  if (reason.trim().length > 0 && reason.trim().length < 2) blockingReasons.push("Sabab kamida 2 belgidan iborat bo'lishi kerak");
+  else if (reason.trim().length === 0) blockingReasons.push("Sabab kiritilmagan (masalan: zarar, ishlatish)");
 
   function submit() {
     stockOut.mutate({ productId: Number(productId), quantity: Number(quantity), movementDate: dateToTimestamp(date), reason: reason.trim(), note: note || undefined });
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-      <select className="finance-input border px-3 text-slate-700" value={productId} onChange={event => setProductId(event.target.value)}>
-        <option value="">Mahsulot tanlang</option>
-        {productList.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
-      </select>
-      <Input className="finance-input" type="text" inputMode="decimal" placeholder="Miqdor" value={quantity} onChange={event => setQuantity(sanitizeDecimalInput(event.target.value))} />
-      <Input className="finance-input" type="date" value={date} onChange={event => setDate(event.target.value)} />
-      <Input className="finance-input" placeholder="Sabab (zarar, ishlatish...)" value={reason} onChange={event => setReason(event.target.value)} />
-      <Button disabled={!canSubmit} onClick={submit} className="bg-rose-600 hover:bg-rose-700">
-        {stockOut.isPending ? "Saqlanmoqda..." : "Chiqim qo'shish"}
-      </Button>
-      <Input className="finance-input md:col-span-2 xl:col-span-5" placeholder="Izoh (ixtiyoriy)" value={note} onChange={event => setNote(event.target.value)} />
+    <div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <select className={`finance-input border px-3 text-slate-700 ${!productId ? "border-rose-300" : ""}`} value={productId} onChange={event => setProductId(event.target.value)}>
+          <option value="">Mahsulot tanlang</option>
+          {productList.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
+        </select>
+        <Input className={`finance-input ${Number(quantity) <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`} type="text" inputMode="decimal" placeholder="Miqdor" value={quantity} onChange={event => setQuantity(sanitizeDecimalInput(event.target.value))} />
+        <Input className="finance-input" type="date" value={date} onChange={event => setDate(event.target.value)} />
+        <Input className={`finance-input ${reason.trim().length < 2 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`} placeholder="Sabab (zarar, ishlatish...)" value={reason} onChange={event => setReason(event.target.value)} />
+        <Button disabled={!canSubmit} onClick={submit} className="bg-rose-600 hover:bg-rose-700">
+          {stockOut.isPending ? "Saqlanmoqda..." : "Chiqim qo'shish"}
+        </Button>
+        <Input className="finance-input md:col-span-2 xl:col-span-5" placeholder="Izoh (ixtiyoriy)" value={note} onChange={event => setNote(event.target.value)} />
+      </div>
+      {!canSubmit && !stockOut.isPending && blockingReasons.length > 0 && (
+        <ul className="mt-2 text-right text-xs font-medium text-rose-600">
+          {blockingReasons.map(item => <li key={item}>{item}</li>)}
+        </ul>
+      )}
     </div>
   );
 }
