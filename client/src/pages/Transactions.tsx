@@ -113,7 +113,7 @@ export default function Transactions() {
         productName: product.name,
         code: product.code,
         unit: product.unit,
-        quantity: "1",
+        quantity: "",
         salePrice: String(product.price ?? 0),
         containerType,
         containerUnitsPerItem: product.containerUnitsPerItem || 1,
@@ -265,7 +265,7 @@ export default function Transactions() {
           <TableBody>
             {cart.map((line, index) => <TableRow key={line.key}>
               <TableCell><span className="font-semibold text-slate-900">{line.productName}</span><span className="ml-2 text-xs text-slate-400">{line.code}</span></TableCell>
-              <TableCell className="text-right"><Input className="finance-input text-right" type="text" inputMode="decimal" value={line.quantity} onChange={event => updateLine(line.key, { quantity: sanitizeDecimalInput(event.target.value) })} /><span className="mt-1 block text-[11px] text-slate-400">{line.unit}</span></TableCell>
+              <TableCell className="text-right"><Input className="finance-input text-right" type="text" inputMode="decimal" placeholder="0" value={line.quantity} onChange={event => updateLine(line.key, { quantity: sanitizeDecimalInput(event.target.value) })} /><span className="mt-1 block text-[11px] text-slate-400">{line.unit}</span></TableCell>
               <TableCell className="text-right"><Input className="finance-input text-right" type="text" inputMode="numeric" value={line.salePrice} onChange={event => updateLine(line.key, { salePrice: sanitizeIntegerInput(event.target.value) })} /></TableCell>
               <TableCell className="text-right font-bold tabular-nums">{formatMoney(lineTotals[index])}</TableCell>
               <TableCell>
