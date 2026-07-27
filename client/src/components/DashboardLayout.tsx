@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -128,8 +129,10 @@ function getInitials(name?: string | null) {
 }
 
 function LoginScreen() {
-  const { login, loginPending, loginError } = useAuth();
+  const { login, loginPending, loginError, register, registerPending, registerError } = useAuth();
+  const needsSetup = trpc.auth.needsSetup.useQuery();
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [setupForm, setSetupForm] = useState({ name: "", email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (e: FormEvent) => {
@@ -140,6 +143,17 @@ function LoginScreen() {
       // error surfaced via loginError below
     }
   };
+
+  const handleSetup = async (e: FormEvent) => {
+    e.preventDefault();
+    try {
+      await register(setupForm);
+    } catch {
+      // error surfaced via registerError below
+    }
+  };
+
+  const isFirstRun = needsSetup.data === true;
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#eef4f8] px-4">
@@ -161,68 +175,153 @@ function LoginScreen() {
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Moliyaviy boshqaruv</p>
           </div>
         </div>
-        <h1 className="text-3xl font-bold tracking-[-0.03em] text-slate-950">Tizimga xush kelibsiz</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-500">
-          Savdo, qarzdorlik, kassa va mijozlar ma’lumotlarini yagona xavfsiz muhitda boshqaring.
-        </p>
-        <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-          <div className="flex items-start gap-3">
-            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-            <p className="text-xs leading-5 text-slate-500">
-              Yangi hisob rahbar yoki buxgalter tomonidan Foydalanuvchilar bo‘limida yaratiladi — login va parolni
-              o‘zingiz ro‘yxatdan o‘tolmaysiz, ma’muriyatdan so‘rang.
+        {needsSetup.isLoading ? (
+          <div className="flex h-64 items-center justify-center">
+            <Loader2 className="size-6 animate-spin text-slate-300" />
+          </div>
+        ) : isFirstRun ? (
+          <>
+            <h1 className="text-3xl font-bold tracking-[-0.03em] text-slate-950">Boshlang‘ich sozlash</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-500">
+              Tizimda hali birorta ham hisob yo‘q. Shu yerda yaratiladigan birinchi hisob avtomatik rahbar
+              huquqiga ega bo‘ladi.
             </p>
-          </div>
-        </div>
-
-        <form onSubmit={handleLogin} className="mt-6 space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="login-email">Email</Label>
-            <Input
-              id="login-email"
-              type="email"
-              required
-              autoFocus
-              autoComplete="email"
-              value={loginForm.email}
-              onChange={e => setLoginForm(f => ({ ...f, email: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="login-password">Parol</Label>
-            <div className="relative">
-              <Input
-                id="login-password"
-                type={showPassword ? "text" : "password"}
-                required
-                autoComplete="current-password"
-                className="pr-10"
-                value={loginForm.password}
-                onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
-              />
-              <button
-                type="button"
-                aria-label={showPassword ? "Parolni yashirish" : "Parolni ko‘rsatish"}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                onClick={() => setShowPassword(current => !current)}
-              >
-                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
+            <div className="mt-6 rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <p className="text-xs leading-5 text-slate-600">
+                  Bu forma faqat bir marta, tizim birinchi ishga tushirilganda ko‘rinadi. Shu hisob yaratilgach,
+                  keyingi barcha hisoblar Foydalanuvchilar bo‘limidan rahbar/buxgalter tomonidan yaratiladi.
+                </p>
+              </div>
             </div>
-          </div>
-          {loginError ? (
-            <p className="text-sm font-medium text-rose-600">{loginError.message}</p>
-          ) : null}
-          <Button
-            type="submit"
-            size="lg"
-            disabled={loginPending}
-            className="h-12 w-full gap-2 rounded-xl bg-gradient-to-r from-[#176f9d] to-[#168c86] font-semibold shadow-lg shadow-cyan-900/15 hover:brightness-105"
-          >
-            {loginPending ? <Loader2 className="size-4 animate-spin" /> : null}
-            {loginPending ? "Kirilmoqda..." : "Kirish"}
-          </Button>
-        </form>
+
+            <form onSubmit={handleSetup} className="mt-6 space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="setup-name">Ism</Label>
+                <Input
+                  id="setup-name"
+                  required
+                  autoFocus
+                  autoComplete="name"
+                  value={setupForm.name}
+                  onChange={e => setSetupForm(f => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="setup-email">Email</Label>
+                <Input
+                  id="setup-email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={setupForm.email}
+                  onChange={e => setSetupForm(f => ({ ...f, email: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="setup-password">Parol (kamida 8 belgi)</Label>
+                <div className="relative">
+                  <Input
+                    id="setup-password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    className="pr-10"
+                    value={setupForm.password}
+                    onChange={e => setSetupForm(f => ({ ...f, password: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? "Parolni yashirish" : "Parolni ko‘rsatish"}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    onClick={() => setShowPassword(current => !current)}
+                  >
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+              </div>
+              {registerError ? (
+                <p className="text-sm font-medium text-rose-600">{registerError.message}</p>
+              ) : null}
+              <Button
+                type="submit"
+                size="lg"
+                disabled={registerPending}
+                className="h-12 w-full gap-2 rounded-xl bg-gradient-to-r from-[#176f9d] to-[#168c86] font-semibold shadow-lg shadow-cyan-900/15 hover:brightness-105"
+              >
+                {registerPending ? <Loader2 className="size-4 animate-spin" /> : null}
+                {registerPending ? "Yaratilmoqda..." : "Rahbar hisobini yaratish"}
+              </Button>
+            </form>
+          </>
+        ) : (
+          <>
+            <h1 className="text-3xl font-bold tracking-[-0.03em] text-slate-950">Tizimga xush kelibsiz</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-500">
+              Savdo, qarzdorlik, kassa va mijozlar ma’lumotlarini yagona xavfsiz muhitda boshqaring.
+            </p>
+            <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                <p className="text-xs leading-5 text-slate-500">
+                  Yangi hisob rahbar yoki buxgalter tomonidan Foydalanuvchilar bo‘limida yaratiladi — login va
+                  parolni o‘zingiz ro‘yxatdan o‘tolmaysiz, ma’muriyatdan so‘rang.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleLogin} className="mt-6 space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="login-email">Email</Label>
+                <Input
+                  id="login-email"
+                  type="email"
+                  required
+                  autoFocus
+                  autoComplete="email"
+                  value={loginForm.email}
+                  onChange={e => setLoginForm(f => ({ ...f, email: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="login-password">Parol</Label>
+                <div className="relative">
+                  <Input
+                    id="login-password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    autoComplete="current-password"
+                    className="pr-10"
+                    value={loginForm.password}
+                    onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? "Parolni yashirish" : "Parolni ko‘rsatish"}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    onClick={() => setShowPassword(current => !current)}
+                  >
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+              </div>
+              {loginError ? (
+                <p className="text-sm font-medium text-rose-600">{loginError.message}</p>
+              ) : null}
+              <Button
+                type="submit"
+                size="lg"
+                disabled={loginPending}
+                className="h-12 w-full gap-2 rounded-xl bg-gradient-to-r from-[#176f9d] to-[#168c86] font-semibold shadow-lg shadow-cyan-900/15 hover:brightness-105"
+              >
+                {loginPending ? <Loader2 className="size-4 animate-spin" /> : null}
+                {loginPending ? "Kirilmoqda..." : "Kirish"}
+              </Button>
+            </form>
+          </>
+        )}
 
         <p className="mt-5 text-center text-xs text-slate-400">Kirish orqali korxona ma’lumotlari maxfiyligi ta’minlanadi.</p>
       </div>

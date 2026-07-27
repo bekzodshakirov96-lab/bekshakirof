@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import type { User } from "../drizzle/schema";
 import * as db from "./db";
 import { hashPassword, signSession, verifyPassword } from "./_core/localAuth";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -21,11 +22,28 @@ import { stockRouter } from "./routers/stock";
 import { transactionsRouter } from "./routers/transactions";
 import { usersRouter } from "./routers/users";
 
+/** passwordHash (bcrypt) hech qachon mijozga yuborilmasligi kerak — foydalanuvchi
+ * qatori tRPC javobida qaytarilgan har bir joyda shu funksiya orqali tozalanadi. */
+function toSafeUser(user: User): Omit<User, "passwordHash">;
+function toSafeUser(user: User | null): Omit<User, "passwordHash"> | null;
+function toSafeUser(user: User | null): Omit<User, "passwordHash"> | null {
+  if (!user) return null;
+  const { passwordHash: _passwordHash, ...safeUser } = user;
+  return safeUser;
+}
+
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(opts => toSafeUser(opts.ctx.user)),
+    /** Tizimda hali birorta ham hisob yo'qligini bildiradi — shu holatda "register"
+     * bir martalik boshlang'ich (rahbar) hisobni yaratish uchun ochiq bo'ladi. */
+    needsSetup: publicProcedure.query(() => db.isFirstUser()),
+    /** Faqat tizimda hali hech kim ro'yxatdan o'tmagan bo'lsa ishlaydi (bo'sh baza —
+     * birinchi marta serverga o'rnatilganda). Undan keyin barcha hisoblar rahbar/
+     * buxgalter tomonidan Foydalanuvchilar bo'limida yaratiladi, ochiq ro'yxatdan
+     * o'tish yo'q. */
     register: publicProcedure
       .input(
         z.object({
@@ -35,6 +53,12 @@ export const appRouter = router({
         }),
       )
       .mutation(async ({ ctx, input }) => {
+        if (!(await db.isFirstUser())) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Ro‘yxatdan o‘tish yopiq. Yangi hisob uchun rahbar yoki buxgalterga murojaat qiling.",
+          });
+        }
         const existing = await db.getUserByEmail(input.email);
         if (existing) {
           throw new TRPCError({ code: "CONFLICT", message: "Bu email allaqachon ro‘yxatdan o‘tgan." });
@@ -51,7 +75,7 @@ export const appRouter = router({
         const token = await signSession(user.id, { expiresInMs: ONE_YEAR_MS });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-        return { success: true, user } as const;
+        return { success: true, user: toSafeUser(user) } as const;
       }),
     login: publicProcedure
       .input(
@@ -73,7 +97,7 @@ export const appRouter = router({
         const token = await signSession(user.id, { expiresInMs: ONE_YEAR_MS });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-        return { success: true, user } as const;
+        return { success: true, user: toSafeUser(user) } as const;
       }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);

@@ -15,6 +15,13 @@
       "when": 1785067179575,
       "tag": "0001_chunky_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1785149075446,
+      "tag": "0002_minor_power_man",
+      "breakpoints": true
     }
   ]
 }

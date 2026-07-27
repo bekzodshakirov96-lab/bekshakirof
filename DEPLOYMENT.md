@@ -58,16 +58,16 @@ Bo'sh MySQL bazasi yarating, so'ng migratsiyalarni qo'llang:
 npx drizzle-kit migrate
 ```
 
-Bu `drizzle/` papkasidagi barcha SQL migratsiyalarni (0000'dan 0004'gacha)
-ketma-ket ishga tushiradi va kerakli jadvallarni yaratadi.
+Bu `drizzle/` papkasidagi barcha SQL migratsiyalarni (`0000`, `0001`, `0002`)
+ketma-ket ishga tushiradi va kerakli jadval/ustunlarning barchasini yaratadi —
+`0002` migratsiyasi joriy kod talab qiladigan barcha jadvallarni (shu jumladan
+`factory_operations`, `stockMovements`, `daily_product_prices`) va
+ustunlarni (`users.agentId`, `products.sortOrder` va h.k.) o'z ichiga oladi.
 
-> **Eslatma:** agar avvalgi Manus versiyasidan mavjud `users` jadvali va undagi
-> qatorlar bo'lsa, `0004_flat_peter_quill.sql` migratsiyasi (parol ustunini
-> qo'shadigan) xato beradi, chunki mavjud qatorlarga standart qiymatsiz
-> `NOT NULL` ustun qo'shib bo'lmaydi. Bunday holda avval o'sha jadvalni
-> tozalang (`TRUNCATE TABLE users;`) — barcha hisoblar qaytadan ro'yxatdan
-> o'tishi kerak bo'ladi — yoki bizga ayting, biz backfill migratsiyasini
-> yozib beramiz.
+> **Eslatma:** bu buyruq faqat **bo'sh** bazada ishlating. Agar bazada
+> allaqachon eski (masalan avvalgi Manus versiyasidan qolgan) `users` jadvali
+> bo'lsa, migratsiya xato berishi mumkin — bunday holda avval o'sha bazani
+> butunlay tozalang yoki bizga ayting.
 
 ## 4. Build va ishga tushirish
 
@@ -82,10 +82,16 @@ Yoki development rejimida (avtomatik qayta yuklash bilan):
 npm run dev
 ```
 
-Birinchi marta `/` manzilini ochganingizda **"Ro'yxatdan o'tish"** tabidan
-hisob yarating — **birinchi ro'yxatdan o'tgan hisob avtomatik rahbar (admin)
-bo'ladi**. Keyingi hisoblar "Foydalanuvchilar" bo'limida rahbar tomonidan
-"Buxgalter" roliga tasdiqlanishi kerak.
+Birinchi marta `/` manzilini ochganingizda, baza bo'sh bo'lgani uchun
+avtomatik ravishda **"Boshlang'ich sozlash"** ekrani ko'rinadi — shu yerda
+yaratilgan hisob avtomatik rahbar (admin) bo'ladi. Bu forma faqat bazada
+birorta ham hisob yo'q bo'lgandagina ko'rinadi; birinchi hisob yaratilgach,
+u butunlay yo'qoladi va o'rniga oddiy "Kirish" ekrani chiqadi.
+
+Keyingi barcha hisoblar (buxgalter, agent, sklad xodimi va h.k.) ochiq
+ro'yxatdan o'tish orqali emas, faqat rahbar/buxgalter tomonidan
+"Foydalanuvchilar" bo'limidan to'g'ridan-to'g'ri (login+parol bilan)
+yaratiladi.
 
 ## 5. Productionda doimiy ishlatish (tavsiya)
 
@@ -131,7 +137,7 @@ chunki login parollari himoyasiz uzatilmasligi kerak.
 - **Autentifikatsiya:** email + parol (bcrypt bilan xeshlangan), JWT sessiya
   cookie'si — hech qanday tashqi xizmatga bog'liq emas
 - **Fayl saqlash:** local disk (`UPLOADS_DIR`), `/uploads/...` orqali serveriladi
-- **Testlar:** Vitest, `npm test` bilan ishga tushiriladi (48 test)
+- **Testlar:** Vitest, `npm test` bilan ishga tushiriladi (49 test)
 
 ## Zaxira nusxa olish
 
