@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { products, stockMovements } from "../../drizzle/schema";
+import { agents, products, stockMovements, transactions } from "../../drizzle/schema";
 import { skladProcedure } from "../access";
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
@@ -38,11 +38,13 @@ export const stockRouter = router({
       };
     });
   }),
-  /** Movement history — all products or one, optionally date-filtered. */
+  /** Movement history — all products or one, optionally date/agent-filtered. Agent is only
+   * present on sale-driven ("out") movements, resolved via the linked transaction. */
   movements: skladProcedure
     .input(
       z.object({
         productId: z.number().int().positive().optional(),
+        agentId: z.number().int().positive().optional(),
         from: z.number().int().optional(),
         to: z.number().int().optional(),
         page: z.number().int().positive().default(1),
@@ -53,6 +55,7 @@ export const stockRouter = router({
       const db = await requireDb();
       const conditions = [
         input.productId ? eq(stockMovements.productId, input.productId) : undefined,
+        input.agentId ? eq(transactions.agentId, input.agentId) : undefined,
         input.from ? sql`${stockMovements.movementDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
         input.to ? sql`${stockMovements.movementDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
       ].filter(Boolean);
@@ -69,9 +72,12 @@ export const stockRouter = router({
           isAutomatic: stockMovements.isAutomatic,
           movementDate: stockMovements.movementDate,
           note: stockMovements.note,
+          agentName: agents.name,
         })
         .from(stockMovements)
         .leftJoin(products, eq(stockMovements.productId, products.id))
+        .leftJoin(transactions, eq(stockMovements.transactionId, transactions.id))
+        .leftJoin(agents, eq(transactions.agentId, agents.id))
         .where(where)
         .orderBy(desc(stockMovements.movementDate), desc(stockMovements.id))
         .limit(input.pageSize)
@@ -79,6 +85,7 @@ export const stockRouter = router({
       const [{ total }] = await db
         .select({ total: sql<number>`count(*)`.mapWith(Number) })
         .from(stockMovements)
+        .leftJoin(transactions, eq(stockMovements.transactionId, transactions.id))
         .where(where);
       return { items, total, page: input.page, pageCount: Math.max(1, Math.ceil(total / input.pageSize)) };
     }),
@@ -258,6 +265,7 @@ export const stockRouter = router({
     .input(
       z.object({
         productId: z.number().int().positive().optional(),
+        agentId: z.number().int().positive().optional(),
         movementType: z.enum(["all", "in", "out"]).default("all"),
         from: z.number().int().optional(),
         to: z.number().int().optional(),
@@ -267,6 +275,7 @@ export const stockRouter = router({
       const db = await requireDb();
       const conditions = [
         input.productId ? eq(stockMovements.productId, input.productId) : undefined,
+        input.agentId ? eq(transactions.agentId, input.agentId) : undefined,
         input.movementType !== "all" ? eq(stockMovements.movementType, input.movementType) : undefined,
         input.from ? sql`${stockMovements.movementDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
         input.to ? sql`${stockMovements.movementDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
@@ -275,6 +284,7 @@ export const stockRouter = router({
       const [{ total }] = await db
         .select({ total: sql<number>`count(*)`.mapWith(Number) })
         .from(stockMovements)
+        .leftJoin(transactions, eq(stockMovements.transactionId, transactions.id))
         .where(where);
       assertExportRowLimit(total, { entityLabel: "sklad harakati" });
       const rows = await db
@@ -288,9 +298,12 @@ export const stockRouter = router({
           isAutomatic: stockMovements.isAutomatic,
           movementDate: stockMovements.movementDate,
           note: stockMovements.note,
+          agentName: agents.name,
         })
         .from(stockMovements)
         .leftJoin(products, eq(stockMovements.productId, products.id))
+        .leftJoin(transactions, eq(stockMovements.transactionId, transactions.id))
+        .leftJoin(agents, eq(transactions.agentId, agents.id))
         .where(where)
         .orderBy(desc(stockMovements.movementDate), desc(stockMovements.id));
       return { rows, generatedAt: Date.now() };

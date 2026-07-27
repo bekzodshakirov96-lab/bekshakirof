@@ -19,22 +19,26 @@ export default function StockReport() {
   const [fromDate, setFromDate] = useState(firstOfMonth());
   const [toDate, setToDate] = useState(today());
   const [productFilter, setProductFilter] = useState("");
+  const [agentFilter, setAgentFilter] = useState("");
   const [movementTypeFilter, setMovementTypeFilter] = useState<"all" | "in" | "out">("all");
   const [isExportingSummary, setIsExportingSummary] = useState(false);
   const [isExportingMovements, setIsExportingMovements] = useState(false);
 
   const products = trpc.stock.list.useQuery();
+  const agents = trpc.agents.options.useQuery();
   const utils = trpc.useUtils();
 
   const filters = useMemo(() => ({
     from: fromDate ? toTs(fromDate) : undefined,
     to: toDate ? toTs(toDate, true) : undefined,
     productId: productFilter ? Number(productFilter) : undefined,
-  }), [fromDate, toDate, productFilter]);
+    agentId: agentFilter ? Number(agentFilter) : undefined,
+  }), [fromDate, toDate, productFilter, agentFilter]);
 
-  const report = trpc.stock.report.useQuery(filters);
+  const report = trpc.stock.report.useQuery({ from: filters.from, to: filters.to, productId: filters.productId });
   const movements = trpc.stock.movements.useQuery({
     productId: filters.productId,
+    agentId: filters.agentId,
     from: filters.from,
     to: filters.to,
     page: 1,
@@ -42,7 +46,7 @@ export default function StockReport() {
   });
 
   function clearFilters() {
-    setFromDate(firstOfMonth()); setToDate(today()); setProductFilter(""); setMovementTypeFilter("all");
+    setFromDate(firstOfMonth()); setToDate(today()); setProductFilter(""); setAgentFilter(""); setMovementTypeFilter("all");
   }
 
   const reportRows = report.data?.rows ?? [];
@@ -84,7 +88,7 @@ export default function StockReport() {
     setIsExportingMovements(true);
     try {
       const data = await utils.stock.exportData.fetch({
-        productId: filters.productId, movementType: movementTypeFilter, from: filters.from, to: filters.to,
+        productId: filters.productId, agentId: filters.agentId, movementType: movementTypeFilter, from: filters.from, to: filters.to,
       });
       type Row = (typeof data.rows)[number];
       const columns: ReportColumn<Row>[] = [
@@ -92,6 +96,7 @@ export default function StockReport() {
         { title: "Mahsulot", value: row => row.productName ?? "—", width: "*" },
         { title: "Turi", value: row => row.movementType === "in" ? "Kirim" : "Chiqim", width: 40 },
         { title: "Miqdor", value: row => Number(row.quantity), width: 50, align: "right", numberFormat: "#,##0.000" },
+        { title: "Agent", value: row => row.agentName ?? "—", width: 60 },
         { title: "Sabab", value: row => row.reason ?? "—", width: 70 },
         { title: "Manba", value: row => row.isAutomatic ? "Savdo (avtomatik)" : "Qo'lda", width: 60 },
       ];
@@ -125,12 +130,16 @@ export default function StockReport() {
       </div>
 
       <SectionCard title="Filtrlar" description="Ikkala jadval ham shu filtrlarga mos yangilanadi" className="mt-5">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <Input type="date" className="finance-input" value={fromDate} onChange={event => setFromDate(event.target.value)} aria-label="Boshlanish sanasi" />
           <Input type="date" className="finance-input" value={toDate} onChange={event => setToDate(event.target.value)} aria-label="Tugash sanasi" />
           <select className="finance-input border px-3 text-slate-600" value={productFilter} onChange={event => setProductFilter(event.target.value)}>
             <option value="">Barcha mahsulotlar</option>
             {(products.data ?? []).map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
+          </select>
+          <select className="finance-input border px-3 text-slate-600" value={agentFilter} onChange={event => setAgentFilter(event.target.value)}>
+            <option value="">Barcha agentlar</option>
+            {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
           </select>
           <select className="finance-input border px-3 text-slate-600" value={movementTypeFilter} onChange={event => setMovementTypeFilter(event.target.value as typeof movementTypeFilter)}>
             <option value="all">Kirim + Chiqim</option>
@@ -138,6 +147,11 @@ export default function StockReport() {
             <option value="out">Faqat Chiqim</option>
           </select>
         </div>
+        {agentFilter && (
+          <p className="mt-3 text-xs text-slate-400">
+            Agent bo'yicha filtrlanganda faqat shu agentning savdosi orqali yaratilgan chiqim yozuvlari ko'rinadi — qo'lda kiritilgan kirim/chiqimlar agentga bog'liq emas.
+          </p>
+        )}
         <div className="mt-3"><Button variant="outline" className="gap-2 bg-white" onClick={clearFilters}><RotateCcw className="size-4" />Filtrlarni tozalash</Button></div>
       </SectionCard>
 
@@ -164,9 +178,9 @@ export default function StockReport() {
 
       <SectionCard title="Harakatlar tafsiloti" description="Tanlangan davrdagi barcha kirim/chiqim yozuvlari" className="mt-5" action={<ExportMenu onExcel={() => exportMovements("xlsx")} onPdf={() => exportMovements("pdf")} isLoading={isExportingMovements} disabled={movements.isLoading} />}>
         <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
-          {movements.isLoading ? <TableLoading columns={6} /> : movementRows.length === 0 ? <EmptyState /> : (
-            <Table className="finance-table min-w-[820px]">
-              <TableHeader><TableRow><TableHead>Sana</TableHead><TableHead>Mahsulot</TableHead><TableHead>Turi</TableHead><TableHead className="text-right">Miqdor</TableHead><TableHead>Sabab</TableHead><TableHead>Manba</TableHead></TableRow></TableHeader>
+          {movements.isLoading ? <TableLoading columns={7} /> : movementRows.length === 0 ? <EmptyState /> : (
+            <Table className="finance-table min-w-[900px]">
+              <TableHeader><TableRow><TableHead>Sana</TableHead><TableHead>Mahsulot</TableHead><TableHead>Turi</TableHead><TableHead className="text-right">Miqdor</TableHead><TableHead>Agent</TableHead><TableHead>Sabab</TableHead><TableHead>Manba</TableHead></TableRow></TableHeader>
               <TableBody>
                 {movementRows.map(row => (
                   <TableRow key={row.id}>
@@ -174,6 +188,7 @@ export default function StockReport() {
                     <TableCell className="font-semibold text-slate-900">{row.productName ?? "—"}</TableCell>
                     <TableCell>{row.movementType === "in" ? <Badge className="rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50">Kirim</Badge> : <Badge className="rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50">Chiqim</Badge>}</TableCell>
                     <TableCell className="text-right font-semibold tabular-nums">{formatNumber(row.quantity, 3)} {row.unit}</TableCell>
+                    <TableCell className="text-slate-600">{row.agentName ?? "—"}</TableCell>
                     <TableCell className="max-w-56 truncate text-slate-500">{row.reason ?? "—"}</TableCell>
                     <TableCell>{row.isAutomatic ? <Badge variant="outline" className="rounded-lg">Savdo</Badge> : <Badge variant="outline" className="rounded-lg">Qo'lda</Badge>}</TableCell>
                   </TableRow>
