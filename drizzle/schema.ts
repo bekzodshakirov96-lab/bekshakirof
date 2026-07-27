@@ -251,25 +251,26 @@ export const factoryOperations = mysqlTable(
 /**
  * Butilka harakati — yig'ilgan bo'sh butilkalarni zavodga sotish hisobi.
  *
- * Ikki xil yozuv bir jadvalda yuritiladi, chunki ular bitta hisob-kitobning
- * (zavod qarzi) ikki tomoni:
- *   - "sent"    — zavodga butilka yuborildi, zavod qarzi shu summaga ortadi
- *   - "payment" — zavod pul berdi, qarz shu summaga kamayadi
+ * Uch xil yozuv bir jadvalda yuritiladi — ular bitta zanjirning bo'g'inlari:
+ *   - "purchase" — butilka sotib olindi (qo'ldagi zaxira va xarajat ortadi)
+ *   - "sent"     — zavodga yuborildi (zaxira kamayadi, zavod qarzi ortadi)
+ *   - "payment"  — zavod pul berdi (qarz kamayadi)
  *
  * `unitPrice` har bir yozuvda saqlanadi: narx vaqt o'tishi bilan o'zgarsa ham
- * eski yozuvlar o'sha kungi narx bo'yicha hisoblangan bo'lib qoladi.
+ * eski yozuvlar o'sha kungi narx bo'yicha hisoblangan bo'lib qoladi. Foyda shu
+ * sababli "sotuv summasi − sotib olish xarajati" sifatida aniq chiqadi.
  */
 export const bottleMovements = mysqlTable(
   "bottle_movements",
   {
     id: int("id").autoincrement().primaryKey(),
     movementDate: timestamp("movementDate").notNull(),
-    movementType: mysqlEnum("movementType", ["sent", "payment"]).notNull(),
-    /** Faqat "sent" uchun — yuborilgan butilka soni. */
+    movementType: mysqlEnum("movementType", ["purchase", "sent", "payment"]).notNull(),
+    /** "purchase" va "sent" uchun — butilka soni ("payment" uchun 0). */
     quantity: int("quantity").default(0).notNull(),
-    /** Faqat "sent" uchun — bitta butilka narxi (so'm). */
+    /** "purchase" uchun olingan narx, "sent" uchun sotish narxi ("payment" uchun 0). */
     unitPrice: int("unitPrice").default(0).notNull(),
-    /** "sent" uchun quantity × unitPrice, "payment" uchun olingan summa. */
+    /** "purchase"/"sent" uchun quantity × unitPrice, "payment" uchun olingan summa. */
     amount: bigint("amount", { mode: "number" }).default(0).notNull(),
     note: varchar("note", { length: 1_000 }),
     createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),

@@ -36,6 +36,13 @@
       "when": 1785175089266,
       "tag": "0004_rainy_lilandra",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1785175825469,
+      "tag": "0005_bitter_maggott",
+      "breakpoints": true
     }
   ]
 }

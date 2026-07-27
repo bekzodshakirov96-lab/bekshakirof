@@ -244,21 +244,37 @@ export const factoryRouter = router({
    * Kassa bilan bog'lanmagan: zavoddan olingan pul shu yerda alohida yuritiladi.
    */
   bottles: router({
-    /** Umumiy holat: nechta butilka yuborilgan, qancha ishlangan, qancha pul
-     * olingan va zavod qancha qarzdor. */
+    /** Umumiy holat: qo'ldagi zaxira, sotib olish xarajati, sotuv summasi,
+     * foyda, zavod to'lagan pul va zavod qarzi. */
     summary: skladProcedure.query(async () => {
       const db = await requireDb();
       const [row] = await db
         .select({
+          purchasedQuantity: sql<number>`coalesce(sum(case when ${bottleMovements.movementType} = 'purchase' then ${bottleMovements.quantity} else 0 end), 0)`,
+          purchasedAmount: sql<number>`coalesce(sum(case when ${bottleMovements.movementType} = 'purchase' then ${bottleMovements.amount} else 0 end), 0)`,
           sentQuantity: sql<number>`coalesce(sum(case when ${bottleMovements.movementType} = 'sent' then ${bottleMovements.quantity} else 0 end), 0)`,
           sentAmount: sql<number>`coalesce(sum(case when ${bottleMovements.movementType} = 'sent' then ${bottleMovements.amount} else 0 end), 0)`,
           paidAmount: sql<number>`coalesce(sum(case when ${bottleMovements.movementType} = 'payment' then ${bottleMovements.amount} else 0 end), 0)`,
         })
         .from(bottleMovements);
+      const purchasedQuantity = Number(row?.purchasedQuantity ?? 0);
+      const purchasedAmount = Number(row?.purchasedAmount ?? 0);
       const sentQuantity = Number(row?.sentQuantity ?? 0);
       const sentAmount = Number(row?.sentAmount ?? 0);
       const paidAmount = Number(row?.paidAmount ?? 0);
-      return { sentQuantity, sentAmount, paidAmount, outstanding: sentAmount - paidAmount };
+      return {
+        purchasedQuantity,
+        purchasedAmount,
+        sentQuantity,
+        sentAmount,
+        paidAmount,
+        /** Sotib olingan, lekin hali zavodga yuborilmagan butilka. */
+        onHand: purchasedQuantity - sentQuantity,
+        /** Sotuv summasi − sotib olish xarajati. */
+        profit: sentAmount - purchasedAmount,
+        /** Zavod yuborilgan butilka uchun hali to'lamagan summa. */
+        outstanding: sentAmount - paidAmount,
+      };
     }),
 
     /** Yozuvlar ro'yxati — eng yangisi yuqorida, har biriga o'sha paytdagi
@@ -280,10 +296,12 @@ export const factoryRouter = router({
           .from(bottleMovements)
           .orderBy(asc(bottleMovements.movementDate), asc(bottleMovements.id));
 
-        // Qoldiqni eskisidan yangisiga qarab yig'amiz, so'ng ko'rsatish uchun teskari qilamiz.
+        // Zavod qarzini eskisidan yangisiga qarab yig'amiz, so'ng ko'rsatish uchun
+        // teskari qilamiz. "purchase" qarzga ta'sir qilmaydi — u bizning xaridimiz.
         let balance = 0;
         const withBalance = rows.map(row => {
-          balance += row.movementType === "sent" ? Number(row.amount) : -Number(row.amount);
+          if (row.movementType === "sent") balance += Number(row.amount);
+          else if (row.movementType === "payment") balance -= Number(row.amount);
           return { ...row, amount: Number(row.amount), balanceAfter: balance };
         });
         return withBalance.reverse().slice(0, input?.limit ?? 100);
@@ -292,6 +310,13 @@ export const factoryRouter = router({
     create: skladProcedure
       .input(
         z.discriminatedUnion("movementType", [
+          z.object({
+            movementType: z.literal("purchase"),
+            movementDate: z.number(),
+            quantity: z.number().int().positive(),
+            unitPrice: z.number().int().positive(),
+            note: z.string().max(1000).optional(),
+          }),
           z.object({
             movementType: z.literal("sent"),
             movementDate: z.number(),
@@ -314,15 +339,7 @@ export const factoryRouter = router({
           note: input.note?.trim() || null,
           createdBy: ctx.user.id,
         };
-        if (input.movementType === "sent") {
-          await db.insert(bottleMovements).values({
-            ...shared,
-            movementType: "sent",
-            quantity: input.quantity,
-            unitPrice: input.unitPrice,
-            amount: input.quantity * input.unitPrice,
-          });
-        } else {
+        if (input.movementType === "payment") {
           await db.insert(bottleMovements).values({
             ...shared,
             movementType: "payment",
@@ -330,7 +347,30 @@ export const factoryRouter = router({
             unitPrice: 0,
             amount: input.amount,
           });
+          return { success: true };
         }
+
+        // Zavodga yuborishda qo'lda yetarli butilka borligini tekshiramiz —
+        // aks holda "qo'lda qolgan" manfiy chiqib, hisob chalkashadi.
+        if (input.movementType === "sent") {
+          const [stock] = await db
+            .select({
+              onHand: sql<number>`coalesce(sum(case when ${bottleMovements.movementType} = 'purchase' then ${bottleMovements.quantity} when ${bottleMovements.movementType} = 'sent' then -${bottleMovements.quantity} else 0 end), 0)`,
+            })
+            .from(bottleMovements);
+          const available = Number(stock?.onHand ?? 0);
+          if (input.quantity > available) {
+            throw new Error(`Qo'lda faqat ${available.toLocaleString("uz-UZ")} dona butilka bor — avval sotib olinganini kiriting.`);
+          }
+        }
+
+        await db.insert(bottleMovements).values({
+          ...shared,
+          movementType: input.movementType,
+          quantity: input.quantity,
+          unitPrice: input.unitPrice,
+          amount: input.quantity * input.unitPrice,
+        });
         return { success: true };
       }),
 

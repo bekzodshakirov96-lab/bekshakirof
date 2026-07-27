@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatDate, formatMoney, formatNumber, localDateInputValue } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, Banknote, FileText, Factory as FactoryIcon, PackageCheck, RotateCcw, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, Banknote, FileText, Factory as FactoryIcon, PackageCheck, RotateCcw, Send, ShoppingCart, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -219,9 +219,17 @@ export default function Factory() {
   );
 }
 
-/** Zavodga sotilgan butilka narxi — yangi yozuvda shu qiymat taklif qilinadi,
- * lekin narx o'zgarsa qo'lda tuzatish mumkin (har bir yozuv o'z narxini saqlaydi). */
-const DEFAULT_BOTTLE_PRICE = "1700";
+/** Zavodga sotish narxi — yangi yozuvda shu qiymat taklif qilinadi, lekin narx
+ * o'zgarsa qo'lda tuzatish mumkin (har bir yozuv o'z narxini saqlaydi). */
+const DEFAULT_SALE_PRICE = "1700";
+
+type BottleEntryType = "purchase" | "sent" | "payment";
+
+const bottleTypeMeta: Record<BottleEntryType, { label: string; icon: typeof Send }> = {
+  purchase: { label: "Butilka sotib olindi", icon: ShoppingCart },
+  sent: { label: "Zavodga yuborildi", icon: Send },
+  payment: { label: "Zavoddan pul olindi", icon: Banknote },
+};
 
 /**
  * Butilka harakati: yig'ilgan bo'sh butilkalarni zavodga sotish va zavoddan
@@ -232,10 +240,13 @@ function BottleLedger() {
   const summary = trpc.factory.bottles.summary.useQuery();
   const list = trpc.factory.bottles.list.useQuery({ limit: 100 });
 
-  const [entryType, setEntryType] = useState<"sent" | "payment">("sent");
+  const [entryType, setEntryType] = useState<BottleEntryType>("purchase");
   const [date, setDate] = useState(() => localDateInputValue());
   const [quantity, setQuantity] = useState("");
-  const [unitPrice, setUnitPrice] = useState(DEFAULT_BOTTLE_PRICE);
+  /** Sotib olish va sotish narxlari alohida saqlanadi — tur almashganda
+   * bir-birini o'chirib yubormasligi uchun. */
+  const [purchasePrice, setPurchasePrice] = useState("");
+  const [salePrice, setSalePrice] = useState(DEFAULT_SALE_PRICE);
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
 
@@ -244,7 +255,7 @@ function BottleLedger() {
 
   const create = trpc.factory.bottles.create.useMutation({
     onSuccess: async () => {
-      toast.success(entryType === "sent" ? "Butilka yuborilgani qayd etildi" : "Zavoddan olingan pul qayd etildi");
+      toast.success(`${bottleTypeMeta[entryType].label} — qayd etildi`);
       setQuantity(""); setAmount(""); setNote("");
       await refresh();
     },
@@ -255,28 +266,35 @@ function BottleLedger() {
     onError: error => toast.error(error.message),
   });
 
+  const isPayment = entryType === "payment";
   const quantityValue = Number(quantity || 0);
-  const priceValue = Number(unitPrice || 0);
+  const priceValue = Number((entryType === "purchase" ? purchasePrice : salePrice) || 0);
   const amountValue = Number(amount || 0);
-  /** "Yuborildi" uchun summa avtomatik chiqadi — foydalanuvchi ko'rib turadi. */
+  /** Soni × narx — foydalanuvchi saqlashdan oldin summani ko'rib turadi. */
   const computedTotal = quantityValue * priceValue;
 
   const blockingReasons: string[] = [];
-  if (entryType === "sent") {
+  if (isPayment) {
+    if (amountValue <= 0) blockingReasons.push("Summa kiritilmagan");
+  } else {
     if (quantityValue <= 0) blockingReasons.push("Butilka soni kiritilmagan");
-    if (priceValue <= 0) blockingReasons.push("Narx kiritilmagan");
-  } else if (amountValue <= 0) {
-    blockingReasons.push("Summa kiritilmagan");
+    if (priceValue <= 0) blockingReasons.push(entryType === "purchase" ? "Olingan narx kiritilmagan" : "Sotish narxi kiritilmagan");
   }
   const canSubmit = blockingReasons.length === 0 && !create.isPending;
 
   function submit() {
     const movementDate = new Date(`${date}T12:00:00`).getTime();
-    if (entryType === "sent") {
-      create.mutate({ movementType: "sent", movementDate, quantity: quantityValue, unitPrice: priceValue, note: note || undefined });
-    } else {
+    if (isPayment) {
       create.mutate({ movementType: "payment", movementDate, amount: amountValue, note: note || undefined });
+      return;
     }
+    create.mutate({
+      movementType: entryType === "purchase" ? "purchase" : "sent",
+      movementDate,
+      quantity: quantityValue,
+      unitPrice: priceValue,
+      note: note || undefined,
+    });
   }
 
   const rows = list.data ?? [];
@@ -288,14 +306,28 @@ function BottleLedger() {
       description="Yig'ilgan bo'sh butilkalarni zavodga sotish va zavoddan olingan pul hisobi."
       className="mt-5"
     >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <div className="rounded-2xl border border-border bg-muted/60 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Jami yuborilgan</p>
-          <p className="mt-1 text-lg font-bold tabular-nums text-foreground">{formatNumber(stats?.sentQuantity ?? 0, 0)} dona</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Qo'lda qolgan butilka</p>
+          <p className="mt-1 text-lg font-bold tabular-nums text-foreground">{formatNumber(stats?.onHand ?? 0, 0)} dona</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Olingan {formatNumber(stats?.purchasedQuantity ?? 0, 0)} − yuborilgan {formatNumber(stats?.sentQuantity ?? 0, 0)}
+          </p>
         </div>
         <div className="rounded-2xl border border-border bg-muted/60 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Jami summa</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sotib olishga xarajat</p>
+          <p className="mt-1 text-lg font-bold tabular-nums text-rose-600 dark:text-rose-400">{formatMoney(stats?.purchasedAmount ?? 0)}</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-muted/60 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sotuv summasi</p>
           <p className="mt-1 text-lg font-bold tabular-nums text-foreground">{formatMoney(stats?.sentAmount ?? 0)}</p>
+        </div>
+        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sof foyda</p>
+          <p className={`mt-1 text-lg font-bold tabular-nums ${(stats?.profit ?? 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+            {formatMoney(stats?.profit ?? 0)}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">Sotuv − xarajat</p>
         </div>
         <div className="rounded-2xl border border-border bg-muted/60 p-4">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Zavod to'lagan</p>
@@ -310,27 +342,32 @@ function BottleLedger() {
       </div>
 
       <div className="mt-4 grid gap-3">
-        <div className="grid grid-cols-2 gap-2 sm:max-w-md">
-          <button
-            type="button"
-            onClick={() => setEntryType("sent")}
-            className={`flex h-14 flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition-colors ${entryType === "sent" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
-          >
-            <Send className="size-4" />
-            Butilka yuborildi
-          </button>
-          <button
-            type="button"
-            onClick={() => setEntryType("payment")}
-            className={`flex h-14 flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition-colors ${entryType === "payment" ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
-          >
-            <Banknote className="size-4" />
-            Zavoddan pul olindi
-          </button>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:max-w-2xl">
+          {(Object.keys(bottleTypeMeta) as BottleEntryType[]).map(type => {
+            const meta = bottleTypeMeta[type];
+            const Icon = meta.icon;
+            return (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setEntryType(type)}
+                className={`flex h-14 flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition-colors ${entryType === type ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+              >
+                <Icon className="size-4" />
+                {meta.label}
+              </button>
+            );
+          })}
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {entryType === "sent" ? (
+          {isPayment ? (
+            <Input
+              className={`finance-input md:col-span-2 ${amountValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
+              type="text" inputMode="numeric" placeholder="Olingan summa (so'm)"
+              value={amount} onChange={event => setAmount(event.target.value.replace(/[^0-9]/g, ""))}
+            />
+          ) : (
             <>
               <Input
                 className={`finance-input ${quantityValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
@@ -339,22 +376,22 @@ function BottleLedger() {
               />
               <Input
                 className={`finance-input ${priceValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
-                type="text" inputMode="numeric" placeholder="Bitta butilka narxi"
-                value={unitPrice} onChange={event => setUnitPrice(event.target.value.replace(/[^0-9]/g, ""))}
+                type="text" inputMode="numeric"
+                placeholder={entryType === "purchase" ? "Olingan narx (1 dona)" : "Sotish narxi (1 dona)"}
+                value={entryType === "purchase" ? purchasePrice : salePrice}
+                onChange={event => {
+                  const next = event.target.value.replace(/[^0-9]/g, "");
+                  if (entryType === "purchase") setPurchasePrice(next);
+                  else setSalePrice(next);
+                }}
               />
             </>
-          ) : (
-            <Input
-              className={`finance-input md:col-span-2 ${amountValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
-              type="text" inputMode="numeric" placeholder="Olingan summa (so'm)"
-              value={amount} onChange={event => setAmount(event.target.value.replace(/[^0-9]/g, ""))}
-            />
           )}
           <Input className="finance-input" type="date" value={date} onChange={event => setDate(event.target.value)} />
           <Button disabled={!canSubmit} onClick={submit}>{create.isPending ? "Saqlanmoqda..." : "Qo'shish"}</Button>
         </div>
 
-        {entryType === "sent" && computedTotal > 0 ? (
+        {!isPayment && computedTotal > 0 ? (
           <p className="text-right text-xs font-semibold text-muted-foreground">
             Hisoblangan summa: <span className="text-foreground">{formatMoney(computedTotal)}</span>
           </p>
@@ -386,21 +423,25 @@ function BottleLedger() {
             </TableHeader>
             <TableBody>
               {rows.map(row => {
-                const isSent = row.movementType === "sent";
+                const hasQuantity = row.movementType !== "payment";
+                const badge = {
+                  purchase: { label: "Sotib olindi", className: "rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50 dark:bg-rose-500/15 dark:text-rose-300" },
+                  sent: { label: "Zavodga yuborildi", className: "rounded-lg bg-muted text-muted-foreground hover:bg-muted" },
+                  payment: { label: "Pul olindi", className: "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-300" },
+                }[row.movementType];
+                /** Xarajat qizil (−), sotuv va tushum yashil/qora (+). */
+                const amountClass =
+                  row.movementType === "purchase" ? "text-rose-600 dark:text-rose-400"
+                  : row.movementType === "payment" ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-foreground";
                 return (
                   <TableRow key={row.id}>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.movementDate)}</TableCell>
-                    <TableCell>
-                      <Badge className={isSent
-                        ? "rounded-lg bg-muted text-muted-foreground hover:bg-muted"
-                        : "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-300"}>
-                        {isSent ? "Yuborildi" : "Pul olindi"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{isSent ? `${formatNumber(row.quantity, 0)} dona` : "—"}</TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">{isSent ? formatMoney(row.unitPrice) : "—"}</TableCell>
-                    <TableCell className={`text-right font-semibold tabular-nums ${isSent ? "text-foreground" : "text-emerald-600 dark:text-emerald-400"}`}>
-                      {isSent ? "+" : "−"}{formatMoney(row.amount)}
+                    <TableCell><Badge className={badge.className}>{badge.label}</Badge></TableCell>
+                    <TableCell className="text-right tabular-nums">{hasQuantity ? `${formatNumber(row.quantity, 0)} dona` : "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">{hasQuantity ? formatMoney(row.unitPrice) : "—"}</TableCell>
+                    <TableCell className={`text-right font-semibold tabular-nums ${amountClass}`}>
+                      {row.movementType === "purchase" ? "−" : row.movementType === "payment" ? "−" : "+"}{formatMoney(row.amount)}
                     </TableCell>
                     <TableCell className="text-right font-bold tabular-nums">{formatMoney(row.balanceAfter)}</TableCell>
                     <TableCell className="max-w-56 truncate text-muted-foreground">{row.note ?? "—"}</TableCell>

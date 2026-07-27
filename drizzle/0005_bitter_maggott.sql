@@ -1,0 +1,1 @@
+ALTER TABLE `bottle_movements` MODIFY COLUMN `movementType` enum('purchase','sent','payment') NOT NULL;
