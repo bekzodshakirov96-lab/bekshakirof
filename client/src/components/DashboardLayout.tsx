@@ -7,8 +7,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLanguage } from "@/lib/language";
@@ -35,7 +33,6 @@ import {
   Beer,
   Boxes,
   Building2,
-  Check,
   ChevronDown,
   CircleDollarSign,
   Eye,
@@ -43,6 +40,7 @@ import {
   Factory,
   FileSpreadsheet,
   FileText,
+  Languages,
   LayoutDashboard,
   Landmark,
   Loader2,
@@ -462,7 +460,28 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
             </SidebarGroup>
           ))}
         </SidebarContent>
-        <SidebarFooter className="p-3">
+        <SidebarFooter className="gap-2 p-3">
+          {/* Ko‘rinish va yozuvni tez almashtirish — hisob kartochkasi ustida */}
+          <div data-no-translit className="flex gap-2 group-data-[collapsible=icon]:flex-col">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={theme === "dark" ? "Yorug‘ rejim" : "Qorong‘i rejim"}
+              className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/8 bg-white/5 text-[11px] font-semibold text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4 shrink-0" /> : <Moon className="h-4 w-4 shrink-0" />}
+              <span className="group-data-[collapsible=icon]:hidden">{theme === "dark" ? "Yorug‘" : "Qorong‘i"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLanguage(language === "latin" ? "cyrillic" : "latin")}
+              title={language === "latin" ? "Ўзбекчага o‘tish" : "Lotinchaga o‘tish"}
+              className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/8 bg-white/5 text-[11px] font-semibold text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <Languages className="h-4 w-4 shrink-0" />
+              <span className="group-data-[collapsible=icon]:hidden">{language === "latin" ? "O‘zb" : "Ўзб"}</span>
+            </button>
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex w-full items-center gap-3 rounded-2xl border border-white/8 bg-white/5 p-2 text-left transition-colors hover:bg-white/10 group-data-[collapsible=icon]:justify-center">
@@ -477,34 +496,6 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" side="right" className="w-52 rounded-xl p-1.5">
-              <DropdownMenuLabel className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
-                Yozuv / Ёзув
-              </DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={() => setLanguage("latin")}
-                className="cursor-pointer rounded-lg"
-                data-no-translit
-              >
-                <Check className={`mr-2 h-4 w-4 ${language === "latin" ? "opacity-100" : "opacity-0"}`} />
-                O‘zbekcha (lotin)
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => setLanguage("cyrillic")}
-                className="cursor-pointer rounded-lg"
-                data-no-translit
-              >
-                <Check className={`mr-2 h-4 w-4 ${language === "cyrillic" ? "opacity-100" : "opacity-0"}`} />
-                Ўзбекча (кирилл)
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
-                Ko‘rinish
-              </DropdownMenuLabel>
-              <DropdownMenuItem onClick={toggleTheme} className="cursor-pointer rounded-lg" data-no-translit>
-                {theme === "dark" ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
-                {theme === "dark" ? "Yorug‘ rejim" : "Qorong‘i rejim"}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onLogout} className="cursor-pointer rounded-lg text-destructive focus:text-destructive">
                 <LogOut className="mr-2 h-4 w-4" /> Tizimdan chiqish
               </DropdownMenuItem>
