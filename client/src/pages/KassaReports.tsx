@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
 import { formatDate, formatMoney, formatNumber, localDateInputValue } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
@@ -29,6 +30,10 @@ export default function KassaReports() {
   const agents = trpc.agents.options.useQuery();
   const products = trpc.products.list.useQuery({});
   const categories = trpc.cash.categories.useQuery({ type: typeFilter === "all" ? undefined : typeFilter });
+  const categoryOptions = useMemo(() => {
+    const staticList = typeFilter === "income" ? INCOME_CATEGORIES : typeFilter === "expense" ? EXPENSE_CATEGORIES : [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
+    return Array.from(new Set([...staticList, ...(categories.data ?? [])]));
+  }, [typeFilter, categories.data]);
 
   const filters = useMemo(() => ({
     from: fromDate ? toTs(fromDate) : undefined,
@@ -175,7 +180,7 @@ export default function KassaReports() {
           <select className="finance-input border px-3 text-slate-600" value={typeFilter} onChange={event => { setTypeFilter(event.target.value as typeof typeFilter); setCategoryFilter(""); }}><option value="all">Prihod + Rasxod</option><option value="income">Faqat Prihod</option><option value="expense">Faqat Rasxod</option></select>
           <select className="finance-input border px-3 text-slate-600" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}>
             <option value="">Barcha turlar</option>
-            {(categories.data ?? []).map(category => <option key={category} value={category}>{category}</option>)}
+            {categoryOptions.map(category => <option key={category} value={category}>{category}</option>)}
           </select>
         </div>
         <div className="mt-3"><Button variant="outline" className="gap-2 bg-white" onClick={clearFilters}><RotateCcw className="size-4" />Filtrlarni tozalash</Button></div>

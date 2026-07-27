@@ -2,6 +2,7 @@ import { MetricCard, PageHeader, QueryError } from "@/components/finance-ui";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import {
@@ -25,9 +26,6 @@ function shiftDate(value: string, days: number): string {
   shifted.setDate(shifted.getDate() + days);
   return localDateInputValue(shifted);
 }
-
-const INCOME_CATEGORIES = ["Приход кег", "Приход пет"];
-const EXPENSE_CATEGORIES = ["Ойлик", "Обед", "Газ", "Завод", "Расход"];
 
 const CATEGORY_TYPE: Record<string, "income" | "expense"> = Object.fromEntries([
   ...INCOME_CATEGORIES.map(name => [name, "income" as const]),
