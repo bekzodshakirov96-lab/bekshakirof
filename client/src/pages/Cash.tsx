@@ -105,7 +105,23 @@ function DailyJournalGrid({
   const update = trpc.cash.update.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
   const del = trpc.cash.delete.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
 
-  const sortedEntries = useMemo(() => [...entries].sort((a, b) => a.id - b.id), [entries]);
+  /** Qatorlar joyidan qo'zg'almasligi uchun: draft qatorida saqlanib turgan (entryIds'da
+   * ko'rsatilgan) yozuvlar "sortedEntries" ro'yxatida qayta ko'rsatilmaydi — aks holda
+   * saqlangan zahoti o'sha yozuv yuqoriga (entries bo'limiga) sakrab, draft qatori esa
+   * bo'shab qolardi. */
+  const activeDraftEntryIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const draft of drafts) {
+      for (const id of Object.values(draft.entryIds)) {
+        if (id) ids.add(id);
+      }
+    }
+    return ids;
+  }, [drafts]);
+  const sortedEntries = useMemo(
+    () => [...entries].filter(entry => !activeDraftEntryIds.has(entry.id)).sort((a, b) => a.id - b.id),
+    [entries, activeDraftEntryIds],
+  );
   const openingBalance = openingBalanceQuery.data?.openingBalance ?? 0;
   const dayNetCash = useMemo(
     () => entries.reduce((sum, entry) => sum + (entry.type === "income" ? entry.cashAmount : -entry.cashAmount), 0),
@@ -290,13 +306,15 @@ function DailyJournalGrid({
    * keyin commit qilinadi. relatedTarget'ga tayanish avtomatlashtirilgan va
    * ba'zi brauzer holatlarida ishonchsiz bo'lib, summa avval yozilganda
    * qatorni vaqtidan oldin bo'shatib yuborardi.
+   * `resetAfter: false` — qator saqlangandan keyin bo'shatilmaydi, yozilgan
+   * qiymatlar aynan o'sha katakda qolaveradi (yuqoriga "sakramaydi").
    */
   function commitDraftRow(index: number, event: React.FocusEvent<HTMLTableRowElement>) {
     const rowEl = event.currentTarget;
     window.setTimeout(() => {
       if (rowEl.contains(document.activeElement)) return;
       if (autoSaveTimers.current[index]) { clearTimeout(autoSaveTimers.current[index]); delete autoSaveTimers.current[index]; }
-      void flushDraftRow(index, true);
+      void flushDraftRow(index, false);
     }, 0);
   }
 
