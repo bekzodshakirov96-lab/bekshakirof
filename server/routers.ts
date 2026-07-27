@@ -12,6 +12,7 @@ import { clientsRouter } from "./routers/clients";
 import { containersRouter } from "./routers/containers";
 import { dashboardRouter } from "./routers/dashboard";
 import { debtsRouter } from "./routers/debts";
+import { factoryRouter } from "./routers/factory";
 import { importsRouter } from "./routers/imports";
 import { kassaRouter } from "./routers/kassa";
 import { fastKegRouter } from "./routers/fastKeg";
@@ -94,6 +95,7 @@ export const appRouter = router({
   imports: importsRouter,
   fastKeg: fastKegRouter,
   stock: stockRouter,
+  factory: factoryRouter,
   users: usersRouter,
 });
 

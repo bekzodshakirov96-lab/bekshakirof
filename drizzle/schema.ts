@@ -219,6 +219,32 @@ export const stockMovements = mysqlTable(
   ],
 );
 
+/**
+ * Zavod bilan tara/KEG almashinuvi hisobi. Ikki mustaqil oqim:
+ * tara_sent -> filled_received (bo'sh tara yuborildi -> zavod to'ldirib qaytardi) va
+ * brak_returned -> brak_replaced (brak zavodga qaytarildi -> o'rniga yangi keg keldi).
+ * filled_received/brak_replaced skladga avtomatik kirim, brak_returned avtomatik chiqim
+ * yaratadi (stockMovementId orqali bog'langan) — Sklad qoldig'i har doim to'g'ri bo'lishi uchun.
+ */
+export const factoryOperations = mysqlTable(
+  "factory_operations",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    operationDate: timestamp("operationDate").notNull(),
+    operationType: mysqlEnum("operationType", ["tara_sent", "filled_received", "brak_returned", "brak_replaced"]).notNull(),
+    productId: int("productId").references(() => products.id, { onDelete: "cascade" }).notNull(),
+    quantity: int("quantity").notNull(),
+    note: varchar("note", { length: 1_000 }),
+    stockMovementId: int("stockMovementId").references(() => stockMovements.id, { onDelete: "set null" }),
+    createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("factory_operations_product_idx").on(table.productId),
+    index("factory_operations_date_idx").on(table.operationDate),
+  ],
+);
+
 export const importHistory = mysqlTable(
   "import_history",
   {
