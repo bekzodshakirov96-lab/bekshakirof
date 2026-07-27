@@ -28,6 +28,7 @@ export default function KassaReports() {
 
   const agents = trpc.agents.options.useQuery();
   const products = trpc.products.list.useQuery({});
+  const categories = trpc.cash.categories.useQuery({ type: typeFilter === "all" ? undefined : typeFilter });
 
   const filters = useMemo(() => ({
     from: fromDate ? toTs(fromDate) : undefined,
@@ -171,8 +172,11 @@ export default function KassaReports() {
           <Input type="date" className="finance-input" value={toDate} onChange={event => setToDate(event.target.value)} aria-label="Tugash sanasi" />
           <select className="finance-input border px-3 text-slate-600" value={agentFilter} onChange={event => setAgentFilter(event.target.value)}><option value="">Barcha agentlar</option>{(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select>
           <select className="finance-input border px-3 text-slate-600" value={productFilter} onChange={event => setProductFilter(event.target.value)}><option value="">Barcha mahsulotlar</option>{(products.data ?? []).map(product => <option key={product.id} value={product.id}>{product.name}</option>)}</select>
-          <select className="finance-input border px-3 text-slate-600" value={typeFilter} onChange={event => setTypeFilter(event.target.value as typeof typeFilter)}><option value="all">Prihod + Rasxod</option><option value="income">Faqat Prihod</option><option value="expense">Faqat Rasxod</option></select>
-          <Input className="finance-input" placeholder="Tur (Oylik, Gaz...)" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} />
+          <select className="finance-input border px-3 text-slate-600" value={typeFilter} onChange={event => { setTypeFilter(event.target.value as typeof typeFilter); setCategoryFilter(""); }}><option value="all">Prihod + Rasxod</option><option value="income">Faqat Prihod</option><option value="expense">Faqat Rasxod</option></select>
+          <select className="finance-input border px-3 text-slate-600" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}>
+            <option value="">Barcha turlar</option>
+            {(categories.data ?? []).map(category => <option key={category} value={category}>{category}</option>)}
+          </select>
         </div>
         <div className="mt-3"><Button variant="outline" className="gap-2 bg-white" onClick={clearFilters}><RotateCcw className="size-4" />Filtrlarni tozalash</Button></div>
       </SectionCard>

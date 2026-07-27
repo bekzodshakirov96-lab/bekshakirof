@@ -12,14 +12,15 @@ function toMySqlDate(d: Date): string {
 }
 
 export const cashRouter = router({
-  /** Distinct category names previously used for this type, most-recent first — powers the
-   * "tur" autocomplete/dropdown on the quick Kassa entry form without a separate types table. */
-  categories: businessProcedure.input(z.object({ type: z.enum(["income", "expense"]) })).query(async ({ input }) => {
+  /** Distinct category names previously used (optionally filtered to one type), most-recent
+   * first — powers the "tur" dropdown on the quick Kassa entry form and report filters,
+   * without a separate types table. */
+  categories: businessProcedure.input(z.object({ type: z.enum(["income", "expense"]).optional() })).query(async ({ input }) => {
     const db = await requireDb();
     const rows = await db
       .select({ category: cashEntries.category, lastUsed: sql<number>`max(${cashEntries.entryDate})`.mapWith(Number) })
       .from(cashEntries)
-      .where(eq(cashEntries.type, input.type))
+      .where(input.type ? eq(cashEntries.type, input.type) : undefined)
       .groupBy(cashEntries.category)
       .orderBy(desc(sql`max(${cashEntries.entryDate})`))
       .limit(40);
