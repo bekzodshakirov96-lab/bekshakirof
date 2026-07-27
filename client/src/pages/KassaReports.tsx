@@ -24,6 +24,7 @@ export default function KassaReports() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [isExportingCash, setIsExportingCash] = useState(false);
   const [isExportingAgent, setIsExportingAgent] = useState(false);
+  const [isExportingExpense, setIsExportingExpense] = useState(false);
 
   const agents = trpc.agents.options.useQuery();
   const products = trpc.products.list.useQuery({});
@@ -36,6 +37,7 @@ export default function KassaReports() {
   }), [fromDate, toDate, agentFilter, productFilter]);
 
   const summary = trpc.kassa.report.summary.useQuery({ from: filters.from, to: filters.to });
+  const expenseByCategory = trpc.kassa.report.expenseByCategory.useQuery({ from: filters.from, to: filters.to });
   const cashList = trpc.cash.list.useQuery({
     from: filters.from, to: filters.to, agentId: filters.agentId,
     type: typeFilter, category: categoryFilter.trim() || undefined,
@@ -85,6 +87,33 @@ export default function KassaReports() {
       toast.error(error instanceof Error ? error.message : "Hisobotni eksport qilib bo‘lmadi.");
     } finally {
       setIsExportingCash(false);
+    }
+  }
+
+  async function exportExpenseByCategory(format: "xlsx" | "pdf") {
+    setIsExportingExpense(true);
+    try {
+      const data = expenseByCategory.data;
+      if (!data) return;
+      type Row = (typeof data.rows)[number];
+      const columns: ReportColumn<Row>[] = [
+        { title: "Tur", value: row => row.category, width: "*" },
+        { title: "Summa", value: row => row.total, width: 70, align: "right" },
+        { title: "Ulush", value: row => data.total > 0 ? `${((row.total / data.total) * 100).toFixed(1)}%` : "0%", width: 50, align: "right" },
+      ];
+      const options = {
+        title: "Rasxod turlari bo'yicha",
+        fileName: `rasxod_turlari_${localDateInputValue()}`,
+        rows: data.rows, columns, generatedAt: data.generatedAt,
+        filterDescription: `${fromDate} — ${toDate}`,
+        summary: [{ label: "Jami rasxod", value: data.total }],
+      };
+      if (format === "xlsx") await exportReportXlsx(options); else await exportReportPdf(options);
+      toast.success(`${format === "xlsx" ? "Excel" : "PDF"} hisoboti yuklandi.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Hisobotni eksport qilib bo'lmadi.");
+    } finally {
+      setIsExportingExpense(false);
     }
   }
 
@@ -146,6 +175,43 @@ export default function KassaReports() {
           <Input className="finance-input" placeholder="Tur (Oylik, Gaz...)" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} />
         </div>
         <div className="mt-3"><Button variant="outline" className="gap-2 bg-white" onClick={clearFilters}><RotateCcw className="size-4" />Filtrlarni tozalash</Button></div>
+      </SectionCard>
+
+      <SectionCard
+        title="Rasxod turlari bo'yicha"
+        description="Tanlangan davrda Ойлик, Обед, Газ, Завод va boshqa rasxodlarga qancha sarflangani"
+        className="mt-5"
+        action={<ExportMenu onExcel={() => exportExpenseByCategory("xlsx")} onPdf={() => exportExpenseByCategory("pdf")} isLoading={isExportingExpense} disabled={expenseByCategory.isLoading} />}
+      >
+        {expenseByCategory.isLoading ? (
+          <TableLoading columns={3} />
+        ) : (expenseByCategory.data?.rows.length ?? 0) === 0 ? (
+          <EmptyState description="Tanlangan davrda rasxod yo'q." />
+        ) : (
+          <div className="space-y-3">
+            {expenseByCategory.data!.rows.map(row => {
+              const share = expenseByCategory.data!.total > 0 ? (row.total / expenseByCategory.data!.total) * 100 : 0;
+              return (
+                <div key={row.category}>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <p className="font-semibold text-slate-900">{row.category}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400">{share.toFixed(1)}%</span>
+                      <span className="font-bold tabular-nums text-slate-900">{formatMoney(row.total)}</span>
+                    </div>
+                  </div>
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full rounded-full bg-rose-400" style={{ width: `${Math.max(2, share)}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-sm font-bold text-slate-900">
+              <p>Jami rasxod</p>
+              <p className="tabular-nums">{formatMoney(expenseByCategory.data?.total ?? 0)}</p>
+            </div>
+          </div>
+        )}
       </SectionCard>
 
       <SectionCard title="Kassa harakatlari" description="Prihod va rasxod yozuvlari" className="mt-5" action={<ExportMenu onExcel={() => exportCash("xlsx")} onPdf={() => exportCash("pdf")} isLoading={isExportingCash} disabled={cashList.isLoading} />}>

@@ -383,6 +383,30 @@ export const kassaRouter = router({
         };
       }),
 
+    /** Rasxod turlari (Ойлик, Обед, Газ, Завод, Расход...) bo'yicha davr jamlanmasi —
+     * "Kassa hisobotlari"dagi rasxod tarkibi jadvali uchun. */
+    expenseByCategory: businessProcedure
+      .input(z.object({ from: z.number().int().optional(), to: z.number().int().optional() }))
+      .query(async ({ input }) => {
+        const db = await requireDb();
+        const conditions = [
+          eq(cashEntries.type, "expense"),
+          input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
+          input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+        ].filter(Boolean);
+        const rows = await db
+          .select({
+            category: cashEntries.category,
+            total: sql<number>`coalesce(sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount}), 0)`.mapWith(Number),
+          })
+          .from(cashEntries)
+          .where(and(...conditions))
+          .groupBy(cashEntries.category)
+          .orderBy(desc(sql`sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount})`));
+        const total = rows.reduce((sum, row) => sum + row.total, 0);
+        return { rows, total, generatedAt: Date.now() };
+      }),
+
     /** Line-item agent product-taking rows for the detail table, filterable and export-ready. */
     agentTakingDetails: businessProcedure
       .input(
