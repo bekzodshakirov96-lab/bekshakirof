@@ -573,13 +573,6 @@ function AgentProductMatrix({ date }: { date: string }) {
     onSuccess: () => Promise.all([invalidateMatrix(), utils.kassa.dayPrice.listForDay.invalidate({ date: timestamp })]),
     onError: error => toast.error(error.message),
   });
-  const submitCash = trpc.kassa.agentCashSubmission.upsert.useMutation({
-    onSuccess: async () => {
-      toast.success("Касса saqlandi");
-      await Promise.all([utils.kassa.daySummary.invalidate({ date: timestamp }), utils.dashboard.overview.invalidate()]);
-    },
-    onError: error => toast.error(error.message),
-  });
   const reorderProduct = trpc.products.reorder.useMutation({
     onSuccess: () => utils.products.list.invalidate(),
     onError: error => toast.error(error.message),
@@ -866,28 +859,15 @@ function AgentProductMatrix({ date }: { date: string }) {
             ))}
           </tr>
           <tr className="bg-slate-50/80 text-xs font-bold text-slate-700">
-            <td className="sticky left-0 whitespace-nowrap bg-slate-50/80 px-3 py-2" colSpan={3}>Касса</td>
-            {visibleAgents.map(agent => {
-              const row = summaryByAgent.get(agent.id);
-              return (
-                <td key={agent.id} className="px-2 py-1.5 text-right">
-                  <Input
-                    className="finance-input h-10 w-24 text-right"
-                    type="text" inputMode="numeric"
-                    defaultValue={row?.submittedAmount ?? ""}
-                    key={`kassa:${agent.id}:${row?.submittedAmount ?? ""}`}
-                    placeholder="0"
-                    onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
-                    onBlur={event => {
-                      const value = event.target.value;
-                      const amount = Number(value);
-                      if (value === "" || Number.isNaN(amount) || amount === (row?.submittedAmount ?? 0)) return;
-                      submitCash.mutate({ date: timestamp, agentId: agent.id, submittedAmount: Math.round(amount) });
-                    }}
-                  />
-                </td>
-              );
-            })}
+            <td className="sticky left-0 whitespace-nowrap bg-slate-50/80 px-3 py-2" colSpan={3}>
+              Касса
+              <span className="ml-1.5 font-normal text-slate-400">(Приход кег + Приход пет)</span>
+            </td>
+            {visibleAgents.map(agent => (
+              <td key={agent.id} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
+                {formatMoney(summaryByAgent.get(agent.id)?.submittedAmount ?? 0)}
+              </td>
+            ))}
           </tr>
           <tr className="text-xs font-bold">
             <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-2" colSpan={3}>Разница</td>

@@ -63,28 +63,46 @@ export const kassaRouter = router({
       .where(and(sql`${agentTakingEntries.entryDate} >= ${start}`, sql`${agentTakingEntries.entryDate} <= ${end}`))
       .groupBy(agentTakingEntries.agentId, agents.name);
 
-    const submissionRows = await db
-      .select()
-      .from(agentCashSubmissions)
-      .where(and(sql`${agentCashSubmissions.entryDate} >= ${start}`, sql`${agentCashSubmissions.entryDate} <= ${end}`));
-    const submissionByAgent = new Map(submissionRows.map(row => [row.agentId, row]));
+    // "Kassa" (topshirilgan naqd) endi qo'lda kiritilmaydi — Kunlik jurnaldagi shu agentning
+    // "Приход кег" va "Приход пет" yozuvlari yig'indisidan avtomatik olinadi.
+    const journalIncomeRows = await db
+      .select({
+        agentId: cashEntries.agentId,
+        agentName: agents.name,
+        submittedAmount:
+          sql<number>`coalesce(sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount}), 0)`.mapWith(
+            Number,
+          ),
+      })
+      .from(cashEntries)
+      .innerJoin(agents, eq(cashEntries.agentId, agents.id))
+      .where(
+        and(
+          eq(cashEntries.type, "income"),
+          inArray(cashEntries.category, ["Приход кег", "Приход пет"]),
+          sql`${cashEntries.entryDate} >= ${start}`,
+          sql`${cashEntries.entryDate} <= ${end}`,
+        ),
+      )
+      .groupBy(cashEntries.agentId, agents.name);
+    const journalIncomeByAgent = new Map(journalIncomeRows.map(row => [row.agentId, row]));
 
     const agentIdsWithActivity = new Set([
       ...takingRows.map(row => row.agentId),
-      ...submissionRows.map(row => row.agentId),
+      ...journalIncomeRows.map(row => row.agentId),
     ]);
     const agentSummaries = Array.from(agentIdsWithActivity).map(agentId => {
       const taking = takingRows.find(row => row.agentId === agentId);
-      const submission = submissionByAgent.get(agentId);
+      const journalIncome = journalIncomeByAgent.get(agentId);
       const computedAmount = taking?.computedAmount ?? 0;
-      const submittedAmount = submission?.submittedAmount ?? 0;
+      const submittedAmount = journalIncome?.submittedAmount ?? 0;
       return {
         agentId,
-        agentName: taking?.agentName ?? "",
+        agentName: taking?.agentName ?? journalIncome?.agentName ?? "",
         computedAmount,
         submittedAmount,
         farq: computedAmount - submittedAmount,
-        note: submission?.note ?? null,
+        note: null as string | null,
       };
     });
 
@@ -364,14 +382,15 @@ export const kassaRouter = router({
           .where(takingWhere);
 
         const submissionConditions = [
-          input.from ? sql`${agentCashSubmissions.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
-          input.to ? sql`${agentCashSubmissions.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+          eq(cashEntries.type, "income"),
+          inArray(cashEntries.category, ["Приход кег", "Приход пет"]),
+          input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
+          input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
         ].filter(Boolean);
-        const submissionWhere = submissionConditions.length ? and(...submissionConditions) : undefined;
         const [submissionTotals] = await db
-          .select({ submitted: sql<number>`coalesce(sum(${agentCashSubmissions.submittedAmount}), 0)`.mapWith(Number) })
-          .from(agentCashSubmissions)
-          .where(submissionWhere);
+          .select({ submitted: sql<number>`coalesce(sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount}), 0)`.mapWith(Number) })
+          .from(cashEntries)
+          .where(and(...submissionConditions));
 
         return {
           jamiPrihod: cashTotals.prihod,
@@ -475,19 +494,24 @@ export const kassaRouter = router({
           .groupBy(agentTakingEntries.entryDate, agentTakingEntries.agentId, agents.name);
 
         const submissionConditions = [
-          input.agentId ? eq(agentCashSubmissions.agentId, input.agentId) : undefined,
-          input.from ? sql`${agentCashSubmissions.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
-          input.to ? sql`${agentCashSubmissions.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+          eq(cashEntries.type, "income"),
+          inArray(cashEntries.category, ["Приход кег", "Приход пет"]),
+          input.agentId ? eq(cashEntries.agentId, input.agentId) : undefined,
+          input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
+          input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
         ].filter(Boolean);
-        const submissionRows = await db
+        const submissionRowsRaw = await db
           .select({
-            entryDate: agentCashSubmissions.entryDate,
-            agentId: agentCashSubmissions.agentId,
-            submittedAmount: agentCashSubmissions.submittedAmount,
-            note: agentCashSubmissions.note,
+            entryDate: cashEntries.entryDate,
+            agentId: cashEntries.agentId,
+            submittedAmount: sql<number>`coalesce(sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount}), 0)`.mapWith(Number),
           })
-          .from(agentCashSubmissions)
-          .where(submissionConditions.length ? and(...submissionConditions) : undefined);
+          .from(cashEntries)
+          .where(and(...submissionConditions))
+          .groupBy(cashEntries.entryDate, cashEntries.agentId);
+        const submissionRows = submissionRowsRaw.filter(
+          (row): row is typeof row & { agentId: number } => row.agentId !== null,
+        );
 
         const key = (date: Date, agentId: number) => `${date.toISOString().slice(0, 10)}:${agentId}`;
         const submissionMap = new Map(submissionRows.map(row => [key(row.entryDate, row.agentId), row]));
@@ -504,10 +528,10 @@ export const kassaRouter = router({
             computedAmount: row.computedAmount,
             submittedAmount,
             farq: row.computedAmount - submittedAmount,
-            note: submission?.note ?? null,
+            note: null as string | null,
           };
         });
-        // Include submission-only rows (agent handed cash on a day with no taking entries recorded).
+        // Include submission-only rows (agent had journal income on a day with no taking entries recorded).
         for (const submission of submissionRows) {
           const k = key(submission.entryDate, submission.agentId);
           if (seen.has(k)) continue;
@@ -519,7 +543,7 @@ export const kassaRouter = router({
             computedAmount: 0,
             submittedAmount: submission.submittedAmount,
             farq: 0 - submission.submittedAmount,
-            note: submission.note,
+            note: null as string | null,
           });
         }
         rows.sort((a, b) => b.entryDate.getTime() - a.entryDate.getTime());
