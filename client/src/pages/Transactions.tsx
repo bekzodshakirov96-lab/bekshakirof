@@ -44,9 +44,9 @@ export default function Transactions() {
   const [productSearch, setProductSearch] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
-  const [cashPayment, setCashPayment] = useState("0");
-  const [terminalPayment, setTerminalPayment] = useState("0");
-  const [clickPayment, setClickPayment] = useState("0");
+  const [cashPayment, setCashPayment] = useState("");
+  const [terminalPayment, setTerminalPayment] = useState("");
+  const [clickPayment, setClickPayment] = useState("");
   const [note, setNote] = useState("");
 
   const agents = trpc.agents.options.useQuery();
@@ -90,7 +90,7 @@ export default function Transactions() {
     onSuccess: async result => {
       toast.success(`${result.lineCount} ta mahsulot bo‘yicha savdo saqlandi: ${formatMoney(result.cartTotal)}`);
       setCart([]);
-      setCashPayment("0"); setTerminalPayment("0"); setClickPayment("0"); setNote("");
+      setCashPayment(""); setTerminalPayment(""); setClickPayment(""); setNote("");
       await Promise.all([
         utils.transactions.list.invalidate(), utils.dashboard.overview.invalidate(),
         utils.debts.list.invalidate(), utils.containers.invalidate(),
@@ -297,9 +297,9 @@ export default function Transactions() {
     {cart.length > 0 && (
       <SectionCard title="3. To‘lov" description="Naqd, terminal va Click orqali to‘langan summani kiriting">
         <div className="grid gap-4 sm:grid-cols-3">
-          <div className="space-y-2"><Label>Naqd to‘lov</Label><Input className="finance-input" type="text" inputMode="numeric" value={cashPayment} onChange={event => setCashPayment(sanitizeIntegerInput(event.target.value))} /></div>
-          <div className="space-y-2"><Label>Terminal</Label><Input className="finance-input" type="text" inputMode="numeric" value={terminalPayment} onChange={event => setTerminalPayment(sanitizeIntegerInput(event.target.value))} /></div>
-          <div className="space-y-2"><Label>Click</Label><Input className="finance-input" type="text" inputMode="numeric" value={clickPayment} onChange={event => setClickPayment(sanitizeIntegerInput(event.target.value))} /></div>
+          <div className="space-y-2"><Label>Naqd to‘lov</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={cashPayment} onChange={event => setCashPayment(sanitizeIntegerInput(event.target.value))} /></div>
+          <div className="space-y-2"><Label>Terminal</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={terminalPayment} onChange={event => setTerminalPayment(sanitizeIntegerInput(event.target.value))} /></div>
+          <div className="space-y-2"><Label>Click</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={clickPayment} onChange={event => setClickPayment(sanitizeIntegerInput(event.target.value))} /></div>
         </div>
         <div className="mt-4 space-y-2"><Label>Izoh</Label><Input className="finance-input" value={note} onChange={event => setNote(event.target.value)} placeholder="Ixtiyoriy" /></div>
 
