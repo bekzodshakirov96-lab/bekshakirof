@@ -27,7 +27,7 @@ function shiftDate(value: string, days: number): string {
 }
 
 const INCOME_CATEGORIES = ["Приход кег", "Приход пет"];
-const EXPENSE_CATEGORIES = ["Ойлик", "Обед", "Газ", "Расход"];
+const EXPENSE_CATEGORIES = ["Ойлик", "Обед", "Газ", "Завод", "Расход"];
 
 const CATEGORY_TYPE: Record<string, "income" | "expense"> = Object.fromEntries([
   ...INCOME_CATEGORIES.map(name => [name, "income" as const]),
