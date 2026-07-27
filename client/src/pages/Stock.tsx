@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate, formatNumber, localDateInputValue, sanitizeDecimalInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, Boxes, Package, Search, ShoppingCart, Trash2 } from "lucide-react";
+import { AlertTriangle, Package, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -308,10 +308,9 @@ export default function Stock() {
   return (
     <div className="mx-auto w-full max-w-[1500px]">
       <PageHeader eyebrow="Ombor" title="Sklad" description="Mahsulotlarning joriy zaxirasini, kirim/chiqim harakatlarini va kam qolgan mahsulotlarni kuzating." />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <MetricCard label="Mahsulot turlari" value={String(rows.length)} helper="Faol mahsulotlar" icon={Package} tone="cyan" />
         <MetricCard label="Kam qolgan" value={String(lowStockRows.length)} helper="Minimal chegaradan past" icon={AlertTriangle} tone={lowStockRows.length > 0 ? "rose" : "green"} />
-        <MetricCard label="Jami mahsulot" value={formatNumber(rows.reduce((sum, row) => sum + row.currentStock, 0), 1)} helper="Barcha turlar bo'yicha" icon={Boxes} tone="blue" />
       </div>
 
       <SectionCard title="Sklad qoldig'i" description="Joriy zaxira = barcha kirim − chiqim. Min. chegarani tahrirlash mumkin." className="mt-5">
