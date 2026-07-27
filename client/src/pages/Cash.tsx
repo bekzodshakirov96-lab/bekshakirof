@@ -60,6 +60,10 @@ const emptyDraftRow = (): DraftRow => ({
 
 const cellInputClass =
   "w-full min-w-[64px] rounded-md border border-transparent bg-slate-50/70 px-1.5 py-1.5 text-right tabular-nums outline-none transition-colors hover:border-slate-200 hover:bg-slate-100 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/25";
+/** "Ойлик" ustuni ajratib turishi uchun — qolganlaridan qizg'ishroq. */
+const cellInputClassHighlight =
+  "w-full min-w-[64px] rounded-md border border-rose-100 bg-rose-50/70 px-1.5 py-1.5 text-right tabular-nums outline-none transition-colors hover:border-rose-300 hover:bg-rose-100 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/25";
+const HIGHLIGHT_CATEGORY = "Ойлик";
 const textInputClass =
   "w-full min-w-[110px] rounded-md border border-transparent bg-slate-50/70 px-1.5 py-1.5 outline-none transition-colors hover:border-slate-200 hover:bg-slate-100 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/25";
 const selectInputClass =
@@ -324,7 +328,7 @@ function DailyJournalGrid({
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold tracking-wide text-slate-500">
             <th className="whitespace-nowrap px-3 py-2.5 text-left">Агент</th>
-            {JOURNAL_COLUMNS.map(name => <th key={name} className="whitespace-nowrap px-3 py-2.5 text-right">{name}</th>)}
+            {JOURNAL_COLUMNS.map(name => <th key={name} className={`whitespace-nowrap px-3 py-2.5 text-right ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700" : ""}`}>{name}</th>)}
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Терминал</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Click</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-left">Нимага расход</th>
@@ -361,14 +365,14 @@ function DailyJournalGrid({
                   ) : <span className={emptyCellClassLeft}>—</span>}
                 </td>
                 {JOURNAL_COLUMNS.map((name, colOffset) => (
-                  <td key={name} className="px-1.5 py-1">
+                  <td key={name} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40" : ""}`}>
                     {entry.category === name ? (
                       <input
                         key={`cash-${entry.id}-${entry.cashAmount}`}
                         type="text" inputMode="numeric"
                         data-journal-cell={`${rowIndex}-${colOffset + 1}`}
                         defaultValue={String(entry.cashAmount)}
-                        className={`${cellInputClass} font-semibold text-slate-900`}
+                        className={`${name === HIGHLIGHT_CATEGORY ? cellInputClassHighlight : cellInputClass} font-semibold text-slate-900`}
                         onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
                         onBlur={event => commitExistingCash(entry, event.target.value)}
                         onKeyDown={event => onAmountKeyDown(event, rowIndex, colOffset + 1)}
@@ -454,13 +458,13 @@ function DailyJournalGrid({
                 </select>
               </td>
               {JOURNAL_COLUMNS.map((name, colOffset) => (
-                <td key={name} className="px-1.5 py-1">
+                <td key={name} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40" : ""}`}>
                   <input
                     type="text" inputMode="numeric"
                     data-journal-cell={`${rowIndex}-${colOffset + 1}`}
                     value={draft.amounts[name]}
                     placeholder="0"
-                    className={`${cellInputClass} text-slate-500`}
+                    className={`${name === HIGHLIGHT_CATEGORY ? cellInputClassHighlight : cellInputClass} text-slate-500`}
                     onChange={event => { updateDraft(index, { amounts: { ...draft.amounts, [name]: sanitizeIntegerInput(event.target.value) } }); scheduleAutoSave(index); }}
                     onKeyDown={event => onAmountKeyDown(event, rowIndex, colOffset + 1)}
                   />
@@ -511,7 +515,7 @@ function DailyJournalGrid({
         <tfoot>
           <tr className="border-t-2 border-slate-200 bg-slate-50/80 text-xs font-bold text-slate-900">
             <td className="whitespace-nowrap px-3 py-2.5">Jami</td>
-            {totals.map((value, index) => <td key={JOURNAL_COLUMNS[index]} className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(value)}</td>)}
+            {totals.map((value, index) => <td key={JOURNAL_COLUMNS[index]} className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${JOURNAL_COLUMNS[index] === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700" : ""}`}>{formatMoney(value)}</td>)}
             <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(terminalTotal)}</td>
             <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(clickTotal)}</td>
             <td colSpan={2} />
