@@ -1,10 +1,9 @@
+import { getStoredLanguage, LANGUAGE_STORAGE_KEY as STORAGE_KEY, type Language } from "@/lib/languageStorage";
 import { toCyrillic } from "@/lib/translit";
 import { trpc } from "@/lib/trpc";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-export type Language = "latin" | "cyrillic";
-
-const STORAGE_KEY = "nokdaun.language";
+export type { Language };
 
 /** Kuzatuv va o'girish tegmaydigan teglar. */
 const IGNORED_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA", "CODE", "PRE"]);
@@ -21,13 +20,6 @@ const LanguageContext = createContext<LanguageContextValue>({ language: "latin",
 
 export function useLanguage() {
   return useContext(LanguageContext);
-}
-
-/** Brauzerda saqlangan tanlov — hisob ma'lumoti kelgunga qadar darhol qo'llanadi,
- * shunda sahifa avval lotinda ko'rinib, keyin sakrab kirillga o'tmaydi. */
-function readStoredLanguage(): Language {
-  if (typeof window === "undefined") return "latin";
-  return window.localStorage.getItem(STORAGE_KEY) === "cyrillic" ? "cyrillic" : "latin";
 }
 
 /**
@@ -79,7 +71,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     // Kirishdan oldin (login ekranida) hisob yo'q — tanlov faqat brauzerda saqlanadi.
     onError: () => {},
   });
-  const [language, setLanguageState] = useState<Language>(readStoredLanguage);
+  // Brauzerda saqlangan tanlov darhol qo'llanadi — sahifa avval lotinda ko'rinib,
+  // keyin sakrab kirillga o'tmasligi uchun.
+  const [language, setLanguageState] = useState<Language>(getStoredLanguage);
   const observerRef = useRef<MutationObserver | null>(null);
 
   // Hisobdagi tanlov brauzerdagidan ustun — boshqa qurilmada kirganda ham o'sha holat.

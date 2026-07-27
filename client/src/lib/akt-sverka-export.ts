@@ -1,3 +1,4 @@
+import { localizePdfDocument } from "@/lib/languageStorage";
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 
 function money(value: number) {
@@ -203,5 +204,5 @@ export async function exportAktSverkaPdf(options: AktSverkaOptions) {
     },
   };
 
-  await pdfMake.createPdf(documentDefinition).download(`${safeFileName(`Akt_sverka_${options.client.name}`)}.pdf`);
+  await pdfMake.createPdf(localizePdfDocument(documentDefinition)).download(`${safeFileName(`Akt_sverka_${options.client.name}`)}.pdf`);
 }

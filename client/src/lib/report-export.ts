@@ -1,3 +1,4 @@
+import { localizeExportText } from "@/lib/languageStorage";
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 
 export type ReportValue = string | number | boolean | null | undefined;
@@ -47,10 +48,13 @@ function generatedDate(value?: number | Date) {
   });
 }
 
+/** Hujjat matni ekrandagi bilan bir xil alifboda bo'lishi uchun (lotin/kirill). */
+const L = localizeExportText;
+
 function displayValue(value: ReportValue) {
   if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "boolean") return value ? "Ha" : "Yo‘q";
-  return value;
+  if (typeof value === "boolean") return L(value ? "Ha" : "Yo‘q");
+  return L(value);
 }
 
 function pdfValue(value: ReportValue) {
@@ -63,23 +67,23 @@ export async function exportReportXlsx<Row>(options: ReportExportOptions<Row>) {
   const XLSX = await import("xlsx");
   const workbook = XLSX.utils.book_new();
   const summaryRows: ReportValue[][] = [
-    ["Hisobot", options.title],
-    ["Yaratilgan vaqt", generatedDate(options.generatedAt)],
-    ["Qo‘llangan filterlar", options.filterDescription || "Barcha yozuvlar"],
-    ["Yozuvlar soni", options.rows.length],
+    [L("Hisobot"), L(options.title)],
+    [L("Yaratilgan vaqt"), generatedDate(options.generatedAt)],
+    [L("Qo‘llangan filterlar"), L(options.filterDescription || "Barcha yozuvlar")],
+    [L("Yozuvlar soni"), options.rows.length],
   ];
 
   if (options.summary?.length) {
-    summaryRows.push([], ["Ko‘rsatkich", "Qiymat"]);
-    options.summary.forEach(item => summaryRows.push([item.label, displayValue(item.value)]));
+    summaryRows.push([], [L("Ko‘rsatkich"), L("Qiymat")]);
+    options.summary.forEach(item => summaryRows.push([L(item.label), displayValue(item.value)]));
   }
 
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
   summarySheet["!cols"] = [{ wch: 28 }, { wch: 42 }];
-  XLSX.utils.book_append_sheet(workbook, summarySheet, "Xulosa");
+  XLSX.utils.book_append_sheet(workbook, summarySheet, L("Xulosa"));
 
   const dataRows = [
-    options.columns.map(column => column.title),
+    options.columns.map(column => L(column.title)),
     ...options.rows.map(row => options.columns.map(column => displayValue(column.value(row)))),
   ];
   const dataSheet = XLSX.utils.aoa_to_sheet(dataRows);
@@ -102,7 +106,7 @@ export async function exportReportXlsx<Row>(options: ReportExportOptions<Row>) {
     });
   });
 
-  XLSX.utils.book_append_sheet(workbook, dataSheet, "Ma’lumotlar");
+  XLSX.utils.book_append_sheet(workbook, dataSheet, L("Ma’lumotlar"));
   XLSX.writeFile(workbook, `${safeFileName(options.fileName)}.xlsx`, { compression: true });
 }
 
@@ -119,7 +123,7 @@ export async function exportReportPdf<Row>(options: ReportExportOptions<Row>) {
           columns: options.summary.map(item => ({
             width: "*",
             stack: [
-              { text: item.label, color: "#64748B", fontSize: 8 },
+              { text: L(item.label), color: "#64748B", fontSize: 8 },
               { text: pdfValue(item.value), color: "#0F172A", bold: true, fontSize: 11, margin: [0, 3, 0, 0] },
             ],
             fillColor: "#F8FAFC",
@@ -132,7 +136,7 @@ export async function exportReportPdf<Row>(options: ReportExportOptions<Row>) {
     : [];
 
   const headerRow: TableCell[] = options.columns.map(column => ({
-    text: column.title,
+    text: L(column.title),
     style: "tableHeader",
     alignment: column.align ?? "left",
   }));
@@ -153,23 +157,23 @@ export async function exportReportPdf<Row>(options: ReportExportOptions<Row>) {
     pageMargins: [24, 30, 24, 34],
     defaultStyle: { font: "Roboto", fontSize: 7.5, color: "#1E293B" },
     info: {
-      title: options.title,
-      author: "Distribyutsiya Moliyaviy Tizimi",
-      subject: options.title,
+      title: L(options.title),
+      author: L("Distribyutsiya Moliyaviy Tizimi"),
+      subject: L(options.title),
     },
     footer: (currentPage, pageCount) => ({
       columns: [
-        { text: "Distribyutsiya Moliyaviy Tizimi", color: "#94A3B8", margin: [24, 0, 0, 0] },
+        { text: L("Distribyutsiya Moliyaviy Tizimi"), color: "#94A3B8", margin: [24, 0, 0, 0] },
         { text: `${currentPage} / ${pageCount}`, alignment: "right", color: "#64748B", margin: [0, 0, 24, 0] },
       ],
       fontSize: 7,
     }),
     content: [
-      { text: options.title, style: "title" },
+      { text: L(options.title), style: "title" },
       {
         columns: [
-          { text: `Yaratilgan: ${generatedDate(options.generatedAt)}`, color: "#64748B" },
-          { text: `Filterlar: ${options.filterDescription || "Barcha yozuvlar"}`, color: "#64748B", alignment: "right" },
+          { text: `${L("Yaratilgan")}: ${generatedDate(options.generatedAt)}`, color: "#64748B" },
+          { text: `${L("Filterlar")}: ${L(options.filterDescription || "Barcha yozuvlar")}`, color: "#64748B", alignment: "right" },
         ],
         margin: [0, 4, 0, 14],
       },

@@ -138,14 +138,16 @@ chunki login parollari himoyasiz uzatilmasligi kerak.
 - **Autentifikatsiya:** email + parol (bcrypt bilan xeshlangan), JWT sessiya
   cookie'si — hech qanday tashqi xizmatga bog'liq emas
 - **Fayl saqlash:** local disk (`UPLOADS_DIR`), `/uploads/...` orqali serveriladi
-- **Testlar:** Vitest, `npm test` bilan ishga tushiriladi (60 test)
+- **Testlar:** Vitest, `npm test` bilan ishga tushiriladi (65 test)
 - **Interfeys alifbosi:** har bir foydalanuvchi o'zi uchun **O'zbekcha (lotin)**
   yoki **Ўзбекча (кирилл)** ni tanlaydi (chap pastdagi hisob menyusidan yoki
   kirish ekranidan). Tanlov hisobga bog'lanadi (`users.language`), shuning uchun
   boshqa qurilmadan kirganda ham saqlanib qoladi va faqat foydalanuvchining o'zi
   o'zgartirmaguncha o'zgarmaydi. Kirill matn qo'lda yozilmaydi — `client/src/lib/translit.ts`
   lotin matnni avtomatik o'giradi, shuning uchun yangi qo'shilgan matnlar ham
-  qo'shimcha ishsiz ikkala alifboda ishlaydi.
+  qo'shimcha ishsiz ikkala alifboda ishlaydi. Excel/PDF eksport va Akt sverka
+  hujjatlari ham tanlangan alifboda chiqadi (shu jumladan mijoz, agent va
+  mahsulot nomlari) — ekran bilan hujjat har doim bir xil bo'ladi.
 
 ## Zaxira nusxa olish
 

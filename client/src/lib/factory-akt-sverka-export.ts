@@ -1,3 +1,4 @@
+import { localizePdfDocument } from "@/lib/languageStorage";
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 
 function formatDate(value: Date | number) {
@@ -145,5 +146,5 @@ export async function exportFactoryAktSverkaPdf(options: FactoryAktSverkaOptions
     },
   };
 
-  await pdfMake.createPdf(documentDefinition).download(`${safeFileName("Zavod_Akt_sverka")}.pdf`);
+  await pdfMake.createPdf(localizePdfDocument(documentDefinition)).download(`${safeFileName("Zavod_Akt_sverka")}.pdf`);
 }
