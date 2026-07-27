@@ -74,7 +74,11 @@ function FactoryLedger() {
             {balanceRows.map(row => (
               <div key={row.productId} className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
                 <p className="flex items-center gap-2 text-sm font-bold text-slate-900"><Factory className="size-4 text-slate-400" />{row.productName}</p>
-                <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="mt-3 grid grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Omborda (bo'sh tara)</p>
+                    <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">{formatNumber(row.warehouseTara, 0)} dona</p>
+                  </div>
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zavodda (to'lmagan tara)</p>
                     <p className={`mt-1 text-lg font-bold tabular-nums ${row.taraPending > 0 ? "text-amber-600" : "text-slate-900"}`}>{formatNumber(row.taraPending, 0)} dona</p>

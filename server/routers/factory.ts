@@ -1,7 +1,8 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { factoryOperations, products, stockMovements } from "../../drizzle/schema";
+import { containerMovements, factoryOperations, products, stockMovements } from "../../drizzle/schema";
 import { skladProcedure } from "../access";
+import { normalizeContainerType } from "../containerAccounting";
 import { requireDb } from "../db";
 import { router } from "../_core/trpc";
 
@@ -15,12 +16,12 @@ const stockImpact: Record<z.infer<typeof operationTypeSchema>, { movementType: "
 };
 
 export const factoryRouter = router({
-  /** Faol KEG mahsulotlari bo'yicha joriy balanslar: zavodda kutilayotgan to'la tara va
-   * brak evaziga kutilayotgan keg soni. */
+  /** Faol KEG mahsulotlari bo'yicha joriy balanslar: bizning omborimizdagi bo'sh tara,
+   * zavodda kutilayotgan to'la tara va brak evaziga kutilayotgan keg soni. */
   balances: skladProcedure.query(async () => {
     const db = await requireDb();
     const productRows = await db
-      .select({ id: products.id, name: products.name })
+      .select({ id: products.id, name: products.name, containerType: products.containerType })
       .from(products)
       .where(sql`${products.isActive} = 1 and ${products.containerType} is not null`);
     const sumRows = await db
@@ -33,14 +34,30 @@ export const factoryRouter = router({
       .groupBy(factoryOperations.productId, factoryOperations.operationType);
     const totals = new Map<string, number>();
     for (const row of sumRows) totals.set(`${row.productId}:${row.operationType}`, row.total);
+
+    // Mijozlardan qaytgan bo'sh tara — zavodga qayta yuborilgunga qadar bizning omborimizda hisoblanadi.
+    // containerType tarixan ham "keg_30", ham "KEG 30" ko'rinishida yozilgan, shuning uchun normalize qilinadi.
+    const containerRows = await db
+      .select({ containerType: containerMovements.containerType, movementType: containerMovements.movementType, quantity: containerMovements.quantity })
+      .from(containerMovements);
+    const returnedByType = new Map<string, number>();
+    for (const row of containerRows) {
+      if (row.movementType !== "returned") continue;
+      const type = normalizeContainerType(row.containerType);
+      if (!type) continue;
+      returnedByType.set(type, (returnedByType.get(type) ?? 0) + row.quantity);
+    }
+
     return productRows.map(product => {
       const taraSent = totals.get(`${product.id}:tara_sent`) ?? 0;
       const filledReceived = totals.get(`${product.id}:filled_received`) ?? 0;
       const brakReturned = totals.get(`${product.id}:brak_returned`) ?? 0;
       const brakReplaced = totals.get(`${product.id}:brak_replaced`) ?? 0;
+      const returnedFromClients = product.containerType ? returnedByType.get(product.containerType) ?? 0 : 0;
       return {
         productId: product.id,
         productName: product.name,
+        warehouseTara: Math.max(0, returnedFromClients - taraSent),
         taraPending: taraSent - filledReceived,
         brakPending: brakReturned - brakReplaced,
       };
