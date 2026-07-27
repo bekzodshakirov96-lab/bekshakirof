@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BarChart3,
   Beer,
@@ -33,11 +32,14 @@ import {
   Building2,
   ChevronDown,
   CircleDollarSign,
+  Eye,
+  EyeOff,
   Factory,
   FileSpreadsheet,
   FileText,
   LayoutDashboard,
   Landmark,
+  Loader2,
   LockKeyhole,
   LogOut,
   PackageOpen,
@@ -126,9 +128,9 @@ function getInitials(name?: string | null) {
 }
 
 function LoginScreen() {
-  const { login, loginPending, loginError, register, registerPending, registerError } = useAuth();
+  const { login, loginPending, loginError } = useAuth();
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
-  const [registerForm, setRegisterForm] = useState({ name: "", email: "", password: "" });
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -136,15 +138,6 @@ function LoginScreen() {
       await login(loginForm);
     } catch {
       // error surfaced via loginError below
-    }
-  };
-
-  const handleRegister = async (e: FormEvent) => {
-    e.preventDefault();
-    try {
-      await register(registerForm);
-    } catch {
-      // error surfaced via registerError below
     }
   };
 
@@ -169,105 +162,60 @@ function LoginScreen() {
           <div className="flex items-start gap-3">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
             <p className="text-xs leading-5 text-slate-500">
-              Faqat rahbar va tasdiqlangan buxgalter hisoblari tizimga to‘liq kira oladi. Birinchi ro‘yxatdan
-              o‘tgan hisob avtomatik rahbar bo‘ladi.
+              Yangi hisob rahbar yoki buxgalter tomonidan Foydalanuvchilar bo‘limida yaratiladi — login va parolni
+              o‘zingiz ro‘yxatdan o‘tolmaysiz, ma’muriyatdan so‘rang.
             </p>
           </div>
         </div>
 
-        <Tabs defaultValue="login" className="mt-6">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login">Kirish</TabsTrigger>
-            <TabsTrigger value="register">Ro‘yxatdan o‘tish</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="login" className="mt-5">
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="login-email">Email</Label>
-                <Input
-                  id="login-email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={loginForm.email}
-                  onChange={e => setLoginForm(f => ({ ...f, email: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="login-password">Parol</Label>
-                <Input
-                  id="login-password"
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  value={loginForm.password}
-                  onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
-                />
-              </div>
-              {loginError ? (
-                <p className="text-sm font-medium text-red-600">{loginError.message}</p>
-              ) : null}
-              <Button
-                type="submit"
-                size="lg"
-                disabled={loginPending}
-                className="h-12 w-full rounded-xl bg-gradient-to-r from-[#176f9d] to-[#168c86] font-semibold shadow-lg shadow-cyan-900/15 hover:brightness-105"
+        <form onSubmit={handleLogin} className="mt-6 space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="login-email">Email</Label>
+            <Input
+              id="login-email"
+              type="email"
+              required
+              autoFocus
+              autoComplete="email"
+              value={loginForm.email}
+              onChange={e => setLoginForm(f => ({ ...f, email: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="login-password">Parol</Label>
+            <div className="relative">
+              <Input
+                id="login-password"
+                type={showPassword ? "text" : "password"}
+                required
+                autoComplete="current-password"
+                className="pr-10"
+                value={loginForm.password}
+                onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
+              />
+              <button
+                type="button"
+                aria-label={showPassword ? "Parolni yashirish" : "Parolni ko‘rsatish"}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={() => setShowPassword(current => !current)}
               >
-                {loginPending ? "Kirilmoqda..." : "Kirish"}
-              </Button>
-            </form>
-          </TabsContent>
-
-          <TabsContent value="register" className="mt-5">
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="register-name">Ism</Label>
-                <Input
-                  id="register-name"
-                  required
-                  autoComplete="name"
-                  value={registerForm.name}
-                  onChange={e => setRegisterForm(f => ({ ...f, name: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="register-email">Email</Label>
-                <Input
-                  id="register-email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={registerForm.email}
-                  onChange={e => setRegisterForm(f => ({ ...f, email: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="register-password">Parol (kamida 8 belgi)</Label>
-                <Input
-                  id="register-password"
-                  type="password"
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                  value={registerForm.password}
-                  onChange={e => setRegisterForm(f => ({ ...f, password: e.target.value }))}
-                />
-              </div>
-              {registerError ? (
-                <p className="text-sm font-medium text-red-600">{registerError.message}</p>
-              ) : null}
-              <Button
-                type="submit"
-                size="lg"
-                disabled={registerPending}
-                className="h-12 w-full rounded-xl bg-gradient-to-r from-[#176f9d] to-[#168c86] font-semibold shadow-lg shadow-cyan-900/15 hover:brightness-105"
-              >
-                {registerPending ? "Yuborilmoqda..." : "Ro‘yxatdan o‘tish"}
-              </Button>
-            </form>
-          </TabsContent>
-        </Tabs>
+                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
+          </div>
+          {loginError ? (
+            <p className="text-sm font-medium text-rose-600">{loginError.message}</p>
+          ) : null}
+          <Button
+            type="submit"
+            size="lg"
+            disabled={loginPending}
+            className="h-12 w-full gap-2 rounded-xl bg-gradient-to-r from-[#176f9d] to-[#168c86] font-semibold shadow-lg shadow-cyan-900/15 hover:brightness-105"
+          >
+            {loginPending ? <Loader2 className="size-4 animate-spin" /> : null}
+            {loginPending ? "Kirilmoqda..." : "Kirish"}
+          </Button>
+        </form>
 
         <p className="mt-5 text-center text-xs text-slate-400">Kirish orqali korxona ma’lumotlari maxfiyligi ta’minlanadi.</p>
       </div>
