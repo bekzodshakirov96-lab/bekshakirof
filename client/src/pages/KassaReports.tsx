@@ -175,15 +175,15 @@ export default function KassaReports() {
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <Input type="date" className="finance-input" value={fromDate} onChange={event => setFromDate(event.target.value)} aria-label="Boshlanish sanasi" />
           <Input type="date" className="finance-input" value={toDate} onChange={event => setToDate(event.target.value)} aria-label="Tugash sanasi" />
-          <select className="finance-input border px-3 text-slate-600" value={agentFilter} onChange={event => setAgentFilter(event.target.value)}><option value="">Barcha agentlar</option>{(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select>
-          <select className="finance-input border px-3 text-slate-600" value={productFilter} onChange={event => setProductFilter(event.target.value)}><option value="">Barcha mahsulotlar</option>{(products.data ?? []).map(product => <option key={product.id} value={product.id}>{product.name}</option>)}</select>
-          <select className="finance-input border px-3 text-slate-600" value={typeFilter} onChange={event => { setTypeFilter(event.target.value as typeof typeFilter); setCategoryFilter(""); }}><option value="all">Prihod + Rasxod</option><option value="income">Faqat Prihod</option><option value="expense">Faqat Rasxod</option></select>
-          <select className="finance-input border px-3 text-slate-600" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}>
+          <select className="finance-input border px-3 text-muted-foreground" value={agentFilter} onChange={event => setAgentFilter(event.target.value)}><option value="">Barcha agentlar</option>{(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select>
+          <select className="finance-input border px-3 text-muted-foreground" value={productFilter} onChange={event => setProductFilter(event.target.value)}><option value="">Barcha mahsulotlar</option>{(products.data ?? []).map(product => <option key={product.id} value={product.id}>{product.name}</option>)}</select>
+          <select className="finance-input border px-3 text-muted-foreground" value={typeFilter} onChange={event => { setTypeFilter(event.target.value as typeof typeFilter); setCategoryFilter(""); }}><option value="all">Prihod + Rasxod</option><option value="income">Faqat Prihod</option><option value="expense">Faqat Rasxod</option></select>
+          <select className="finance-input border px-3 text-muted-foreground" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}>
             <option value="">Barcha turlar</option>
             {categoryOptions.map(category => <option key={category} value={category}>{category}</option>)}
           </select>
         </div>
-        <div className="mt-3"><Button variant="outline" className="gap-2 bg-white" onClick={clearFilters}><RotateCcw className="size-4" />Filtrlarni tozalash</Button></div>
+        <div className="mt-3"><Button variant="outline" className="gap-2 bg-card" onClick={clearFilters}><RotateCcw className="size-4" />Filtrlarni tozalash</Button></div>
       </SectionCard>
 
       <SectionCard
@@ -203,19 +203,19 @@ export default function KassaReports() {
               return (
                 <div key={row.category}>
                   <div className="flex items-center justify-between gap-3 text-sm">
-                    <p className="font-semibold text-slate-900">{row.category}</p>
+                    <p className="font-semibold text-foreground">{row.category}</p>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400">{share.toFixed(1)}%</span>
-                      <span className="font-bold tabular-nums text-slate-900">{formatMoney(row.total)}</span>
+                      <span className="text-xs text-muted-foreground">{share.toFixed(1)}%</span>
+                      <span className="font-bold tabular-nums text-foreground">{formatMoney(row.total)}</span>
                     </div>
                   </div>
-                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                     <div className="h-full rounded-full bg-rose-400" style={{ width: `${Math.max(2, share)}%` }} />
                   </div>
                 </div>
               );
             })}
-            <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-sm font-bold text-slate-900">
+            <div className="flex items-center justify-between border-t border-border pt-3 text-sm font-bold text-foreground">
               <p>Jami rasxod</p>
               <p className="tabular-nums">{formatMoney(expenseByCategory.data?.total ?? 0)}</p>
             </div>
@@ -224,15 +224,15 @@ export default function KassaReports() {
       </SectionCard>
 
       <SectionCard title="Kassa harakatlari" description="Prihod va rasxod yozuvlari" className="mt-5" action={<ExportMenu onExcel={() => exportCash("xlsx")} onPdf={() => exportCash("pdf")} isLoading={isExportingCash} disabled={cashList.isLoading} />}>
-        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
           {cashList.isLoading ? <TableLoading columns={7} /> : cashRows.length === 0 ? <EmptyState /> : (
             <Table className="finance-table min-w-[900px]"><TableHeader><TableRow>
               <TableHead>Sana</TableHead><TableHead>Turi</TableHead><TableHead>Tur</TableHead><TableHead>Agent</TableHead><TableHead>Izoh</TableHead><TableHead className="text-right">Summa</TableHead>
             </TableRow></TableHeader><TableBody>
               {cashRows.map(row => <TableRow key={row.id}>
-                <TableCell className="whitespace-nowrap text-slate-500">{formatDate(row.entryDate)}</TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.entryDate)}</TableCell>
                 <TableCell><Badge className={row.type === "income" ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50"}>{row.type === "income" ? "Prihod" : "Rasxod"}</Badge></TableCell>
-                <TableCell className="font-semibold text-slate-900">{row.category}</TableCell>
+                <TableCell className="font-semibold text-foreground">{row.category}</TableCell>
                 <TableCell>{row.agentName || "—"}</TableCell>
                 <TableCell className="max-w-64 truncate">{row.description || "—"}</TableCell>
                 <TableCell className="text-right font-bold tabular-nums">{formatMoney(row.cashAmount + row.terminalAmount + row.clickAmount)}</TableCell>
@@ -241,19 +241,19 @@ export default function KassaReports() {
           )}
         </div>
         {cashList.data && cashList.data.total > cashRows.length && (
-          <p className="mt-3 px-1 text-xs text-slate-400">Jadvalda so'nggi {cashRows.length} ta yozuv ko'rsatilgan (jami {cashList.data.total} ta). To'liq ro'yxat uchun Excel/PDF eksportdan foydalaning.</p>
+          <p className="mt-3 px-1 text-xs text-muted-foreground">Jadvalda so'nggi {cashRows.length} ta yozuv ko'rsatilgan (jami {cashList.data.total} ta). To'liq ro'yxat uchun Excel/PDF eksportdan foydalaning.</p>
         )}
       </SectionCard>
 
       <SectionCard title="Agent-tovar tafsilotlari" description="Har bir agent qaysi kuni qaysi tovardan qancha olib chiqqani" className="mt-5" action={<ExportMenu onExcel={() => exportAgent("xlsx")} onPdf={() => exportAgent("pdf")} isLoading={isExportingAgent} disabled={agentDetails.isLoading} />}>
-        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
           {agentDetails.isLoading ? <TableLoading columns={6} /> : agentRows.length === 0 ? <EmptyState /> : (
             <Table className="finance-table min-w-[850px]"><TableHeader><TableRow>
               <TableHead>Sana</TableHead><TableHead>Agent</TableHead><TableHead>Mahsulot</TableHead><TableHead className="text-right">Miqdor</TableHead><TableHead className="text-right">Narx</TableHead><TableHead className="text-right">Summa</TableHead>
             </TableRow></TableHeader><TableBody>
               {agentRows.map(row => <TableRow key={row.id}>
-                <TableCell className="whitespace-nowrap text-slate-500">{formatDate(row.entryDate)}</TableCell>
-                <TableCell className="font-semibold text-slate-900">{row.agentName}</TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.entryDate)}</TableCell>
+                <TableCell className="font-semibold text-foreground">{row.agentName}</TableCell>
                 <TableCell>{row.productName}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatNumber(row.quantity, 3)}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatMoney(row.unitPrice)}</TableCell>
@@ -275,14 +275,14 @@ function AgentReconciliationTable({ from, to, agentId }: { from?: number; to?: n
   const query = trpc.kassa.report.agentReconciliation.useQuery({ from, to, agentId });
   const rows = query.data?.rows ?? [];
   return (
-    <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+    <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
       {query.isLoading ? <TableLoading columns={5} /> : rows.length === 0 ? <EmptyState /> : (
         <Table className="finance-table min-w-[800px]"><TableHeader><TableRow>
           <TableHead>Sana</TableHead><TableHead>Agent</TableHead><TableHead className="text-right">Hisoblangan</TableHead><TableHead className="text-right">Topshirgan</TableHead><TableHead className="text-right">Farq</TableHead>
         </TableRow></TableHeader><TableBody>
           {rows.map(row => <TableRow key={`${row.agentId}-${row.entryDate}`}>
-            <TableCell className="whitespace-nowrap text-slate-500">{formatDate(row.entryDate)}</TableCell>
-            <TableCell className="font-semibold text-slate-900">{row.agentName}</TableCell>
+            <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.entryDate)}</TableCell>
+            <TableCell className="font-semibold text-foreground">{row.agentName}</TableCell>
             <TableCell className="text-right tabular-nums">{formatMoney(row.computedAmount)}</TableCell>
             <TableCell className="text-right tabular-nums">{formatMoney(row.submittedAmount)}</TableCell>
             <TableCell className="text-right">

@@ -15,7 +15,7 @@ import { toast } from "sonner";
 type FactoryOperationType = "tara_sent" | "filled_received" | "brak_returned" | "brak_replaced";
 
 const factoryOperationMeta: Record<FactoryOperationType, { label: string; icon: typeof Send; badgeClass: string }> = {
-  tara_sent: { label: "Bo'sh tara yuborildi", icon: Send, badgeClass: "rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-100" },
+  tara_sent: { label: "Bo'sh tara yuborildi", icon: Send, badgeClass: "rounded-lg bg-muted text-muted-foreground hover:bg-muted" },
   filled_received: { label: "To'la keg qabul qilindi", icon: PackageCheck, badgeClass: "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" },
   brak_returned: { label: "Brak qaytarildi", icon: AlertTriangle, badgeClass: "rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50" },
   brak_replaced: { label: "Brak o'rniga keg keldi", icon: RotateCcw, badgeClass: "rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-50" },
@@ -103,7 +103,7 @@ export default function Factory() {
         eyebrow="Ombor"
         title="Zavod hisob-kitobi"
         description="Bo'sh tara yuborish, to'la keg qabul qilish va brak (yaroqsiz) KEG almashinuvini zavod bilan kuzating."
-        action={<Button variant="outline" className="gap-2 bg-white" onClick={() => setStatementOpen(true)}><FileText className="size-4" />Akt sverka</Button>}
+        action={<Button variant="outline" className="gap-2 bg-card" onClick={() => setStatementOpen(true)}><FileText className="size-4" />Akt sverka</Button>}
       />
 
       <SectionCard title="Joriy balanslar" description="Har bir KEG turi bo'yicha ombordagi, zavoddagi va brak evaziga kutilayotgan tara.">
@@ -114,20 +114,20 @@ export default function Factory() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {balanceRows.map(row => (
-              <div key={row.productId} className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-                <p className="flex items-center gap-2 text-sm font-bold text-slate-900"><FactoryIcon className="size-4 text-slate-400" />{row.productName}</p>
+              <div key={row.productId} className="rounded-2xl border border-border bg-muted/60 p-4">
+                <p className="flex items-center gap-2 text-sm font-bold text-foreground"><FactoryIcon className="size-4 text-muted-foreground" />{row.productName}</p>
                 <div className="mt-3 grid grid-cols-3 gap-3">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Omborda (bo'sh tara)</p>
-                    <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">{formatNumber(row.warehouseTara, 0)} dona</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Omborda (bo'sh tara)</p>
+                    <p className="mt-1 text-lg font-bold tabular-nums text-foreground">{formatNumber(row.warehouseTara, 0)} dona</p>
                   </div>
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Zavodda (to'lmagan tara)</p>
-                    <p className={`mt-1 text-lg font-bold tabular-nums ${row.taraPending > 0 ? "text-amber-600" : "text-slate-900"}`}>{formatNumber(row.taraPending, 0)} dona</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Zavodda (to'lmagan tara)</p>
+                    <p className={`mt-1 text-lg font-bold tabular-nums ${row.taraPending > 0 ? "text-amber-600" : "text-foreground"}`}>{formatNumber(row.taraPending, 0)} dona</p>
                   </div>
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Brak evaziga kutilmoqda</p>
-                    <p className={`mt-1 text-lg font-bold tabular-nums ${row.brakPending > 0 ? "text-rose-600" : "text-slate-900"}`}>{formatNumber(row.brakPending, 0)} dona</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Brak evaziga kutilmoqda</p>
+                    <p className={`mt-1 text-lg font-bold tabular-nums ${row.brakPending > 0 ? "text-rose-600" : "text-foreground"}`}>{formatNumber(row.brakPending, 0)} dona</p>
                   </div>
                 </div>
               </div>
@@ -147,7 +147,7 @@ export default function Factory() {
                   key={type}
                   type="button"
                   onClick={() => setOperationType(type)}
-                  className={`flex h-16 flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition-colors ${operationType === type ? "border-primary bg-primary/5 text-primary" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}
+                  className={`flex h-16 flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition-colors ${operationType === type ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
                 >
                   <Icon className="size-4" />
                   {meta.label}
@@ -156,7 +156,7 @@ export default function Factory() {
             })}
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <select className={`finance-input border px-3 text-slate-700 ${!productId ? "border-rose-300" : ""}`} value={productId} onChange={event => setProductId(event.target.value)}>
+            <select className={`finance-input border px-3 text-foreground ${!productId ? "border-rose-300" : ""}`} value={productId} onChange={event => setProductId(event.target.value)}>
               <option value="">KEG turini tanlang</option>
               {balanceRows.map(row => <option key={row.productId} value={row.productId}>{row.productName}</option>)}
             </select>
@@ -179,7 +179,7 @@ export default function Factory() {
         className="mt-5"
         action={<ExportMenu onExcel={() => exportHistory("xlsx")} onPdf={() => exportHistory("pdf")} isLoading={isExportingHistory} disabled={operations.isLoading} />}
       >
-        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
           {operations.isLoading ? <TableLoading columns={5} /> : operationRows.length === 0 ? <EmptyState description="Hali zavod operatsiyasi yo'q." /> : (
             <Table className="finance-table min-w-[760px]">
               <TableHeader><TableRow><TableHead>Sana</TableHead><TableHead>Turi</TableHead><TableHead>KEG</TableHead><TableHead className="text-right">Miqdor</TableHead><TableHead>Izoh</TableHead><TableHead /></TableRow></TableHeader>
@@ -188,16 +188,16 @@ export default function Factory() {
                   const meta = factoryOperationMeta[row.operationType as FactoryOperationType];
                   return (
                     <TableRow key={row.id}>
-                      <TableCell className="whitespace-nowrap text-slate-500">{formatDate(row.operationDate)}</TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.operationDate)}</TableCell>
                       <TableCell><Badge className={meta.badgeClass}>{meta.label}</Badge></TableCell>
-                      <TableCell className="font-semibold text-slate-900">{row.productName ?? "—"}</TableCell>
+                      <TableCell className="font-semibold text-foreground">{row.productName ?? "—"}</TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">{formatNumber(row.quantity, 0)} dona</TableCell>
-                      <TableCell className="max-w-56 truncate text-slate-500">{row.note ?? "—"}</TableCell>
+                      <TableCell className="max-w-56 truncate text-muted-foreground">{row.note ?? "—"}</TableCell>
                       <TableCell className="text-right">
                         <button
                           type="button"
                           aria-label="O'chirish"
-                          className="flex size-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                          className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                           onClick={() => deleteOperation.mutate({ id: row.id })}
                         >
                           <Trash2 className="size-4" />

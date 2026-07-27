@@ -194,7 +194,7 @@ export default function Transactions() {
       eyebrow="Tezkor savdo"
       title="Yangi savdo"
       description="Mijozni tanlang, bir nechta mahsulot qo‘shing va bitta operatsiyada saqlang."
-      action={<Button variant="outline" className="h-10 gap-2 rounded-xl bg-white" onClick={() => navigate("/sotuv-hisoboti")}><BarChart3 className="size-4" />Sotuv bo‘yicha hisobot</Button>}
+      action={<Button variant="outline" className="h-10 gap-2 rounded-xl bg-card" onClick={() => navigate("/sotuv-hisoboti")}><BarChart3 className="size-4" />Sotuv bo‘yicha hisobot</Button>}
     />
 
     <SectionCard title="1. Agent va mijoz" description="Avval agent, so‘ng shu agentga biriktirilgan mijozni tanlang">
@@ -204,7 +204,7 @@ export default function Transactions() {
         <div className="space-y-2">
           <Label>Agent</Label>
           <select
-            className="finance-input w-full border px-3 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
+            className="finance-input w-full border px-3 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
             value={agentId}
             disabled={isAgentRole}
             onChange={event => { setAgentId(event.target.value); setClientId(""); }}
@@ -220,7 +220,7 @@ export default function Transactions() {
     <SectionCard title="2. Mahsulotlar" description="Bir nechta mahsulot qo‘shishingiz mumkin, har biriga alohida miqdor va narx belgilang. KEG/tara mahsulotlari bu yerda yo‘q — ularni Tezkor KEG savdosi orqali soting.">
       <div className="relative mb-4" ref={pickerRef}>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="finance-input pl-9"
             placeholder="Mahsulot qidirish va qo‘shish uchun bosing..."
@@ -231,24 +231,24 @@ export default function Transactions() {
           />
         </div>
         {pickerOpen && (
-          <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
-              <span className="text-xs font-semibold text-slate-500">{cartProductIds.size > 0 ? `${cartProductIds.size} ta tanlandi` : "Tanlash uchun bosing"}</span>
+          <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+            <div className="flex items-center justify-between border-b border-border px-4 py-2">
+              <span className="text-xs font-semibold text-muted-foreground">{cartProductIds.size > 0 ? `${cartProductIds.size} ta tanlandi` : "Tanlash uchun bosing"}</span>
               <button type="button" className="text-xs font-semibold text-primary hover:underline" onClick={() => setPickerOpen(false)}>Tayyor</button>
             </div>
             <div className="max-h-64 overflow-y-auto">
               {filteredProducts.length === 0 ? (
-                <div className="p-4 text-sm text-slate-400">Mahsulot topilmadi.</div>
+                <div className="p-4 text-sm text-muted-foreground">Mahsulot topilmadi.</div>
               ) : filteredProducts.map(product => (
                 <button
                   key={product.id}
                   type="button"
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-slate-50"
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-muted"
                   onClick={() => toggleProduct(product)}
                 >
                   <Checkbox checked={cartProductIds.has(product.id)} />
-                  <span className="min-w-0 flex-1"><span className="font-semibold text-slate-900">{product.name}</span><span className="ml-2 text-xs text-slate-400">{product.code}</span></span>
-                  <span className="shrink-0 text-slate-500">{formatMoney(product.price)}</span>
+                  <span className="min-w-0 flex-1"><span className="font-semibold text-foreground">{product.name}</span><span className="ml-2 text-xs text-muted-foreground">{product.code}</span></span>
+                  <span className="shrink-0 text-muted-foreground">{formatMoney(product.price)}</span>
                 </button>
               ))}
             </div>
@@ -257,7 +257,7 @@ export default function Transactions() {
       </div>
 
       {cart.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 py-12 text-center text-slate-400">
+        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border py-12 text-center text-muted-foreground">
           <ShoppingCart className="size-8" />
           <p className="text-sm">Hali mahsulot qo‘shilmagan. Yuqoridagi qidiruv orqali qo‘shing.</p>
         </div>
@@ -273,14 +273,14 @@ export default function Transactions() {
           </TableRow></TableHeader>
           <TableBody>
             {cart.map((line, index) => <TableRow key={line.key}>
-              <TableCell><span className="font-semibold text-slate-900">{line.productName}</span><span className="ml-2 text-xs text-slate-400">{line.code}</span></TableCell>
-              <TableCell className="text-right"><Input className={`finance-input text-right ${Number(line.quantity || 0) <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`} type="text" inputMode="decimal" placeholder="0" value={line.quantity} onChange={event => updateLine(line.key, { quantity: sanitizeDecimalInput(event.target.value) })} /><span className="mt-1 block text-[11px] text-slate-400">{line.unit}</span></TableCell>
+              <TableCell><span className="font-semibold text-foreground">{line.productName}</span><span className="ml-2 text-xs text-muted-foreground">{line.code}</span></TableCell>
+              <TableCell className="text-right"><Input className={`finance-input text-right ${Number(line.quantity || 0) <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`} type="text" inputMode="decimal" placeholder="0" value={line.quantity} onChange={event => updateLine(line.key, { quantity: sanitizeDecimalInput(event.target.value) })} /><span className="mt-1 block text-[11px] text-muted-foreground">{line.unit}</span></TableCell>
               <TableCell className="text-right"><Input className="finance-input text-right" type="text" inputMode="numeric" value={line.salePrice} onChange={event => updateLine(line.key, { salePrice: sanitizeIntegerInput(event.target.value) })} /></TableCell>
               <TableCell className="text-right font-bold tabular-nums">{formatMoney(lineTotals[index])}</TableCell>
               <TableCell>
                 {line.containerType ? (
                   <div className="space-y-1.5">
-                    <label className="flex items-center gap-2 text-xs text-slate-600">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Checkbox checked={line.returnEnabled} onCheckedChange={checked => updateLine(line.key, { returnEnabled: checked === true, returnContainerType: line.returnContainerType || line.containerType || "" })} />
                       Mijoz tara qaytardi
                     </label>
@@ -294,9 +294,9 @@ export default function Transactions() {
                       </div>
                     )}
                   </div>
-                ) : <span className="text-xs text-slate-300">—</span>}
+                ) : <span className="text-xs text-muted-foreground">—</span>}
               </TableCell>
-              <TableCell><button type="button" aria-label="O‘chirish" className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600" onClick={() => removeLine(line.key)}><Trash2 className="size-4" /></button></TableCell>
+              <TableCell><button type="button" aria-label="O‘chirish" className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600" onClick={() => removeLine(line.key)}><Trash2 className="size-4" /></button></TableCell>
             </TableRow>)}
           </TableBody>
         </Table>
@@ -313,17 +313,17 @@ export default function Transactions() {
         <div className="mt-4 space-y-2"><Label>Izoh</Label><Input className="finance-input" value={note} onChange={event => setNote(event.target.value)} placeholder="Ixtiyoriy" /></div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4"><p className="text-xs text-cyan-700">Savat jamisi</p><p className="mt-1 text-lg font-bold text-slate-950">{formatMoney(cartTotal)}</p></div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs text-slate-500">To‘lov</p><p className={`mt-1 text-lg font-bold ${paid > cartTotal ? "text-rose-600" : "text-slate-950"}`}>{formatMoney(paid)}</p></div>
-          <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4"><p className="text-xs text-amber-700">Qarzga qoladi</p><p className="mt-1 text-lg font-bold text-slate-950">{formatMoney(Math.max(0, cartTotal - paid))}</p></div>
+          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4"><p className="text-xs text-cyan-700">Savat jamisi</p><p className="mt-1 text-lg font-bold text-foreground">{formatMoney(cartTotal)}</p></div>
+          <div className="rounded-2xl border border-border bg-muted p-4"><p className="text-xs text-muted-foreground">To‘lov</p><p className={`mt-1 text-lg font-bold ${paid > cartTotal ? "text-rose-600" : "text-foreground"}`}>{formatMoney(paid)}</p></div>
+          <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4"><p className="text-xs text-amber-700">Qarzga qoladi</p><p className="mt-1 text-lg font-bold text-foreground">{formatMoney(Math.max(0, cartTotal - paid))}</p></div>
         </div>
 
         {(containerTotals.keg30 !== 0 || containerTotals.keg50 !== 0) && (
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><PackageCheck className="size-4 text-primary" />Tara sof o‘zgarishi (savat bo‘yicha)</div>
+          <div className="mt-4 rounded-2xl border border-border bg-muted p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground"><PackageCheck className="size-4 text-primary" />Tara sof o‘zgarishi (savat bo‘yicha)</div>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              <Badge variant="outline" className={containerTotals.keg30 > 0 ? "border-rose-200 bg-rose-50 text-rose-700" : containerTotals.keg30 < 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-white text-slate-500"}>KEG 30: {containerTotals.keg30 > 0 ? "+" : ""}{formatNumber(containerTotals.keg30)}</Badge>
-              <Badge variant="outline" className={containerTotals.keg50 > 0 ? "border-rose-200 bg-rose-50 text-rose-700" : containerTotals.keg50 < 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-white text-slate-500"}>KEG 50: {containerTotals.keg50 > 0 ? "+" : ""}{formatNumber(containerTotals.keg50)}</Badge>
+              <Badge variant="outline" className={containerTotals.keg30 > 0 ? "border-rose-200 bg-rose-50 text-rose-700" : containerTotals.keg30 < 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-card text-muted-foreground"}>KEG 30: {containerTotals.keg30 > 0 ? "+" : ""}{formatNumber(containerTotals.keg30)}</Badge>
+              <Badge variant="outline" className={containerTotals.keg50 > 0 ? "border-rose-200 bg-rose-50 text-rose-700" : containerTotals.keg50 < 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-card text-muted-foreground"}>KEG 50: {containerTotals.keg50 > 0 ? "+" : ""}{formatNumber(containerTotals.keg50)}</Badge>
             </div>
           </div>
         )}

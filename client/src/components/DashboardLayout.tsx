@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLanguage } from "@/lib/language";
+import { useTheme } from "@/contexts/ThemeContext";
 import {
   Sidebar,
   SidebarContent,
@@ -47,9 +48,11 @@ import {
   Loader2,
   LockKeyhole,
   LogOut,
+  Moon,
   PackageOpen,
   ReceiptText,
   ShieldCheck,
+  Sun,
   UserCog,
   UsersRound,
   WalletCards,
@@ -135,6 +138,7 @@ function getInitials(name?: string | null) {
 function LoginScreen() {
   const { login, loginPending, loginError, register, registerPending, registerError } = useAuth();
   const { language, setLanguage } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
   const needsSetup = trpc.auth.needsSetup.useQuery();
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [setupForm, setSetupForm] = useState({ name: "", email: "", password: "" });
@@ -161,7 +165,7 @@ function LoginScreen() {
   const isFirstRun = needsSetup.data === true;
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#eef4f8] px-4">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#eef4f8] px-4 dark:bg-slate-950">
       {/* Jonli fon: sekin suzuvchi, xiralashgan gradient sharlar (aurora uslubi) */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="login-blob absolute -left-40 -top-40 h-[560px] w-[560px] rounded-full bg-gradient-to-br from-cyan-400/45 to-teal-300/30 blur-3xl" />
@@ -169,29 +173,38 @@ function LoginScreen() {
         <div className="login-blob login-blob-3 absolute -bottom-44 left-1/3 h-[600px] w-[600px] rounded-full bg-gradient-to-br from-teal-300/35 to-cyan-500/25 blur-3xl" />
       </div>
       {/* Nozik grid tekstura — chetlarga qarab so'nadi */}
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(15,23,42,0.035)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.035)_1px,transparent_1px)] bg-[size:44px_44px] [mask-image:radial-gradient(ellipse_at_center,black_35%,transparent_75%)]" />
-      <div className="relative w-full max-w-md rounded-[28px] border border-white/80 bg-white/90 p-8 shadow-[0_24px_80px_rgba(19,50,77,0.16)] backdrop-blur-xl sm:p-10">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(15,23,42,0.035)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.035)_1px,transparent_1px)] bg-[size:44px_44px] [mask-image:radial-gradient(ellipse_at_center,black_35%,transparent_75%)] dark:bg-[linear-gradient(to_right,rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.045)_1px,transparent_1px)]" />
+      {/* Ko'rinish tugmasi — kirishdan oldin ham ishlaydi */}
+      <button
+        type="button"
+        onClick={toggleTheme}
+        aria-label={theme === "dark" ? "Yorug‘ rejim" : "Qorong‘i rejim"}
+        className="absolute right-5 top-5 z-10 grid h-10 w-10 place-items-center rounded-xl border border-white/80 bg-white/80 text-slate-500 shadow-sm backdrop-blur transition-colors hover:text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:text-white"
+      >
+        {theme === "dark" ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
+      </button>
+      <div className="relative w-full max-w-md rounded-[28px] border border-white/80 bg-white/90 p-8 shadow-[0_24px_80px_rgba(19,50,77,0.16)] backdrop-blur-xl sm:p-10 dark:border-white/10 dark:bg-slate-900/85 dark:shadow-[0_24px_80px_rgba(0,0,0,0.5)]">
         <div className="mb-8 flex items-center gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-[#176f9d] to-[#1ca58f] text-white shadow-lg shadow-cyan-950/15">
             <Landmark className="h-6 w-6" />
           </div>
           <div className="min-w-0 flex-1">
-            <p data-no-translit className="text-lg font-bold tracking-tight text-slate-900">NOKDAUN mchj</p>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Moliyaviy boshqaruv</p>
+            <p data-no-translit className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-50">NOKDAUN mchj</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Moliyaviy boshqaruv</p>
           </div>
           {/* Yozuvni tanlash — kirishdan oldin ham ishlaydi, tanlov brauzerda saqlanadi */}
-          <div data-no-translit className="flex shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-0.5 text-[11px] font-semibold">
+          <div data-no-translit className="flex shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-0.5 text-[11px] font-semibold dark:border-white/10 dark:bg-white/5">
             <button
               type="button"
               onClick={() => setLanguage("latin")}
-              className={`rounded-lg px-2 py-1 transition-colors ${language === "latin" ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+              className={`rounded-lg px-2 py-1 transition-colors ${language === "latin" ? "bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"}`}
             >
               O‘zb
             </button>
             <button
               type="button"
               onClick={() => setLanguage("cyrillic")}
-              className={`rounded-lg px-2 py-1 transition-colors ${language === "cyrillic" ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+              className={`rounded-lg px-2 py-1 transition-colors ${language === "cyrillic" ? "bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"}`}
             >
               Ўзб
             </button>
@@ -199,19 +212,19 @@ function LoginScreen() {
         </div>
         {needsSetup.isLoading ? (
           <div className="flex h-64 items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-slate-300" />
+            <Loader2 className="size-6 animate-spin text-slate-300 dark:text-slate-600" />
           </div>
         ) : isFirstRun ? (
           <>
-            <h1 className="text-3xl font-bold tracking-[-0.03em] text-slate-950">Boshlang‘ich sozlash</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-500">
+            <h1 className="text-3xl font-bold tracking-[-0.03em] text-slate-950 dark:text-slate-50">Boshlang‘ich sozlash</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
               Tizimda hali birorta ham hisob yo‘q. Shu yerda yaratiladigan birinchi hisob avtomatik rahbar
               huquqiga ega bo‘ladi.
             </p>
-            <div className="mt-6 rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
+            <div className="mt-6 rounded-2xl border border-amber-100 bg-amber-50/60 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
               <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-                <p className="text-xs leading-5 text-slate-600">
+                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <p className="text-xs leading-5 text-slate-600 dark:text-slate-300">
                   Bu forma faqat bir marta, tizim birinchi ishga tushirilganda ko‘rinadi. Shu hisob yaratilgach,
                   keyingi barcha hisoblar Foydalanuvchilar bo‘limidan rahbar/buxgalter tomonidan yaratiladi.
                 </p>
@@ -257,7 +270,7 @@ function LoginScreen() {
                   <button
                     type="button"
                     aria-label={showPassword ? "Parolni yashirish" : "Parolni ko‘rsatish"}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-slate-200"
                     onClick={() => setShowPassword(current => !current)}
                   >
                     {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -280,14 +293,14 @@ function LoginScreen() {
           </>
         ) : (
           <>
-            <h1 className="text-3xl font-bold tracking-[-0.03em] text-slate-950">Tizimga xush kelibsiz</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-500">
+            <h1 className="text-3xl font-bold tracking-[-0.03em] text-slate-950 dark:text-slate-50">Tizimga xush kelibsiz</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
               Savdo, qarzdorlik, kassa va mijozlar ma’lumotlarini yagona xavfsiz muhitda boshqaring.
             </p>
-            <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+            <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50/80 p-3 dark:border-white/10 dark:bg-white/5">
               <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-                <p className="text-xs leading-5 text-slate-500">
+                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
                   Yangi hisob rahbar yoki buxgalter tomonidan Foydalanuvchilar bo‘limida yaratiladi — login va
                   parolni o‘zingiz ro‘yxatdan o‘tolmaysiz, ma’muriyatdan so‘rang.
                 </p>
@@ -322,7 +335,7 @@ function LoginScreen() {
                   <button
                     type="button"
                     aria-label={showPassword ? "Parolni yashirish" : "Parolni ko‘rsatish"}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-slate-200"
                     onClick={() => setShowPassword(current => !current)}
                   >
                     {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -388,6 +401,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout: () => void }) {
   const { user } = useAuth();
   const { language, setLanguage } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
   const [location, setLocation] = useLocation();
   const visibleGroups = menuGroups
     .map(group => ({
@@ -463,7 +477,7 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" side="right" className="w-52 rounded-xl p-1.5">
-              <DropdownMenuLabel className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+              <DropdownMenuLabel className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
                 Yozuv / Ёзув
               </DropdownMenuLabel>
               <DropdownMenuItem
@@ -483,6 +497,14 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
                 Ўзбекча (кирилл)
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuLabel className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">
+                Ko‘rinish
+              </DropdownMenuLabel>
+              <DropdownMenuItem onClick={toggleTheme} className="cursor-pointer rounded-lg" data-no-translit>
+                {theme === "dark" ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
+                {theme === "dark" ? "Yorug‘ rejim" : "Qorong‘i rejim"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onLogout} className="cursor-pointer rounded-lg text-destructive focus:text-destructive">
                 <LogOut className="mr-2 h-4 w-4" /> Tizimdan chiqish
               </DropdownMenuItem>
@@ -492,21 +514,21 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
       </Sidebar>
 
       <SidebarInset className="min-w-0 bg-background">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200/70 bg-white/85 px-4 backdrop-blur-xl md:px-6">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card/85 px-4 backdrop-blur-xl md:px-6">
           <div className="flex items-center gap-3">
-            <SidebarTrigger className="h-9 w-9 rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm" />
+            <SidebarTrigger className="h-9 w-9 rounded-xl border border-border bg-card text-muted-foreground shadow-sm" />
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-400">Distribyutsiya boshqaruvi</p>
-              <h1 className="text-sm font-bold text-slate-900 sm:text-base">{activeItem?.label ?? "Boshqaruv paneli"}</h1>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">Distribyutsiya boshqaruvi</p>
+              <h1 className="text-sm font-bold text-foreground sm:text-base">{activeItem?.label ?? "Boshqaruv paneli"}</h1>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Badge variant="outline" className="hidden rounded-lg border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 sm:inline-flex">
+            <Badge variant="outline" className="hidden rounded-lg border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 sm:inline-flex dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300">
               <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" /> Tizim faol
             </Badge>
             <div className="hidden text-right md:block">
-              <p className="text-xs font-semibold text-slate-800">{new Date().toLocaleDateString("en-GB").replaceAll("/", ".")}</p>
-              <p className="mt-0.5 text-[11px] text-slate-400">{roleLabel} rejimi</p>
+              <p className="text-xs font-semibold text-foreground">{new Date().toLocaleDateString("en-GB").replaceAll("/", ".")}</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">{roleLabel} rejimi</p>
             </div>
           </div>
         </header>

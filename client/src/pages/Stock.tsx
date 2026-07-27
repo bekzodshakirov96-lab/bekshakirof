@@ -118,7 +118,7 @@ function StockInBatchForm() {
     <div>
       <div className="relative mb-4" ref={pickerRef}>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="finance-input pl-9"
             placeholder="Mahsulot qidirish va qo'shish uchun bosing..."
@@ -129,24 +129,24 @@ function StockInBatchForm() {
           />
         </div>
         {pickerOpen && (
-          <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
-              <span className="text-xs font-semibold text-slate-500">{cartProductIds.size > 0 ? `${cartProductIds.size} ta tanlandi` : "Tanlash uchun bosing"}</span>
+          <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+            <div className="flex items-center justify-between border-b border-border px-4 py-2">
+              <span className="text-xs font-semibold text-muted-foreground">{cartProductIds.size > 0 ? `${cartProductIds.size} ta tanlandi` : "Tanlash uchun bosing"}</span>
               <button type="button" className="text-xs font-semibold text-primary hover:underline" onClick={() => setPickerOpen(false)}>Tayyor</button>
             </div>
             <div className="max-h-64 overflow-y-auto">
               {filteredProducts.length === 0 ? (
-                <div className="p-4 text-sm text-slate-400">Mahsulot topilmadi.</div>
+                <div className="p-4 text-sm text-muted-foreground">Mahsulot topilmadi.</div>
               ) : filteredProducts.map(product => (
                 <button
                   key={product.id}
                   type="button"
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-slate-50"
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-muted"
                   onClick={() => toggleProduct(product)}
                 >
                   <Checkbox checked={cartProductIds.has(product.id)} />
-                  <span className="min-w-0 flex-1 font-semibold text-slate-900">{product.name}</span>
-                  <span className="shrink-0 text-xs text-slate-400">Qoldiq: {formatNumber(product.currentStock, 1)} {product.unit}</span>
+                  <span className="min-w-0 flex-1 font-semibold text-foreground">{product.name}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">Qoldiq: {formatNumber(product.currentStock, 1)} {product.unit}</span>
                 </button>
               ))}
             </div>
@@ -155,7 +155,7 @@ function StockInBatchForm() {
       </div>
 
       {cart.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 py-10 text-center text-slate-400">
+        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border py-10 text-center text-muted-foreground">
           <ShoppingCart className="size-8" />
           <p className="text-sm">Hali mahsulot tanlanmagan. Yuqoridagi qidiruv orqali qo'shing.</p>
         </div>
@@ -165,7 +165,7 @@ function StockInBatchForm() {
           <TableBody>
             {cart.map(line => (
               <TableRow key={line.key}>
-                <TableCell className="font-semibold text-slate-900">{line.productName}</TableCell>
+                <TableCell className="font-semibold text-foreground">{line.productName}</TableCell>
                 <TableCell className="text-right">
                   <Input
                     className={`finance-input text-right ${Number(line.quantity || 0) <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
@@ -175,9 +175,9 @@ function StockInBatchForm() {
                     value={line.quantity}
                     onChange={event => updateLineQuantity(line.key, sanitizeDecimalInput(event.target.value))}
                   />
-                  <span className="mt-1 block text-[11px] text-slate-400">{line.unit}</span>
+                  <span className="mt-1 block text-[11px] text-muted-foreground">{line.unit}</span>
                 </TableCell>
-                <TableCell><button type="button" aria-label="O'chirish" className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600" onClick={() => removeLine(line.key)}><Trash2 className="size-4" /></button></TableCell>
+                <TableCell><button type="button" aria-label="O'chirish" className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600" onClick={() => removeLine(line.key)}><Trash2 className="size-4" /></button></TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -234,7 +234,7 @@ function StockOutForm() {
   return (
     <div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <select className={`finance-input border px-3 text-slate-700 ${!productId ? "border-rose-300" : ""}`} value={productId} onChange={event => setProductId(event.target.value)}>
+        <select className={`finance-input border px-3 text-foreground ${!productId ? "border-rose-300" : ""}`} value={productId} onChange={event => setProductId(event.target.value)}>
           <option value="">Mahsulot tanlang</option>
           {productList.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
         </select>
@@ -260,8 +260,8 @@ function StockEntryForm() {
   return (
     <SectionCard title="Kirim / Chiqim kiritish" description="Ishlab chiqarishdan kirim (bir nechta mahsulot birdaniga), zarar yoki boshqa sabab bilan chiqim." className="mt-5">
       <div className="mb-4 flex gap-2">
-        <button type="button" onClick={() => setMode("in")} className={`h-9 flex-1 rounded-xl text-xs font-semibold transition-colors ${mode === "in" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>+ Kirim</button>
-        <button type="button" onClick={() => setMode("out")} className={`h-9 flex-1 rounded-xl text-xs font-semibold transition-colors ${mode === "out" ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>− Chiqim</button>
+        <button type="button" onClick={() => setMode("in")} className={`h-9 flex-1 rounded-xl text-xs font-semibold transition-colors ${mode === "in" ? "bg-emerald-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted"}`}>+ Kirim</button>
+        <button type="button" onClick={() => setMode("out")} className={`h-9 flex-1 rounded-xl text-xs font-semibold transition-colors ${mode === "out" ? "bg-rose-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted"}`}>− Chiqim</button>
       </div>
       {mode === "in" ? <StockInBatchForm /> : <StockOutForm />}
     </SectionCard>
@@ -282,24 +282,24 @@ function MovementHistory() {
 
   return (
     <SectionCard title="So'nggi harakatlar" description="Oxirgi 30 ta kirim/chiqim yozuvi" className="mt-5">
-      <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+      <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
         {movements.isLoading ? <TableLoading columns={6} /> : rows.length === 0 ? <EmptyState description="Hali hech qanday harakat yo'q." /> : (
           <Table className="finance-table min-w-[820px]">
             <TableHeader><TableRow><TableHead>Sana</TableHead><TableHead>Mahsulot</TableHead><TableHead>Turi</TableHead><TableHead className="text-right">Miqdor</TableHead><TableHead>Sabab</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {rows.map(row => (
                 <TableRow key={row.id}>
-                  <TableCell className="whitespace-nowrap text-slate-500">{formatDate(row.movementDate)}</TableCell>
-                  <TableCell className="font-semibold text-slate-900">{row.productName ?? "—"}</TableCell>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.movementDate)}</TableCell>
+                  <TableCell className="font-semibold text-foreground">{row.productName ?? "—"}</TableCell>
                   <TableCell>{row.movementType === "in" ? <Badge className="rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50">Kirim</Badge> : <Badge className="rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50">Chiqim</Badge>}</TableCell>
                   <TableCell className="text-right font-semibold tabular-nums">{formatNumber(row.quantity, 3)} {row.unit}</TableCell>
-                  <TableCell className="max-w-56 truncate text-slate-500">{row.reason ?? "—"}</TableCell>
+                  <TableCell className="max-w-56 truncate text-muted-foreground">{row.reason ?? "—"}</TableCell>
                   <TableCell className="text-right">
                     {!row.isAutomatic ? (
                       <button
                         type="button"
                         aria-label="O'chirish"
-                        className="flex size-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                        className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                         onClick={() => deleteMovement.mutate({ id: row.id })}
                       >
                         <Trash2 className="size-4" />
@@ -334,14 +334,14 @@ export default function Stock() {
       </div>
 
       <SectionCard title="Sklad qoldig'i" description="Joriy zaxira = barcha kirim − chiqim. Min. chegarani tahrirlash mumkin." className="mt-5">
-        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
           {stock.isLoading ? <TableLoading columns={5} /> : rows.length === 0 ? <EmptyState description="Faol mahsulot topilmadi." /> : (
             <Table className="finance-table">
               <TableHeader><TableRow><TableHead>Mahsulot</TableHead><TableHead className="text-right">Joriy qoldiq</TableHead><TableHead className="text-right">Min. chegara</TableHead><TableHead>Holat</TableHead></TableRow></TableHeader>
               <TableBody>
                 {rows.map(row => (
                   <TableRow key={row.id}>
-                    <TableCell className="font-semibold text-slate-900">{row.name}</TableCell>
+                    <TableCell className="font-semibold text-foreground">{row.name}</TableCell>
                     <TableCell className="text-right font-bold tabular-nums">{formatNumber(row.currentStock, 1)} {row.unit}</TableCell>
                     <TableCell className="text-right"><MinLevelCell productId={row.id} minStockLevel={row.minStockLevel} /></TableCell>
                     <TableCell>

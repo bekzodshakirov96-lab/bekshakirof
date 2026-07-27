@@ -50,10 +50,10 @@ export default function Users() {
 
   if (user?.role !== "admin") {
     return (
-      <div className="mx-auto max-w-xl rounded-3xl border bg-white p-10 text-center shadow-sm">
+      <div className="mx-auto max-w-xl rounded-3xl border bg-card p-10 text-center shadow-sm">
         <ShieldCheck className="mx-auto h-10 w-10 text-amber-500" />
         <h2 className="mt-4 text-xl font-bold">Faqat rahbar uchun</h2>
-        <p className="mt-2 text-sm text-slate-500">Foydalanuvchi rollarini faqat tizim rahbari boshqarishi mumkin.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Foydalanuvchi rollarini faqat tizim rahbari boshqarishi mumkin.</p>
       </div>
     );
   }
@@ -86,7 +86,7 @@ export default function Users() {
       />
 
       <SectionCard title="Kirish huquqlari" description="Rahbar roli o‘zgartirilmaydi; buxgalter biznes ma’lumotlari bilan ishlaydi">
-        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
           {users.isLoading ? (
             <TableLoading columns={5} />
           ) : rows.length === 0 ? (
@@ -109,22 +109,22 @@ export default function Users() {
                       <div className="flex items-center gap-3">
                         <Avatar className="h-9 w-9"><AvatarFallback className="bg-cyan-50 text-xs font-bold text-cyan-700">{row.name?.charAt(0).toUpperCase() || "U"}</AvatarFallback></Avatar>
                         <div>
-                          <p className="font-semibold text-slate-900">{row.name || "Nomsiz foydalanuvchi"}</p>
+                          <p className="font-semibold text-foreground">{row.name || "Nomsiz foydalanuvchi"}</p>
                           {row.isOwner ? <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">Tizim egasi</p> : null}
                         </div>
                       </div>
                     </TableCell>
                     <TableCell>{row.email || "—"}</TableCell>
-                    <TableCell className="text-slate-500">{formatDate(row.lastSignedIn)}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDate(row.lastSignedIn)}</TableCell>
                     <TableCell>
-                      <Badge className={row.role === "admin" ? "rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-50" : row.role === "accountant" ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : row.role === "agent" ? "rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-50" : row.role === "sklad" ? "rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-50" : "rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-100"}>
+                      <Badge className={row.role === "admin" ? "rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-50" : row.role === "accountant" ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : row.role === "agent" ? "rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-50" : row.role === "sklad" ? "rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-50" : "rounded-lg bg-muted text-muted-foreground hover:bg-muted"}>
                         {row.role === "admin" ? "Rahbar" : roleLabels[row.role as RoleValue] ?? "Ruxsatsiz"}
                         {row.role === "agent" && row.agentId ? ` · ${agentOptions.data?.find(a => a.id === row.agentId)?.name ?? ""}` : ""}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       {row.isOwner ? (
-                        <span className="text-xs text-slate-400">Doimiy rahbar</span>
+                        <span className="text-xs text-muted-foreground">Doimiy rahbar</span>
                       ) : (
                         <div className="flex items-center gap-2">
                           <select
@@ -197,7 +197,7 @@ export default function Users() {
                 <button
                   type="button"
                   aria-label={showPassword ? "Parolni yashirish" : "Parolni ko‘rsatish"}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-muted-foreground"
                   onClick={() => setShowPassword(current => !current)}
                 >
                   {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}

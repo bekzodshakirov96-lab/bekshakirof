@@ -133,37 +133,37 @@ export default function StockReport() {
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <Input type="date" className="finance-input" value={fromDate} onChange={event => setFromDate(event.target.value)} aria-label="Boshlanish sanasi" />
           <Input type="date" className="finance-input" value={toDate} onChange={event => setToDate(event.target.value)} aria-label="Tugash sanasi" />
-          <select className="finance-input border px-3 text-slate-600" value={productFilter} onChange={event => setProductFilter(event.target.value)}>
+          <select className="finance-input border px-3 text-muted-foreground" value={productFilter} onChange={event => setProductFilter(event.target.value)}>
             <option value="">Barcha mahsulotlar</option>
             {(products.data ?? []).map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
           </select>
-          <select className="finance-input border px-3 text-slate-600" value={agentFilter} onChange={event => setAgentFilter(event.target.value)}>
+          <select className="finance-input border px-3 text-muted-foreground" value={agentFilter} onChange={event => setAgentFilter(event.target.value)}>
             <option value="">Barcha agentlar</option>
             {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
           </select>
-          <select className="finance-input border px-3 text-slate-600" value={movementTypeFilter} onChange={event => setMovementTypeFilter(event.target.value as typeof movementTypeFilter)}>
+          <select className="finance-input border px-3 text-muted-foreground" value={movementTypeFilter} onChange={event => setMovementTypeFilter(event.target.value as typeof movementTypeFilter)}>
             <option value="all">Kirim + Chiqim</option>
             <option value="in">Faqat Kirim</option>
             <option value="out">Faqat Chiqim</option>
           </select>
         </div>
         {agentFilter && (
-          <p className="mt-3 text-xs text-slate-400">
+          <p className="mt-3 text-xs text-muted-foreground">
             Agent bo'yicha filtrlanganda faqat shu agentning savdosi orqali yaratilgan chiqim yozuvlari ko'rinadi — qo'lda kiritilgan kirim/chiqimlar agentga bog'liq emas.
           </p>
         )}
-        <div className="mt-3"><Button variant="outline" className="gap-2 bg-white" onClick={clearFilters}><RotateCcw className="size-4" />Filtrlarni tozalash</Button></div>
+        <div className="mt-3"><Button variant="outline" className="gap-2 bg-card" onClick={clearFilters}><RotateCcw className="size-4" />Filtrlarni tozalash</Button></div>
       </SectionCard>
 
       <SectionCard title="Mahsulot bo'yicha yig'indi" description="Tanlangan davrdagi kirim/chiqim va joriy qoldiq" className="mt-5" action={<ExportMenu onExcel={() => exportSummary("xlsx")} onPdf={() => exportSummary("pdf")} isLoading={isExportingSummary} disabled={report.isLoading} />}>
-        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
           {report.isLoading ? <TableLoading columns={5} /> : reportRows.length === 0 ? <EmptyState /> : (
             <Table className="finance-table">
               <TableHeader><TableRow><TableHead>Mahsulot</TableHead><TableHead className="text-right">Kirim</TableHead><TableHead className="text-right">Chiqim</TableHead><TableHead className="text-right">Sof o'zgarish</TableHead><TableHead className="text-right">Joriy qoldiq</TableHead></TableRow></TableHeader>
               <TableBody>
                 {reportRows.map(row => (
                   <TableRow key={row.productId}>
-                    <TableCell className="font-semibold text-slate-900">{row.productName}</TableCell>
+                    <TableCell className="font-semibold text-foreground">{row.productName}</TableCell>
                     <TableCell className="text-right tabular-nums text-emerald-700">{formatNumber(row.inTotal, 1)} {row.unit}</TableCell>
                     <TableCell className="text-right tabular-nums text-rose-700">{formatNumber(row.outTotal, 1)} {row.unit}</TableCell>
                     <TableCell className={`text-right font-semibold tabular-nums ${row.net >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{row.net >= 0 ? "+" : ""}{formatNumber(row.net, 1)}</TableCell>
@@ -177,19 +177,19 @@ export default function StockReport() {
       </SectionCard>
 
       <SectionCard title="Harakatlar tafsiloti" description="Tanlangan davrdagi barcha kirim/chiqim yozuvlari" className="mt-5" action={<ExportMenu onExcel={() => exportMovements("xlsx")} onPdf={() => exportMovements("pdf")} isLoading={isExportingMovements} disabled={movements.isLoading} />}>
-        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
           {movements.isLoading ? <TableLoading columns={7} /> : movementRows.length === 0 ? <EmptyState /> : (
             <Table className="finance-table min-w-[900px]">
               <TableHeader><TableRow><TableHead>Sana</TableHead><TableHead>Mahsulot</TableHead><TableHead>Turi</TableHead><TableHead className="text-right">Miqdor</TableHead><TableHead>Agent</TableHead><TableHead>Sabab</TableHead><TableHead>Manba</TableHead></TableRow></TableHeader>
               <TableBody>
                 {movementRows.map(row => (
                   <TableRow key={row.id}>
-                    <TableCell className="whitespace-nowrap text-slate-500">{formatDate(row.movementDate)}</TableCell>
-                    <TableCell className="font-semibold text-slate-900">{row.productName ?? "—"}</TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.movementDate)}</TableCell>
+                    <TableCell className="font-semibold text-foreground">{row.productName ?? "—"}</TableCell>
                     <TableCell>{row.movementType === "in" ? <Badge className="rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50">Kirim</Badge> : <Badge className="rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50">Chiqim</Badge>}</TableCell>
                     <TableCell className="text-right font-semibold tabular-nums">{formatNumber(row.quantity, 3)} {row.unit}</TableCell>
-                    <TableCell className="text-slate-600">{row.agentName ?? "—"}</TableCell>
-                    <TableCell className="max-w-56 truncate text-slate-500">{row.reason ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{row.agentName ?? "—"}</TableCell>
+                    <TableCell className="max-w-56 truncate text-muted-foreground">{row.reason ?? "—"}</TableCell>
                     <TableCell>{row.isAutomatic ? <Badge variant="outline" className="rounded-lg">Savdo</Badge> : <Badge variant="outline" className="rounded-lg">Qo'lda</Badge>}</TableCell>
                   </TableRow>
                 ))}
@@ -198,7 +198,7 @@ export default function StockReport() {
           )}
         </div>
         {movements.data && movements.data.total > movementRows.length && (
-          <p className="mt-3 px-1 text-xs text-slate-400">Jadvalda so'nggi {movementRows.length} ta yozuv ko'rsatilgan (jami {movements.data.total} ta). To'liq ro'yxat uchun Excel/PDF eksportdan foydalaning.</p>
+          <p className="mt-3 px-1 text-xs text-muted-foreground">Jadvalda so'nggi {movementRows.length} ta yozuv ko'rsatilgan (jami {movements.data.total} ta). To'liq ro'yxat uchun Excel/PDF eksportdan foydalaning.</p>
         )}
       </SectionCard>
     </div>

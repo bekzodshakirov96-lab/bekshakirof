@@ -59,17 +59,17 @@ const emptyDraftRow = (): DraftRow => ({
 });
 
 const cellInputClass =
-  "w-full min-w-[64px] rounded-md border border-transparent bg-slate-50/70 px-1.5 py-1.5 text-right tabular-nums outline-none transition-colors hover:border-slate-200 hover:bg-slate-100 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/25";
+  "w-full min-w-[64px] rounded-md border border-transparent bg-muted/70 px-1.5 py-1.5 text-right tabular-nums outline-none transition-colors hover:border-border hover:bg-muted focus:border-primary focus:bg-card focus:ring-2 focus:ring-primary/25";
 /** "Ойлик" ustuni ajratib turishi uchun — qolganlaridan qizg'ishroq. */
 const cellInputClassHighlight =
-  "w-full min-w-[64px] rounded-md border border-rose-100 bg-rose-50/70 px-1.5 py-1.5 text-right tabular-nums outline-none transition-colors hover:border-rose-300 hover:bg-rose-100 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/25";
+  "w-full min-w-[64px] rounded-md border border-rose-100 bg-rose-50/70 px-1.5 py-1.5 text-right tabular-nums outline-none transition-colors hover:border-rose-300 hover:bg-rose-100 focus:border-primary focus:bg-card focus:ring-2 focus:ring-primary/25 dark:border-rose-400/25 dark:bg-rose-500/10 dark:hover:border-rose-400/40 dark:hover:bg-rose-500/20";
 const HIGHLIGHT_CATEGORY = "Ойлик";
 const textInputClass =
-  "w-full min-w-[110px] rounded-md border border-transparent bg-slate-50/70 px-1.5 py-1.5 outline-none transition-colors hover:border-slate-200 hover:bg-slate-100 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/25";
+  "w-full min-w-[110px] rounded-md border border-transparent bg-muted/70 px-1.5 py-1.5 outline-none transition-colors hover:border-border hover:bg-muted focus:border-primary focus:bg-card focus:ring-2 focus:ring-primary/25";
 const selectInputClass =
-  "w-full min-w-[120px] cursor-pointer rounded-md border border-transparent bg-slate-50/70 px-1.5 py-1.5 text-xs outline-none transition-colors hover:border-slate-200 hover:bg-slate-100 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/25";
-const emptyCellClass = "block px-1.5 py-1.5 text-right text-slate-200 select-none";
-const emptyCellClassLeft = "block px-1.5 py-1.5 text-left text-slate-200 select-none";
+  "w-full min-w-[120px] cursor-pointer rounded-md border border-transparent bg-muted/70 px-1.5 py-1.5 text-xs outline-none transition-colors hover:border-border hover:bg-muted focus:border-primary focus:bg-card focus:ring-2 focus:ring-primary/25";
+const emptyCellClass = "block px-1.5 py-1.5 text-right text-muted-foreground/35 select-none";
+const emptyCellClassLeft = "block px-1.5 py-1.5 text-left text-muted-foreground/35 select-none";
 
 /**
  * Excel "Kunlik jurnal" A1:H16 diapazoniga aynan mos, to'g'ridan-to'g'ri
@@ -323,19 +323,19 @@ function DailyJournalGrid({
   }
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-200">
+    <div className="overflow-x-auto rounded-2xl border border-border">
       <table className="w-full min-w-[1080px] text-sm">
         <thead>
-          <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold tracking-wide text-slate-500">
+          <tr className="border-b border-border bg-muted text-xs font-semibold tracking-wide text-muted-foreground">
             <th className="whitespace-nowrap px-3 py-2.5 text-left">Агент</th>
-            {JOURNAL_COLUMNS.map(name => <th key={name} className={`whitespace-nowrap px-3 py-2.5 text-right ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700" : ""}`}>{name}</th>)}
+            {JOURNAL_COLUMNS.map(name => <th key={name} className={`whitespace-nowrap px-3 py-2.5 text-right ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" : ""}`}>{name}</th>)}
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Терминал</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Click</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-left">Нимага расход</th>
             <th className="w-11" />
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-border">
           <tr className="border-b-2 border-sky-100 bg-sky-50/70 text-xs font-bold text-sky-900">
             <td colSpan={REASON_COL} className="px-3 py-2">Boshlang'ich qoldiq (naqd)</td>
             <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(openingBalance)}</td>
@@ -343,7 +343,7 @@ function DailyJournalGrid({
           </tr>
           {sortedEntries.map((entry, rowIndex) => {
             return (
-              <tr key={entry.id} className="text-xs even:bg-slate-50/40">
+              <tr key={entry.id} className="text-xs even:bg-muted/40">
                 <td className="px-1.5 py-1">
                   <div>
                     <select
@@ -358,19 +358,19 @@ function DailyJournalGrid({
                       {agentList.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                     </select>
                     {entry.agentId == null && entry.description ? (
-                      <p className="truncate px-1.5 pt-0.5 text-[10px] text-slate-400">{entry.description}</p>
+                      <p className="truncate px-1.5 pt-0.5 text-[10px] text-muted-foreground">{entry.description}</p>
                     ) : null}
                   </div>
                 </td>
                 {JOURNAL_COLUMNS.map((name, colOffset) => (
-                  <td key={name} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40" : ""}`}>
+                  <td key={name} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40 dark:bg-rose-500/8" : ""}`}>
                     {entry.category === name ? (
                       <input
                         key={`cash-${entry.id}-${entry.cashAmount}`}
                         type="text" inputMode="numeric"
                         data-journal-cell={`${rowIndex}-${colOffset + 1}`}
                         defaultValue={String(entry.cashAmount)}
-                        className={`${name === HIGHLIGHT_CATEGORY ? cellInputClassHighlight : cellInputClass} font-semibold text-slate-900`}
+                        className={`${name === HIGHLIGHT_CATEGORY ? cellInputClassHighlight : cellInputClass} font-semibold text-foreground`}
                         onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
                         onBlur={event => commitExistingCash(entry, event.target.value)}
                         onKeyDown={event => onAmountKeyDown(event, rowIndex, colOffset + 1)}
@@ -426,7 +426,7 @@ function DailyJournalGrid({
                   <button
                     type="button"
                     aria-label="O'chirish"
-                    className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                     onClick={() => del.mutate({ id: entry.id })}
                   >
                     <Trash2 className="size-3.5" />
@@ -440,14 +440,14 @@ function DailyJournalGrid({
             return (
             <tr
               key={`draft-${index}`}
-              className={`text-xs ${index === 0 ? "border-t-2 border-dashed border-slate-200" : ""}`}
+              className={`text-xs ${index === 0 ? "border-t-2 border-dashed border-border" : ""}`}
               onBlur={event => commitDraftRow(index, event)}
             >
               <td className="px-1.5 py-1">
                 <select
                   value={draft.agentId}
                   data-journal-cell={`${rowIndex}-0`}
-                  className={`${selectInputClass} ${draft.agentId ? "text-slate-700" : "text-slate-400"}`}
+                  className={`${selectInputClass} ${draft.agentId ? "text-foreground" : "text-muted-foreground"}`}
                   onChange={event => { updateDraft(index, { agentId: event.target.value }); scheduleAutoSave(index); }}
                   onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}
                 >
@@ -456,13 +456,13 @@ function DailyJournalGrid({
                 </select>
               </td>
               {JOURNAL_COLUMNS.map((name, colOffset) => (
-                <td key={name} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40" : ""}`}>
+                <td key={name} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40 dark:bg-rose-500/8" : ""}`}>
                   <input
                     type="text" inputMode="numeric"
                     data-journal-cell={`${rowIndex}-${colOffset + 1}`}
                     value={draft.amounts[name]}
                     placeholder="0"
-                    className={`${name === HIGHLIGHT_CATEGORY ? cellInputClassHighlight : cellInputClass} text-slate-500`}
+                    className={`${name === HIGHLIGHT_CATEGORY ? cellInputClassHighlight : cellInputClass} text-muted-foreground`}
                     onChange={event => { updateDraft(index, { amounts: { ...draft.amounts, [name]: sanitizeIntegerInput(event.target.value) } }); scheduleAutoSave(index); }}
                     onKeyDown={event => onAmountKeyDown(event, rowIndex, colOffset + 1)}
                   />
@@ -474,7 +474,7 @@ function DailyJournalGrid({
                   data-journal-cell={`${rowIndex}-${TERMINAL_COL}`}
                   value={draft.terminal}
                   placeholder="0"
-                  className={`${cellInputClass} text-slate-500`}
+                  className={`${cellInputClass} text-muted-foreground`}
                   onChange={event => { updateDraft(index, { terminal: sanitizeIntegerInput(event.target.value) }); scheduleAutoSave(index); }}
                   onKeyDown={event => onAmountKeyDown(event, rowIndex, TERMINAL_COL)}
                 />
@@ -485,7 +485,7 @@ function DailyJournalGrid({
                   data-journal-cell={`${rowIndex}-${CLICK_COL}`}
                   value={draft.click}
                   placeholder="0"
-                  className={`${cellInputClass} text-slate-500`}
+                  className={`${cellInputClass} text-muted-foreground`}
                   onChange={event => { updateDraft(index, { click: sanitizeIntegerInput(event.target.value) }); scheduleAutoSave(index); }}
                   onKeyDown={event => onAmountKeyDown(event, rowIndex, CLICK_COL)}
                 />
@@ -511,9 +511,9 @@ function DailyJournalGrid({
           })}
         </tbody>
         <tfoot>
-          <tr className="border-t-2 border-slate-200 bg-slate-50/80 text-xs font-bold text-slate-900">
+          <tr className="border-t-2 border-border bg-muted/80 text-xs font-bold text-foreground">
             <td className="whitespace-nowrap px-3 py-2.5">Jami</td>
-            {totals.map((value, index) => <td key={JOURNAL_COLUMNS[index]} className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${JOURNAL_COLUMNS[index] === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700" : ""}`}>{formatMoney(value)}</td>)}
+            {totals.map((value, index) => <td key={JOURNAL_COLUMNS[index]} className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${JOURNAL_COLUMNS[index] === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" : ""}`}>{formatMoney(value)}</td>)}
             <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(terminalTotal)}</td>
             <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(clickTotal)}</td>
             <td colSpan={2} />
@@ -525,7 +525,7 @@ function DailyJournalGrid({
           </tr>
         </tfoot>
       </table>
-      <div className="border-t border-slate-100 px-3 py-2">
+      <div className="border-t border-border px-3 py-2">
         <button
           type="button"
           className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/5 hover:underline"
@@ -691,9 +691,9 @@ function AgentProductMatrix({ date }: { date: string }) {
     target?.select();
   }
 
-  if (agents.isLoading || products.isLoading) return <p className="p-4 text-xs text-slate-400">Yuklanmoqda...</p>;
-  if (agentList.length === 0) return <p className="p-4 text-xs text-slate-400">Faol agentlar topilmadi.</p>;
-  if (productList.length === 0) return <p className="p-4 text-xs text-slate-400">Mahsulotlar topilmadi.</p>;
+  if (agents.isLoading || products.isLoading) return <p className="p-4 text-xs text-muted-foreground">Yuklanmoqda...</p>;
+  if (agentList.length === 0) return <p className="p-4 text-xs text-muted-foreground">Faol agentlar topilmadi.</p>;
+  if (productList.length === 0) return <p className="p-4 text-xs text-muted-foreground">Mahsulotlar topilmadi.</p>;
 
   const summaryByAgent = new Map((daySummary.data?.agentSummaries ?? []).map(row => [row.agentId, row]));
 
@@ -702,26 +702,26 @@ function AgentProductMatrix({ date }: { date: string }) {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative" ref={agentPickerRef}>
           <Button
-            type="button" variant="outline" size="sm" className="h-8 gap-1.5 bg-white text-xs font-semibold"
+            type="button" variant="outline" size="sm" className="h-8 gap-1.5 bg-card text-xs font-semibold"
             onClick={() => setAgentPickerOpen(open => !open)}
           >
             <Users className="size-3.5" /> Agentlar ({visibleAgents.length}/{agentList.length})
           </Button>
           {agentPickerOpen && (
-            <div className="absolute z-20 mt-1 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+            <div className="absolute z-20 mt-1 w-64 overflow-hidden rounded-xl border border-border bg-card shadow-xl">
               <div className="max-h-56 overflow-y-auto">
                 {agentList.map(agent => (
                   <button
                     key={agent.id} type="button"
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-muted"
                     onClick={() => toggleAgentVisible(agent.id)}
                   >
                     <Checkbox checked={selectedAgentIds === null || selectedAgentIds.has(agent.id)} />
-                    <span className="flex-1 truncate font-medium text-slate-800">{agent.name}</span>
+                    <span className="flex-1 truncate font-medium text-foreground">{agent.name}</span>
                   </button>
                 ))}
               </div>
-              <div className="border-t border-slate-100 p-2">
+              <div className="border-t border-border p-2">
                 {!newAgentOpen ? (
                   <button
                     type="button"
@@ -754,13 +754,13 @@ function AgentProductMatrix({ date }: { date: string }) {
 
         <div className="relative" ref={newProductRef}>
           <Button
-            type="button" variant="outline" size="sm" className="h-8 gap-1.5 bg-white text-xs font-semibold"
+            type="button" variant="outline" size="sm" className="h-8 gap-1.5 bg-card text-xs font-semibold"
             onClick={() => setNewProductOpen(open => !open)}
           >
             <Plus className="size-3.5" /> Mahsulot qo'shish
           </Button>
           {newProductOpen && (
-            <div className="absolute z-20 mt-1 w-64 space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+            <div className="absolute z-20 mt-1 w-64 space-y-2 rounded-xl border border-border bg-card p-3 shadow-xl">
               <Input className={`finance-input h-8 text-xs ${!newProductForm.code.trim() ? "border-rose-300" : ""}`} placeholder="Kodi" value={newProductForm.code} onChange={event => setNewProductForm(prev => ({ ...prev, code: event.target.value }))} />
               <Input className={`finance-input h-8 text-xs ${!newProductForm.name.trim() ? "border-rose-300" : ""}`} placeholder="Nomi" value={newProductForm.name} onChange={event => setNewProductForm(prev => ({ ...prev, name: event.target.value }))} />
               <Input className={`finance-input h-8 text-xs ${!newProductForm.unit.trim() ? "border-rose-300" : ""}`} placeholder="O'lchov birligi" value={newProductForm.unit} onChange={event => setNewProductForm(prev => ({ ...prev, unit: event.target.value }))} />
@@ -784,27 +784,27 @@ function AgentProductMatrix({ date }: { date: string }) {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200">
+      <div className="overflow-x-auto rounded-2xl border border-border">
       <table className="w-full min-w-[720px] text-sm">
         <thead>
-          <tr className="bg-slate-50 text-xs font-semibold text-slate-500">
-            <th className="sticky left-0 whitespace-nowrap bg-slate-50 px-3 py-2 text-left">Товар</th>
+          <tr className="bg-muted text-xs font-semibold text-muted-foreground">
+            <th className="sticky left-0 whitespace-nowrap bg-muted px-3 py-2 text-left">Товар</th>
             <th className="whitespace-nowrap px-3 py-2 text-right">Narxi</th>
             <th className="whitespace-nowrap px-3 py-2 text-right">Kunlik narx</th>
             {visibleAgents.map(agent => <th key={agent.id} className="whitespace-nowrap px-3 py-2 text-right">{agent.name}</th>)}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-border">
           {productList.map((product, rowIndex) => {
             const dayPrice = dayPriceByProduct.get(product.id) ?? null;
             return (
             <tr key={product.id}>
-              <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-1.5 font-medium text-slate-800">
+              <td className="sticky left-0 whitespace-nowrap bg-card px-3 py-1.5 font-medium text-foreground">
                 <div className="flex items-center gap-1.5">
                   <div className="flex shrink-0 flex-col">
                     <button
                       type="button" aria-label="Yuqoriga surish"
-                      className="flex size-4 items-center justify-center rounded text-slate-300 hover:bg-slate-100 hover:text-slate-600 disabled:pointer-events-none disabled:opacity-0"
+                      className="flex size-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-muted-foreground disabled:pointer-events-none disabled:opacity-0"
                       disabled={rowIndex === 0}
                       onClick={() => reorderProduct.mutate({ id: product.id, direction: "up" })}
                     >
@@ -812,7 +812,7 @@ function AgentProductMatrix({ date }: { date: string }) {
                     </button>
                     <button
                       type="button" aria-label="Pastga surish"
-                      className="flex size-4 items-center justify-center rounded text-slate-300 hover:bg-slate-100 hover:text-slate-600 disabled:pointer-events-none disabled:opacity-0"
+                      className="flex size-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-muted-foreground disabled:pointer-events-none disabled:opacity-0"
                       disabled={rowIndex === productList.length - 1}
                       onClick={() => reorderProduct.mutate({ id: product.id, direction: "down" })}
                     >
@@ -822,7 +822,7 @@ function AgentProductMatrix({ date }: { date: string }) {
                   {product.name}
                 </div>
               </td>
-              <td className="whitespace-nowrap px-3 py-1.5 text-right text-slate-400">{formatMoney(product.price)}</td>
+              <td className="whitespace-nowrap px-3 py-1.5 text-right text-muted-foreground">{formatMoney(product.price)}</td>
               <td className="px-2 py-1 text-right">
                 <Input
                   className={`finance-input h-10 w-24 text-right ${dayPrice != null ? "font-bold text-amber-700" : ""}`}
@@ -857,18 +857,18 @@ function AgentProductMatrix({ date }: { date: string }) {
           })}
         </tbody>
         <tfoot>
-          <tr className="border-t-2 border-slate-200 bg-slate-50/80 text-xs font-bold text-slate-700">
-            <td className="sticky left-0 whitespace-nowrap bg-slate-50/80 px-3 py-2" colSpan={3}>Умумий</td>
+          <tr className="border-t-2 border-border bg-muted/80 text-xs font-bold text-foreground">
+            <td className="sticky left-0 whitespace-nowrap bg-muted/80 px-3 py-2" colSpan={3}>Умумий</td>
             {visibleAgents.map(agent => (
               <td key={agent.id} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
                 {formatMoney(summaryByAgent.get(agent.id)?.computedAmount ?? 0)}
               </td>
             ))}
           </tr>
-          <tr className="bg-slate-50/80 text-xs font-bold text-slate-700">
-            <td className="sticky left-0 whitespace-nowrap bg-slate-50/80 px-3 py-2" colSpan={3}>
+          <tr className="bg-muted/80 text-xs font-bold text-foreground">
+            <td className="sticky left-0 whitespace-nowrap bg-muted/80 px-3 py-2" colSpan={3}>
               Касса
-              <span className="ml-1.5 font-normal text-slate-400">(Приход кег + Приход пет)</span>
+              <span className="ml-1.5 font-normal text-muted-foreground">(Приход кег + Приход пет)</span>
             </td>
             {visibleAgents.map(agent => (
               <td key={agent.id} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
@@ -877,7 +877,7 @@ function AgentProductMatrix({ date }: { date: string }) {
             ))}
           </tr>
           <tr className="text-xs font-bold">
-            <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-2" colSpan={3}>Разница</td>
+            <td className="sticky left-0 whitespace-nowrap bg-card px-3 py-2" colSpan={3}>Разница</td>
             {visibleAgents.map(agent => {
               const row = summaryByAgent.get(agent.id);
               const farq = row?.farq ?? 0;
@@ -933,12 +933,12 @@ export default function Cash() {
         />
       </div>
 
-      <div className="mt-5 rounded-2xl border border-slate-100 bg-white p-5">
+      <div className="mt-5 rounded-2xl border border-border bg-card p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-sm font-bold text-slate-900">Kunlik jurnal</h3>
+          <h3 className="text-sm font-bold text-foreground">Kunlik jurnal</h3>
           <div className="flex items-center gap-1.5">
             <Button
-              type="button" variant="outline" size="icon" className="size-8 bg-white"
+              type="button" variant="outline" size="icon" className="size-8 bg-card"
               aria-label="Oldingi kun"
               onClick={() => setDate(prev => shiftDate(prev, -1))}
             >
@@ -950,14 +950,14 @@ export default function Cash() {
               onChange={event => setDate(event.target.value)}
             />
             <Button
-              type="button" variant="outline" size="icon" className="size-8 bg-white"
+              type="button" variant="outline" size="icon" className="size-8 bg-card"
               aria-label="Keyingi kun"
               onClick={() => setDate(prev => shiftDate(prev, 1))}
             >
               <ChevronRight className="size-4" />
             </Button>
             <Button
-              type="button" variant="outline" size="sm" className="h-8 bg-white text-xs font-semibold"
+              type="button" variant="outline" size="sm" className="h-8 bg-card text-xs font-semibold"
               onClick={() => setDate(today())}
             >
               Bugun
@@ -967,9 +967,9 @@ export default function Cash() {
         <DailyJournalGrid entries={allEntries} date={date} onChanged={() => prihodEntries.refetch()} />
       </div>
 
-      <div className="mt-5 rounded-2xl border border-slate-100 bg-white p-5">
-        <div className="mb-1 flex items-center gap-2"><Users className="size-4 text-primary" /><h3 className="text-sm font-bold text-slate-900">Агент x Товар</h3></div>
-        <p className="mb-3 text-xs text-slate-400">Tab yoki ←/→ — qo‘shni katak, Enter/↑/↓ — shu ustunda keyingi/oldingi mahsulot.</p>
+      <div className="mt-5 rounded-2xl border border-border bg-card p-5">
+        <div className="mb-1 flex items-center gap-2"><Users className="size-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Агент x Товар</h3></div>
+        <p className="mb-3 text-xs text-muted-foreground">Tab yoki ←/→ — qo‘shni katak, Enter/↑/↓ — shu ustunda keyingi/oldingi mahsulot.</p>
         <AgentProductMatrix date={date} />
       </div>
     </div>

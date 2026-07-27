@@ -125,7 +125,7 @@ export default function Debts() {
     return (
       <TableHead className={className}>
         <button type="button" onClick={() => changeSort(column)} className={`inline-flex w-full items-center gap-1.5 font-semibold transition-colors hover:text-primary ${className.includes("text-right") ? "justify-end" : "justify-start"}`}>
-          {children}<Icon className={`size-3.5 ${active ? "text-primary" : "text-slate-400"}`} />
+          {children}<Icon className={`size-3.5 ${active ? "text-primary" : "text-muted-foreground"}`} />
         </button>
       </TableHead>
     );
@@ -149,21 +149,21 @@ export default function Debts() {
       <SectionCard title="Mijozlar qarzdorligi" description="Qidiruv, filter va ustun sarlavhalari orqali saralang" className="mt-5">
         <div className="mb-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_180px_160px_150px_150px_auto]">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Kod, mijoz yoki agentni qidiring..." className="finance-input pl-9" />
           </div>
-          <select value={agentId} onChange={event => { setAgentId(event.target.value); setPage(1); }} className="finance-input border px-3 text-slate-600">
+          <select value={agentId} onChange={event => { setAgentId(event.target.value); setPage(1); }} className="finance-input border px-3 text-muted-foreground">
             <option value="">Barcha agentlar</option>
             {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
           </select>
-          <select value={status} onChange={event => { setStatus(event.target.value as keyof typeof statusLabels); setPage(1); }} className="finance-input border px-3 text-slate-600">
+          <select value={status} onChange={event => { setStatus(event.target.value as keyof typeof statusLabels); setPage(1); }} className="finance-input border px-3 text-muted-foreground">
             {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
           <Input type="text" inputMode="numeric" value={minDebt} onChange={event => { setMinDebt(sanitizeIntegerInput(event.target.value)); setPage(1); }} placeholder="Minimal qarz" className="finance-input" />
           <Input type="text" inputMode="numeric" value={maxDebt} onChange={event => { setMaxDebt(sanitizeIntegerInput(event.target.value)); setPage(1); }} placeholder="Maksimal qarz" className="finance-input" />
-          <Button type="button" variant="outline" onClick={clearFilters} className="gap-2 bg-white"><RotateCcw className="size-4" />Tozalash</Button>
+          <Button type="button" variant="outline" onClick={clearFilters} className="gap-2 bg-card"><RotateCcw className="size-4" />Tozalash</Button>
         </div>
-        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
           {debts.isLoading ? <TableLoading columns={11} /> : items.length === 0 ? <EmptyState description="Qidiruv yoki filterlarni o‘zgartirib ko‘ring." /> : (
             <>
               <Table className="finance-table min-w-[1180px]">
@@ -180,7 +180,7 @@ export default function Debts() {
                 </TableRow></TableHeader>
                 <TableBody>{items.map(item => <TableRow key={item.id}>
                   <TableCell className="font-mono text-xs font-semibold text-primary">{item.code}</TableCell>
-                  <TableCell className="font-semibold text-slate-900">{item.name}</TableCell>
+                  <TableCell className="font-semibold text-foreground">{item.name}</TableCell>
                   <TableCell>{item.agentName || "—"}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoney(item.openingDebt)}</TableCell>
                   <TableCell className="text-right font-semibold tabular-nums">{formatMoney(item.totalSales)}</TableCell>
@@ -189,7 +189,7 @@ export default function Debts() {
                   <TableCell className="text-right tabular-nums text-cyan-700">{formatMoney(item.clickPaid)}</TableCell>
                   <TableCell className={`text-right font-bold tabular-nums ${item.currentDebt > 0 ? "text-rose-700" : "text-emerald-700"}`}>{formatMoney(item.currentDebt)}</TableCell>
                   <TableCell><DebtBadge value={item.currentDebt} /></TableCell>
-                  <TableCell><button type="button" aria-label="Akt sverka" title="Akt sverka" className="rounded-lg p-1.5 text-slate-400 hover:bg-primary/10 hover:text-primary" onClick={() => setStatementClient({ id: item.id, name: item.name })}><FileText className="size-4" /></button></TableCell>
+                  <TableCell><button type="button" aria-label="Akt sverka" title="Akt sverka" className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary" onClick={() => setStatementClient({ id: item.id, name: item.name })}><FileText className="size-4" /></button></TableCell>
                 </TableRow>)}</TableBody>
               </Table>
               <PaginationBar page={debts.data?.page ?? 1} pageCount={debts.data?.pageCount ?? 1} total={debts.data?.total ?? 0} onChange={setPage} />

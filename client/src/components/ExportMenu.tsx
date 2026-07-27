@@ -20,7 +20,7 @@ export function ExportMenu({ onExcel, onPdf, isLoading = false, disabled = false
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="gap-2 bg-white" disabled={disabled || isLoading}>
+        <Button variant="outline" className="gap-2 bg-card" disabled={disabled || isLoading}>
           {isLoading ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4" />}
           {isLoading ? "Tayyorlanmoqda..." : "Eksport"}
         </Button>

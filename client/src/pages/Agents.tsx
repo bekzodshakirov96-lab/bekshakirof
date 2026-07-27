@@ -83,22 +83,22 @@ function AgentCommissionSection() {
       action={
         <div className="flex items-center gap-2">
           <Input className="finance-input h-9 w-40" type="date" value={fromDate} onChange={event => setFromDate(event.target.value)} aria-label="Boshlanish sanasi" />
-          <span className="text-xs text-slate-400">—</span>
+          <span className="text-xs text-muted-foreground">—</span>
           <Input className="finance-input h-9 w-40" type="date" value={toDate} onChange={event => setToDate(event.target.value)} aria-label="Tugash sanasi" />
         </div>
       }
     >
-      <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+      <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
         {report.isLoading ? <TableLoading columns={5} /> : rows.length === 0 ? <EmptyState description="Faol agentlar topilmadi." /> : (
           <Table className="finance-table">
             <TableHeader><TableRow><TableHead>Agent</TableHead><TableHead className="text-right">Komissiya %</TableHead><TableHead className="text-right">Yig'ilgan summa</TableHead><TableHead className="text-right">Hisoblangan komissiya</TableHead><TableHead className="text-right">Amal</TableHead></TableRow></TableHeader>
             <TableBody>
               {rows.map(row => (
                 <TableRow key={row.agentId}>
-                  <TableCell className="font-semibold text-slate-900">{row.agentName}</TableCell>
-                  <TableCell className="text-right tabular-nums text-slate-500">{row.commissionPercent}%</TableCell>
+                  <TableCell className="font-semibold text-foreground">{row.agentName}</TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">{row.commissionPercent}%</TableCell>
                   <TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.collectedAmount)}</TableCell>
-                  <TableCell className="text-right font-bold tabular-nums text-slate-900">{formatMoney(row.commissionAmount)}</TableCell>
+                  <TableCell className="text-right font-bold tabular-nums text-foreground">{formatMoney(row.commissionAmount)}</TableCell>
                   <TableCell className="text-right">
                     <Button
                       size="sm"
@@ -112,9 +112,9 @@ function AgentCommissionSection() {
                   </TableCell>
                 </TableRow>
               ))}
-              <TableRow className="bg-slate-50/60 font-bold">
+              <TableRow className="bg-muted/60 font-bold">
                 <TableCell colSpan={3}>Jami</TableCell>
-                <TableCell className="text-right tabular-nums text-slate-900">{formatMoney(totalCommission)}</TableCell>
+                <TableCell className="text-right tabular-nums text-foreground">{formatMoney(totalCommission)}</TableCell>
                 <TableCell />
               </TableRow>
             </TableBody>
@@ -211,13 +211,13 @@ export default function Agents() {
   function SortableHead({ column, children, className = "" }: { column: AgentSortBy; children: string; className?: string }) {
     const active = sortBy === column;
     const Icon = !active ? ArrowUpDown : sortOrder === "asc" ? ArrowUp : ArrowDown;
-    return <TableHead className={className}><button type="button" onClick={() => changeSort(column)} className={`inline-flex w-full items-center gap-1.5 font-semibold hover:text-primary ${className.includes("text-right") ? "justify-end" : className.includes("text-center") ? "justify-center" : "justify-start"}`}>{children}<Icon className={`size-3.5 ${active ? "text-primary" : "text-slate-400"}`} /></button></TableHead>;
+    return <TableHead className={className}><button type="button" onClick={() => changeSort(column)} className={`inline-flex w-full items-center gap-1.5 font-semibold hover:text-primary ${className.includes("text-right") ? "justify-end" : className.includes("text-center") ? "justify-center" : "justify-start"}`}>{children}<Icon className={`size-3.5 ${active ? "text-primary" : "text-muted-foreground"}`} /></button></TableHead>;
   }
 
   if (agents.error) return <div className="mx-auto w-full max-w-[1500px]"><PageHeader eyebrow="Savdo jamoasi" title="Agentlar boshqaruvi" description="Agentlar va ularning ko‘rsatkichlari." /><QueryError description={agents.error.message} onRetry={() => agents.refetch()} /></div>;
 
   return <div className="mx-auto w-full max-w-[1500px]">
-    <PageHeader eyebrow="Savdo jamoasi" title="Agentlar boshqaruvi" description="Agentlar portfeli, mijozlari, savdo natijalari va qarzdorligini solishtiring." action={<div className="flex flex-wrap gap-2"><ExportMenu onExcel={() => exportReport("xlsx")} onPdf={() => exportReport("pdf")} isLoading={isExporting} disabled={agents.isLoading} />{user?.role === "admin" && <Button onClick={() => setOpen(true)} className="h-10 rounded-xl bg-slate-900 text-xs font-semibold hover:bg-slate-800"><Plus className="mr-2 size-4" />Yangi agent</Button>}</div>} />
+    <PageHeader eyebrow="Savdo jamoasi" title="Agentlar boshqaruvi" description="Agentlar portfeli, mijozlari, savdo natijalari va qarzdorligini solishtiring." action={<div className="flex flex-wrap gap-2"><ExportMenu onExcel={() => exportReport("xlsx")} onPdf={() => exportReport("pdf")} isLoading={isExporting} disabled={agents.isLoading} />{user?.role === "admin" && <Button onClick={() => setOpen(true)} className="h-10 rounded-xl bg-slate-900 text-xs font-semibold hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"><Plus className="mr-2 size-4" />Yangi agent</Button>}</div>} />
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard label="Topilgan agentlar" value={(summary?.agentCount ?? 0).toLocaleString("uz-UZ")} helper={`${(summary?.clientCount ?? 0).toLocaleString("uz-UZ")} ta mijoz`} icon={UserCheck} tone="cyan" />
       <MetricCard label="Jami savdo" value={formatMoney(summary?.totalSales ?? 0, true)} helper="Filtrlangan agentlar" icon={TrendingUp} tone="blue" />
@@ -226,15 +226,15 @@ export default function Agents() {
     </div>
     <SectionCard title="Agentlar samaradorligi" description="Qidiruv, filter va ustun sarlavhalari orqali saralang" className="mt-5">
       <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_190px_190px_auto]">
-        <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" /><Input className="finance-input pl-9" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Agent yoki telefon raqami..." /></div>
-        <select className="finance-input border px-3 text-slate-600" value={status} onChange={event => { setStatus(event.target.value as AgentStatus); setPage(1); }}><option value="all">Barcha holatlar</option><option value="active">Faol agentlar</option><option value="inactive">Nofaol agentlar</option></select>
-        <select className="finance-input border px-3 text-slate-600" value={debtStatus} onChange={event => { setDebtStatus(event.target.value as AgentDebtStatus); setPage(1); }}><option value="all">Barcha qarz holati</option><option value="debt">Qarzi bor</option><option value="clear">Qarzi yo‘q</option></select>
-        <Button variant="outline" onClick={clearFilters} className="gap-2 bg-white"><RotateCcw className="size-4" />Tozalash</Button>
+        <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="finance-input pl-9" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Agent yoki telefon raqami..." /></div>
+        <select className="finance-input border px-3 text-muted-foreground" value={status} onChange={event => { setStatus(event.target.value as AgentStatus); setPage(1); }}><option value="all">Barcha holatlar</option><option value="active">Faol agentlar</option><option value="inactive">Nofaol agentlar</option></select>
+        <select className="finance-input border px-3 text-muted-foreground" value={debtStatus} onChange={event => { setDebtStatus(event.target.value as AgentDebtStatus); setPage(1); }}><option value="all">Barcha qarz holati</option><option value="debt">Qarzi bor</option><option value="clear">Qarzi yo‘q</option></select>
+        <Button variant="outline" onClick={clearFilters} className="gap-2 bg-card"><RotateCcw className="size-4" />Tozalash</Button>
       </div>
-      <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-slate-100">
+      <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
         {agents.isLoading ? <TableLoading columns={9} /> : rows.length === 0 ? <EmptyState description="Qidiruv yoki filterlarni o‘zgartirib ko‘ring." /> : <>
           <Table className="finance-table min-w-[1120px]"><TableHeader><TableRow><SortableHead column="name">Agent</SortableHead><TableHead>Telefon</TableHead><SortableHead column="clientCount" className="text-center">Mijozlar</SortableHead><SortableHead column="debtorCount" className="text-center">Qarzdorlar</SortableHead><SortableHead column="totalSales" className="text-right">Savdo</SortableHead><SortableHead column="totalPaid" className="text-right">To‘lov</SortableHead><SortableHead column="currentDebt" className="text-right">Joriy qarz</SortableHead><TableHead className="text-right">Komissiya %</TableHead><TableHead>Holat</TableHead></TableRow></TableHeader>
-            <TableBody>{rows.map(row => <TableRow key={row.id}><TableCell><div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-cyan-50 text-xs font-bold text-cyan-700">{row.name.charAt(0)}</div><span className="font-semibold text-slate-900">{row.name}</span></div></TableCell><TableCell>{row.phone || "—"}</TableCell><TableCell className="text-center font-semibold">{row.clientCount}</TableCell><TableCell className="text-center"><Badge className="rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50">{row.debtorCount}</Badge></TableCell><TableCell className="text-right font-semibold tabular-nums">{formatMoney(row.totalSales)}</TableCell><TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.totalPaid)}</TableCell><TableCell className="text-right font-bold tabular-nums text-rose-700">{formatMoney(row.currentDebt)}</TableCell><TableCell className="text-right"><CommissionPercentCell agentId={row.id} commissionPercent={Number(row.commissionPercent)} canEdit={user?.role === "admin"} /></TableCell><TableCell><Badge className={row.isActive ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-100"}>{row.isActive ? "Faol" : "Nofaol"}</Badge></TableCell></TableRow>)}</TableBody>
+            <TableBody>{rows.map(row => <TableRow key={row.id}><TableCell><div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-cyan-50 text-xs font-bold text-cyan-700">{row.name.charAt(0)}</div><span className="font-semibold text-foreground">{row.name}</span></div></TableCell><TableCell>{row.phone || "—"}</TableCell><TableCell className="text-center font-semibold">{row.clientCount}</TableCell><TableCell className="text-center"><Badge className="rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50">{row.debtorCount}</Badge></TableCell><TableCell className="text-right font-semibold tabular-nums">{formatMoney(row.totalSales)}</TableCell><TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.totalPaid)}</TableCell><TableCell className="text-right font-bold tabular-nums text-rose-700">{formatMoney(row.currentDebt)}</TableCell><TableCell className="text-right"><CommissionPercentCell agentId={row.id} commissionPercent={Number(row.commissionPercent)} canEdit={user?.role === "admin"} /></TableCell><TableCell><Badge className={row.isActive ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-muted text-muted-foreground hover:bg-muted"}>{row.isActive ? "Faol" : "Nofaol"}</Badge></TableCell></TableRow>)}</TableBody>
           </Table>
           <PaginationBar page={agents.data?.page ?? 1} pageCount={agents.data?.pageCount ?? 1} total={agents.data?.total ?? 0} onChange={setPage} />
         </>}

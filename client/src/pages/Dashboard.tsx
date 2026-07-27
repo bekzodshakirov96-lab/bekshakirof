@@ -55,7 +55,7 @@ export default function Dashboard() {
         title="Boshqaruv paneli"
         description="Savdo, to‘lovlar va qarzdorlik bo‘yicha eng muhim ko‘rsatkichlarni bir qarashda kuzating."
         action={
-          <Button onClick={() => setLocation("/import")} className="h-10 rounded-xl bg-slate-900 px-4 text-xs font-semibold hover:bg-slate-800">
+          <Button onClick={() => setLocation("/import")} className="h-10 rounded-xl bg-slate-900 px-4 text-xs font-semibold hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200">
             <FileUp className="mr-2 h-4 w-4" /> Excel ma’lumotini yangilash
           </Button>
         }
@@ -78,7 +78,7 @@ export default function Dashboard() {
 
       {overview.isLoading || !data ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-32 animate-pulse rounded-2xl bg-white" />)}
+          {Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-32 animate-pulse rounded-2xl bg-card" />)}
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
@@ -94,7 +94,7 @@ export default function Dashboard() {
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(340px,0.85fr)]">
         <SectionCard title="Savdo va tushum dinamikasi" description="Oylar kesimidagi savdo aylanmasi va kelib tushgan to‘lovlar">
           {overview.isLoading ? (
-            <div className="h-[300px] animate-pulse rounded-xl bg-slate-50" />
+            <div className="h-[300px] animate-pulse rounded-xl bg-muted" />
           ) : (
             <ChartContainer config={monthlyConfig} className="h-[300px] w-full aspect-auto">
               <AreaChart data={data?.monthly.map(item => ({ ...item, label: formatMonth(item.month) })) ?? []} margin={{ left: 0, right: 8, top: 10, bottom: 0 }}>
@@ -115,23 +115,23 @@ export default function Dashboard() {
 
         <SectionCard title="Agentlar bo‘yicha qarz" description="Eng yuqori qarzdorlikka ega agent portfellari">
           {overview.isLoading ? (
-            <div className="h-[300px] animate-pulse rounded-xl bg-slate-50" />
+            <div className="h-[300px] animate-pulse rounded-xl bg-muted" />
           ) : (data?.agentDebt ?? []).length === 0 ? (
-            <p className="py-8 text-center text-xs text-slate-400">Qarzdorlik topilmadi.</p>
+            <p className="py-8 text-center text-xs text-muted-foreground">Qarzdorlik topilmadi.</p>
           ) : (
             <div className="space-y-3">
               {(data?.agentDebt ?? []).slice(0, 6).map((agent, index) => (
                 <div key={agent.agentId} className="flex items-center gap-3">
-                  <span className="w-4 shrink-0 text-right text-[11px] font-bold text-slate-400">{index + 1}</span>
+                  <span className="w-4 shrink-0 text-right text-[11px] font-bold text-muted-foreground">{index + 1}</span>
                   <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-rose-50 to-red-50 text-[11px] font-bold text-rose-700 ring-1 ring-rose-100">
                     {agent.agentName.slice(0, 2).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className="truncate text-xs font-semibold text-slate-800">{agent.agentName}</p>
-                      <p className="shrink-0 font-mono text-xs font-bold text-slate-900">{formatMoney(agent.debt)}</p>
+                      <p className="truncate text-xs font-semibold text-foreground">{agent.agentName}</p>
+                      <p className="shrink-0 font-mono text-xs font-bold text-foreground">{formatMoney(agent.debt)}</p>
                     </div>
-                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                       <div className="h-full rounded-full bg-rose-400" style={{ width: `${Math.max(4, (agent.debt / maxAgentDebt) * 100)}%` }} />
                     </div>
                   </div>
@@ -155,8 +155,8 @@ export default function Dashboard() {
                 <TableBody>
                   {(data?.recentTransactions ?? []).map(item => (
                     <TableRow key={item.id}>
-                      <TableCell className="whitespace-nowrap text-slate-500">{formatDate(item.date)}</TableCell>
-                      <TableCell className="font-semibold text-slate-900">{item.clientName || "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(item.date)}</TableCell>
+                      <TableCell className="font-semibold text-foreground">{item.clientName || "—"}</TableCell>
                       <TableCell>{item.agentName || "—"}</TableCell>
                       <TableCell className="max-w-44 truncate">{item.productName}</TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">{formatMoney(item.totalAmount)}</TableCell>
@@ -176,12 +176,12 @@ export default function Dashboard() {
               { label: "Terminal", value: data?.cashBalances.terminal ?? 0, icon: CreditCard, color: "bg-violet-50 text-violet-700" },
               { label: "Click", value: data?.cashBalances.click ?? 0, icon: Landmark, color: "bg-cyan-50 text-cyan-700" },
             ].map(item => (
-              <div key={item.label} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
+              <div key={item.label} className="flex items-center justify-between rounded-2xl border border-border bg-muted/50 p-4">
                 <div className="flex items-center gap-3">
                   <div className={`grid h-10 w-10 place-items-center rounded-xl ${item.color}`}><item.icon className="h-4 w-4" /></div>
-                  <div><p className="text-xs text-slate-400">{item.label}</p><p className="mt-0.5 text-sm font-bold text-slate-900">{formatMoney(item.value)}</p></div>
+                  <div><p className="text-xs text-muted-foreground">{item.label}</p><p className="mt-0.5 text-sm font-bold text-foreground">{formatMoney(item.value)}</p></div>
                 </div>
-                <WalletCards className="h-4 w-4 text-slate-300" />
+                <WalletCards className="h-4 w-4 text-muted-foreground" />
               </div>
             ))}
           </div>

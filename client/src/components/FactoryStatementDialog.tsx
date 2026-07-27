@@ -13,7 +13,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 const operationMeta: Record<string, { label: string; badgeClass: string }> = {
-  tara_sent: { label: "Bo'sh tara yuborildi", badgeClass: "rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-100" },
+  tara_sent: { label: "Bo'sh tara yuborildi", badgeClass: "rounded-lg bg-muted text-muted-foreground hover:bg-muted" },
   filled_received: { label: "To'la keg qabul qilindi", badgeClass: "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" },
   brak_returned: { label: "Brak qaytarildi", badgeClass: "rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50" },
   brak_replaced: { label: "Brak o'rniga keg keldi", badgeClass: "rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-50" },
@@ -60,7 +60,7 @@ export function FactoryStatementDialog({ open, onOpenChange }: { open: boolean; 
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1.5"><Label>Boshlanish sanasi</Label><Input className="finance-input" type="date" value={fromDate} onChange={event => setFromDate(event.target.value)} /></div>
           <div className="space-y-1.5"><Label>Tugash sanasi</Label><Input className="finance-input" type="date" value={toDate} onChange={event => setToDate(event.target.value)} /></div>
-          <p className="pb-2 text-xs text-slate-400">Bo'sh qoldirilsa — butun davr</p>
+          <p className="pb-2 text-xs text-muted-foreground">Bo'sh qoldirilsa — butun davr</p>
           <div className="ml-auto">
             <Button type="button" disabled={!data || isExporting} onClick={downloadPdf} className="gap-2 text-xs font-semibold">
               <FileDown className="size-4" />{isExporting ? "Yaratilmoqda..." : "PDF yuklab olish"}
@@ -74,14 +74,14 @@ export function FactoryStatementDialog({ open, onOpenChange }: { open: boolean; 
           <>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {data.products.map(row => (
-                <div key={row.productId} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-sm font-bold text-slate-900">{row.productName}</p>
+                <div key={row.productId} className="rounded-2xl border border-border bg-muted p-4">
+                  <p className="text-sm font-bold text-foreground">{row.productName}</p>
                   <div className="mt-2 grid grid-cols-2 gap-3 text-xs">
                     <div>
-                      <p className="text-slate-500">Tara: {row.openingTaraPending} → <span className="font-bold text-slate-900">{row.closingTaraPending} dona</span></p>
+                      <p className="text-muted-foreground">Tara: {row.openingTaraPending} → <span className="font-bold text-foreground">{row.closingTaraPending} dona</span></p>
                     </div>
                     <div>
-                      <p className="text-slate-500">Brak: {row.openingBrakPending} → <span className="font-bold text-slate-900">{row.closingBrakPending} dona</span></p>
+                      <p className="text-muted-foreground">Brak: {row.openingBrakPending} → <span className="font-bold text-foreground">{row.closingBrakPending} dona</span></p>
                     </div>
                   </div>
                 </div>
@@ -89,17 +89,17 @@ export function FactoryStatementDialog({ open, onOpenChange }: { open: boolean; 
             </div>
 
             <div className="mt-4">
-              <h4 className="mb-2 text-sm font-bold text-slate-900">Operatsiyalar tarixi</h4>
+              <h4 className="mb-2 text-sm font-bold text-foreground">Operatsiyalar tarixi</h4>
               {data.ledger.length === 0 ? <EmptyState title="Bu davrda operatsiya yo'q" /> : (
-                <div className="overflow-hidden rounded-xl border border-slate-100">
+                <div className="overflow-hidden rounded-xl border border-border">
                   <Table className="finance-table"><TableHeader><TableRow>
                     <TableHead>Sana</TableHead><TableHead>Turi</TableHead><TableHead>KEG</TableHead><TableHead className="text-right">Miqdor</TableHead><TableHead className="text-right">Tara qoldiq</TableHead><TableHead className="text-right">Brak qoldiq</TableHead>
                   </TableRow></TableHeader><TableBody>
                     {data.ledger.map(row => {
-                      const meta = operationMeta[row.operationType] ?? { label: row.operationType, badgeClass: "rounded-lg bg-slate-100 text-slate-600" };
+                      const meta = operationMeta[row.operationType] ?? { label: row.operationType, badgeClass: "rounded-lg bg-muted text-muted-foreground" };
                       return (
                         <TableRow key={row.id}>
-                          <TableCell className="whitespace-nowrap text-slate-500">{formatDate(row.operationDate)}</TableCell>
+                          <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.operationDate)}</TableCell>
                           <TableCell><Badge className={meta.badgeClass}>{meta.label}</Badge></TableCell>
                           <TableCell>{row.productName ?? "—"}</TableCell>
                           <TableCell className="text-right tabular-nums">{formatNumber(row.quantity, 0)} dona</TableCell>
