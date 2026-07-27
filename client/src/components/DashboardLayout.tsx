@@ -33,6 +33,7 @@ import {
   Building2,
   ChevronDown,
   CircleDollarSign,
+  Factory,
   FileSpreadsheet,
   FileText,
   LayoutDashboard,
@@ -89,6 +90,7 @@ const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
       { icon: PackageOpen, label: "Mahsulotlar", path: "/mahsulotlar", roles: ["admin", "accountant", "sklad"] },
       { icon: Warehouse, label: "Sklad", path: "/sklad", roles: ["admin", "accountant", "sklad"] },
       { icon: BarChart3, label: "Sklad hisoboti", path: "/sklad-hisoboti", roles: ["admin", "accountant", "sklad"] },
+      { icon: Factory, label: "Zavod hisob-kitobi", path: "/zavod", roles: ["admin", "accountant", "sklad"] },
     ],
   },
   {

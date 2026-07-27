@@ -12,6 +12,7 @@ import Clients from "./pages/Clients";
 import Containers from "./pages/Containers";
 import Dashboard from "./pages/Dashboard";
 import Debts from "./pages/Debts";
+import Factory from "./pages/Factory";
 import ImportExcel from "./pages/ImportExcel";
 import FastKeg from "./pages/FastKeg";
 import Products from "./pages/Products";
@@ -37,6 +38,7 @@ function Router() {
       <Route path={"/mahsulotlar"} component={Products} />
       <Route path={"/sklad"} component={Stock} />
       <Route path={"/sklad-hisoboti"} component={StockReport} />
+      <Route path={"/zavod"} component={Factory} />
       <Route path={"/kassa"} component={Cash} />
       <Route path={"/kassa-hisoboti"} component={KassaReports} />
       <Route path={"/tara"} component={Containers} />
