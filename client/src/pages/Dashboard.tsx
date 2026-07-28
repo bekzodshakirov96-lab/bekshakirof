@@ -1,3 +1,4 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import {
   FileUp,
   HandCoins,
   Landmark,
+  Lock,
   ReceiptText,
   WalletCards,
 } from "lucide-react";
@@ -32,6 +34,46 @@ function monthOverMonthTrend(monthly: { sales: number; received: number }[] | un
   const previous = monthly[monthly.length - 2][key];
   if (!previous) return undefined;
   return { percent: ((current - previous) / previous) * 100, label: "o‘tgan oyga nisbatan" };
+}
+
+/**
+ * Har oyning 5-kunidan boshlab, agar o'tgan oy hali qulflanmagan bo'lsa, rahbarga
+ * "davr qulfini qo'yish vaqti keldi" deb eslatadi. Faqat rahbar rolida ko'rinadi —
+ * chunki qulfni faqat u o'zgartira oladi.
+ */
+function PeriodLockReminder() {
+  const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const lock = trpc.audit.periodLock.get.useQuery(undefined, { enabled: user?.role === "admin" });
+
+  if (user?.role !== "admin" || lock.isLoading) return null;
+
+  const today = new Date();
+  const dayOfMonth = today.getDate();
+  if (dayOfMonth < 5) return null;
+
+  // Joriy oyning 1-kunidan bir kun oldin = o'tgan oyning oxirgi kuni.
+  const prevMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+  const currentLock = lock.data?.lockDate ? new Date(`${lock.data.lockDate}T00:00:00`) : null;
+  const alreadyLocked = currentLock !== null && currentLock.getTime() >= prevMonthEnd.getTime();
+  if (alreadyLocked) return null;
+
+  const prevMonthLabel = formatMonth(`${prevMonthEnd.getFullYear()}-${String(prevMonthEnd.getMonth() + 1).padStart(2, "0")}`);
+
+  return (
+    <button
+      type="button"
+      onClick={() => setLocation("/ozgarishlar-tarixi")}
+      className="mb-5 flex w-full items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left transition-colors hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:hover:bg-amber-950/60"
+    >
+      <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300"><Lock className="size-5" /></div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-amber-900 dark:text-amber-200">{prevMonthLabel} oyini qulflash vaqti keldi</p>
+        <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">O‘tgan oy hisoboti tekshirilgan bo‘lsa, davr qulfini shu oyga o‘tkazing — keyin o‘sha kunlar tasodifan ham o‘zgartirilmaydi.</p>
+      </div>
+      <ArrowUpRight className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+    </button>
+  );
 }
 
 export default function Dashboard() {
@@ -60,6 +102,8 @@ export default function Dashboard() {
           </Button>
         }
       />
+
+      <PeriodLockReminder />
 
       {lowStockRows.length > 0 ? (
         <button
