@@ -12,6 +12,12 @@ const TABLE_LABELS: Record<string, string> = {
   client_payments: "Qarz to‘lovi",
   kassa_daily_actuals: "Haqiqiy naqd",
   users: "Foydalanuvchi",
+  clients: "Mijoz",
+  agents: "Agent",
+  products: "Mahsulot",
+  stockMovements: "Sklad harakati",
+  factory_operations: "Zavod operatsiyasi",
+  bottle_movements: "Butilka harakati",
 };
 
 export const auditRouter = router({

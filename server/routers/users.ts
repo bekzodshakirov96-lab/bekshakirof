@@ -49,7 +49,7 @@ export const usersRouter = router({
           path: ["agentId"],
         }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const existing = await getUserByEmail(input.email);
       if (existing) throw new TRPCError({ code: "CONFLICT", message: "Bu email allaqachon ro‘yxatdan o‘tgan." });
       const passwordHash = await hashPassword(input.password);
@@ -61,6 +61,15 @@ export const usersRouter = router({
         agentId: input.role === "agent" ? input.agentId ?? null : null,
       });
       if (!created) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Foydalanuvchi yaratilmadi." });
+      // passwordHash tarixga hech qachon yozilmaydi.
+      const db = await requireDb();
+      await logAudit(db, {
+        tableName: "users",
+        recordId: created.id,
+        action: "create",
+        userId: ctx.user.id,
+        after: { name: input.name, email: input.email, role: input.role, agentId: input.role === "agent" ? input.agentId ?? null : null },
+      });
       return { success: true, id: created.id };
     }),
   setRole: ownerProcedure

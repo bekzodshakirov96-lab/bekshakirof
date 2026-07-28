@@ -2,6 +2,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, products, stockMovements, transactions } from "../../drizzle/schema";
 import { skladProcedure } from "../access";
+import { logAudit } from "../auditLog";
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
@@ -101,17 +102,26 @@ export const stockRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
-      await db.insert(stockMovements).values({
-        productId: input.productId,
-        movementType: "in",
-        quantity: input.quantity.toFixed(3),
-        reason: "Qo'lda kirim",
-        isAutomatic: false,
-        movementDate: new Date(input.movementDate),
-        note: input.note,
-        createdBy: ctx.user.id,
+      return db.transaction(async tx => {
+        const [created] = await tx.insert(stockMovements).values({
+          productId: input.productId,
+          movementType: "in",
+          quantity: input.quantity.toFixed(3),
+          reason: "Qo'lda kirim",
+          isAutomatic: false,
+          movementDate: new Date(input.movementDate),
+          note: input.note,
+          createdBy: ctx.user.id,
+        }).$returningId();
+        await logAudit(tx, {
+          tableName: "stockMovements",
+          recordId: created.id,
+          action: "create",
+          userId: ctx.user.id,
+          after: { productId: input.productId, movementType: "in", quantity: input.quantity, note: input.note ?? null },
+        });
+        return { success: true };
       });
-      return { success: true };
     }),
   /** Same as stockIn but for several products at once (e.g. one delivery covering multiple items) — one shared date/note, one atomic insert. */
   stockInBatch: skladProcedure
@@ -141,7 +151,7 @@ export const stockRouter = router({
       const movementDate = new Date(input.movementDate);
       await db.transaction(async tx => {
         for (const item of input.items) {
-          await tx.insert(stockMovements).values({
+          const [created] = await tx.insert(stockMovements).values({
             productId: item.productId,
             movementType: "in",
             quantity: item.quantity.toFixed(3),
@@ -151,6 +161,13 @@ export const stockRouter = router({
             movementDate,
             note: input.note,
             createdBy: ctx.user.id,
+          }).$returningId();
+          await logAudit(tx, {
+            tableName: "stockMovements",
+            recordId: created.id,
+            action: "create",
+            userId: ctx.user.id,
+            after: { productId: item.productId, movementType: "in", quantity: item.quantity, unitCost: item.unitCost ?? 0, note: input.note ?? null },
           });
         }
       });
@@ -169,30 +186,48 @@ export const stockRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
-      await db.insert(stockMovements).values({
-        productId: input.productId,
-        movementType: "out",
-        quantity: input.quantity.toFixed(3),
-        reason: input.reason,
-        isAutomatic: false,
-        movementDate: new Date(input.movementDate),
-        note: input.note,
-        createdBy: ctx.user.id,
+      return db.transaction(async tx => {
+        const [created] = await tx.insert(stockMovements).values({
+          productId: input.productId,
+          movementType: "out",
+          quantity: input.quantity.toFixed(3),
+          reason: input.reason,
+          isAutomatic: false,
+          movementDate: new Date(input.movementDate),
+          note: input.note,
+          createdBy: ctx.user.id,
+        }).$returningId();
+        await logAudit(tx, {
+          tableName: "stockMovements",
+          recordId: created.id,
+          action: "create",
+          userId: ctx.user.id,
+          after: { productId: input.productId, movementType: "out", quantity: input.quantity, reason: input.reason, note: input.note ?? null },
+        });
+        return { success: true };
       });
-      return { success: true };
     }),
   /** Deletes a manual movement. Automatic (sale-linked) movements can't be deleted directly — edit/delete the transaction instead. */
-  deleteMovement: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
+  deleteMovement: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
     const db = await requireDb();
     const [existing] = await db
-      .select({ id: stockMovements.id, isAutomatic: stockMovements.isAutomatic })
+      .select()
       .from(stockMovements)
       .where(eq(stockMovements.id, input.id))
       .limit(1);
     if (!existing) throw new Error("Harakat topilmadi yoki allaqachon o'chirilgan.");
     if (existing.isAutomatic) throw new Error("Savdo orqali yaratilgan yozuvni shu yerdan o'chirib bo'lmaydi — tegishli operatsiyani Savdo jurnalidan o'chiring.");
-    await db.delete(stockMovements).where(eq(stockMovements.id, input.id));
-    return { success: true };
+    return db.transaction(async tx => {
+      await tx.delete(stockMovements).where(eq(stockMovements.id, input.id));
+      await logAudit(tx, {
+        tableName: "stockMovements",
+        recordId: input.id,
+        action: "delete",
+        userId: ctx.user.id,
+        before: existing,
+      });
+      return { success: true };
+    });
   }),
   setMinLevel: skladProcedure
     .input(z.object({ id: z.number().int().positive(), minStockLevel: z.number().int().min(0).max(1_000_000) }))

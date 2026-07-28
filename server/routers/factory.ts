@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { bottleMovements, containerMovements, factoryOperations, products, stockMovements } from "../../drizzle/schema";
 import { skladProcedure } from "../access";
+import { logAudit } from "../auditLog";
 import { normalizeContainerType } from "../containerAccounting";
 import { requireDb } from "../db";
 import { router } from "../_core/trpc";
@@ -211,7 +212,7 @@ export const factoryRouter = router({
             .$returningId();
           stockMovementId = movement.id;
         }
-        await tx.insert(factoryOperations).values({
+        const [createdOperation] = await tx.insert(factoryOperations).values({
           operationDate,
           operationType: input.operationType,
           productId: input.productId,
@@ -219,15 +220,22 @@ export const factoryRouter = router({
           note: input.note,
           stockMovementId,
           createdBy: ctx.user.id,
+        }).$returningId();
+        await logAudit(tx, {
+          tableName: "factory_operations",
+          recordId: createdOperation.id,
+          action: "create",
+          userId: ctx.user.id,
+          after: { operationType: input.operationType, productId: input.productId, quantity: input.quantity, note: input.note ?? null },
         });
       });
       return { success: true };
     }),
   /** Yozuvni o'chiradi — bog'langan avtomatik Sklad harakati (agar mavjud bo'lsa) ham birga o'chadi. */
-  delete: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
+  delete: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
     const db = await requireDb();
     const [existing] = await db
-      .select({ id: factoryOperations.id, stockMovementId: factoryOperations.stockMovementId })
+      .select()
       .from(factoryOperations)
       .where(eq(factoryOperations.id, input.id))
       .limit(1);
@@ -235,6 +243,13 @@ export const factoryRouter = router({
     await db.transaction(async tx => {
       await tx.delete(factoryOperations).where(eq(factoryOperations.id, input.id));
       if (existing.stockMovementId) await tx.delete(stockMovements).where(eq(stockMovements.id, existing.stockMovementId));
+      await logAudit(tx, {
+        tableName: "factory_operations",
+        recordId: input.id,
+        action: "delete",
+        userId: ctx.user.id,
+        before: existing,
+      });
     });
     return { success: true };
   }),
@@ -340,14 +355,23 @@ export const factoryRouter = router({
           createdBy: ctx.user.id,
         };
         if (input.movementType === "payment") {
-          await db.insert(bottleMovements).values({
-            ...shared,
-            movementType: "payment",
-            quantity: 0,
-            unitPrice: 0,
-            amount: input.amount,
+          return db.transaction(async tx => {
+            const [created] = await tx.insert(bottleMovements).values({
+              ...shared,
+              movementType: "payment",
+              quantity: 0,
+              unitPrice: 0,
+              amount: input.amount,
+            }).$returningId();
+            await logAudit(tx, {
+              tableName: "bottle_movements",
+              recordId: created.id,
+              action: "create",
+              userId: ctx.user.id,
+              after: { movementType: "payment", amount: input.amount, note: shared.note },
+            });
+            return { success: true };
           });
-          return { success: true };
         }
 
         // Zavodga yuborishda qo'lda yetarli butilka borligini tekshiramiz —
@@ -364,26 +388,44 @@ export const factoryRouter = router({
           }
         }
 
-        await db.insert(bottleMovements).values({
-          ...shared,
-          movementType: input.movementType,
-          quantity: input.quantity,
-          unitPrice: input.unitPrice,
-          amount: input.quantity * input.unitPrice,
+        return db.transaction(async tx => {
+          const [created] = await tx.insert(bottleMovements).values({
+            ...shared,
+            movementType: input.movementType,
+            quantity: input.quantity,
+            unitPrice: input.unitPrice,
+            amount: input.quantity * input.unitPrice,
+          }).$returningId();
+          await logAudit(tx, {
+            tableName: "bottle_movements",
+            recordId: created.id,
+            action: "create",
+            userId: ctx.user.id,
+            after: { movementType: input.movementType, quantity: input.quantity, unitPrice: input.unitPrice, amount: input.quantity * input.unitPrice, note: shared.note },
+          });
+          return { success: true };
         });
-        return { success: true };
       }),
 
-    delete: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
+    delete: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
       const db = await requireDb();
       const [existing] = await db
-        .select({ id: bottleMovements.id })
+        .select()
         .from(bottleMovements)
         .where(eq(bottleMovements.id, input.id))
         .limit(1);
       if (!existing) throw new Error("Yozuv topilmadi yoki allaqachon o'chirilgan.");
-      await db.delete(bottleMovements).where(eq(bottleMovements.id, input.id));
-      return { success: true };
+      return db.transaction(async tx => {
+        await tx.delete(bottleMovements).where(eq(bottleMovements.id, input.id));
+        await logAudit(tx, {
+          tableName: "bottle_movements",
+          recordId: input.id,
+          action: "delete",
+          userId: ctx.user.id,
+          before: existing,
+        });
+        return { success: true };
+      });
     }),
   }),
 });

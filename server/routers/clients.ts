@@ -2,6 +2,7 @@ import { z } from "zod";
 import { asc, eq } from "drizzle-orm";
 import { clients } from "../../drizzle/schema";
 import { clientsViewProcedure, ownerProcedure } from "../access";
+import { logAudit } from "../auditLog";
 import {
   enrichClientFinancialRows,
   getClientFinancialRows,
@@ -94,20 +95,32 @@ export const clientsRouter = router({
         isActive: z.boolean(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
-      await db
-        .update(clients)
-        .set({
-          code: input.code,
-          name: input.name,
-          agentId: input.agentId ?? null,
-          phone: input.phone ?? null,
-          address: input.address ?? null,
-          openingDebt: input.openingDebt,
-          isActive: input.isActive,
-        })
-        .where(eq(clients.id, input.id));
-      return { success: true };
+      const [previous] = await db.select().from(clients).where(eq(clients.id, input.id)).limit(1);
+      if (!previous) throw new Error("Mijoz topilmadi.");
+      return db.transaction(async tx => {
+        await tx
+          .update(clients)
+          .set({
+            code: input.code,
+            name: input.name,
+            agentId: input.agentId ?? null,
+            phone: input.phone ?? null,
+            address: input.address ?? null,
+            openingDebt: input.openingDebt,
+            isActive: input.isActive,
+          })
+          .where(eq(clients.id, input.id));
+        await logAudit(tx, {
+          tableName: "clients",
+          recordId: input.id,
+          action: "update",
+          userId: ctx.user.id,
+          before: previous,
+          after: { ...previous, ...input },
+        });
+        return { success: true };
+      });
     }),
 });

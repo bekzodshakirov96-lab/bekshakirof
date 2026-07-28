@@ -150,30 +150,55 @@ export const agentsRouter = router({
         commissionPercent: z.number().min(0).max(100).optional(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
-      await db
-        .update(agents)
-        .set({
-          name: input.name,
-          phone: input.phone ?? null,
-          note: input.note ?? null,
-          isActive: input.isActive,
-          ...(input.commissionPercent !== undefined ? { commissionPercent: input.commissionPercent.toFixed(2) } : {}),
-        })
-        .where(eq(agents.id, input.id));
-      return { success: true };
+      const [previous] = await db.select().from(agents).where(eq(agents.id, input.id)).limit(1);
+      if (!previous) throw new Error("Agent topilmadi.");
+      return db.transaction(async tx => {
+        await tx
+          .update(agents)
+          .set({
+            name: input.name,
+            phone: input.phone ?? null,
+            note: input.note ?? null,
+            isActive: input.isActive,
+            ...(input.commissionPercent !== undefined ? { commissionPercent: input.commissionPercent.toFixed(2) } : {}),
+          })
+          .where(eq(agents.id, input.id));
+        const [updated] = await tx.select().from(agents).where(eq(agents.id, input.id)).limit(1);
+        await logAudit(tx, {
+          tableName: "agents",
+          recordId: input.id,
+          action: "update",
+          userId: ctx.user.id,
+          before: previous,
+          after: updated,
+        });
+        return { success: true };
+      });
     }),
   /** Sets only the commission percent — used by the inline editor on the Agents page (no need to resend name/phone/note). */
   setCommissionPercent: ownerProcedure
     .input(z.object({ id: z.number().int().positive(), commissionPercent: z.number().min(0).max(100) }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
-      await db
-        .update(agents)
-        .set({ commissionPercent: input.commissionPercent.toFixed(2) })
-        .where(eq(agents.id, input.id));
-      return { success: true };
+      const [previous] = await db.select({ commissionPercent: agents.commissionPercent }).from(agents).where(eq(agents.id, input.id)).limit(1);
+      if (!previous) throw new Error("Agent topilmadi.");
+      return db.transaction(async tx => {
+        await tx
+          .update(agents)
+          .set({ commissionPercent: input.commissionPercent.toFixed(2) })
+          .where(eq(agents.id, input.id));
+        await logAudit(tx, {
+          tableName: "agents",
+          recordId: input.id,
+          action: "update",
+          userId: ctx.user.id,
+          before: { commissionPercent: previous.commissionPercent },
+          after: { commissionPercent: input.commissionPercent.toFixed(2) },
+        });
+        return { success: true };
+      });
     }),
   /**
    * Commission per agent for a period, based on the amount actually collected from clients —
