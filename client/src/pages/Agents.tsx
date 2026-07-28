@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
-import { ArrowDown, ArrowUp, ArrowUpDown, CircleDollarSign, HandCoins, Percent, Plus, RotateCcw, Search, TrendingUp, UserCheck } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CircleDollarSign, HandCoins, Pencil, Percent, Plus, RotateCcw, Search, TrendingUp, UserCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -139,11 +139,22 @@ export default function Agents() {
   const [phone, setPhone] = useState("");
   const [note, setNote] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const [editAgent, setEditAgent] = useState<{
+    id: number; name: string; phone: string; note: string; isActive: boolean;
+  } | null>(null);
   const filters = useMemo(() => ({ search: search.trim() || undefined, status, debtStatus, sortBy, sortOrder }), [debtStatus, search, sortBy, sortOrder, status]);
   const agents = trpc.agents.list.useQuery({ ...filters, page, pageSize: 25 });
   const create = trpc.agents.create.useMutation({
     onSuccess: async () => {
       toast.success("Agent muvaffaqiyatli qo‘shildi"); setOpen(false); setName(""); setPhone(""); setNote("");
+      await Promise.all([utils.agents.list.invalidate(), utils.agents.options.invalidate()]);
+    },
+    onError: error => toast.error(error.message),
+  });
+  const updateAgent = trpc.agents.update.useMutation({
+    onSuccess: async () => {
+      toast.success("Agent yangilandi");
+      setEditAgent(null);
       await Promise.all([utils.agents.list.invalidate(), utils.agents.options.invalidate()]);
     },
     onError: error => toast.error(error.message),
@@ -233,8 +244,8 @@ export default function Agents() {
       </div>
       <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
         {agents.isLoading ? <TableLoading columns={9} /> : rows.length === 0 ? <EmptyState description="Qidiruv yoki filterlarni o‘zgartirib ko‘ring." /> : <>
-          <Table className="finance-table min-w-[1120px]"><TableHeader><TableRow><SortableHead column="name">Agent</SortableHead><TableHead>Telefon</TableHead><SortableHead column="clientCount" className="text-center">Mijozlar</SortableHead><SortableHead column="debtorCount" className="text-center">Qarzdorlar</SortableHead><SortableHead column="totalSales" className="text-right">Savdo</SortableHead><SortableHead column="totalPaid" className="text-right">To‘lov</SortableHead><SortableHead column="currentDebt" className="text-right">Joriy qarz</SortableHead><TableHead className="text-right">Komissiya %</TableHead><TableHead>Holat</TableHead></TableRow></TableHeader>
-            <TableBody>{rows.map(row => <TableRow key={row.id}><TableCell><div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-cyan-50 text-xs font-bold text-cyan-700">{row.name.charAt(0)}</div><span className="font-semibold text-foreground">{row.name}</span></div></TableCell><TableCell>{row.phone || "—"}</TableCell><TableCell className="text-center font-semibold">{row.clientCount}</TableCell><TableCell className="text-center"><Badge className="rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50">{row.debtorCount}</Badge></TableCell><TableCell className="text-right font-semibold tabular-nums">{formatMoney(row.totalSales)}</TableCell><TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.totalPaid)}</TableCell><TableCell className="text-right font-bold tabular-nums text-rose-700">{formatMoney(row.currentDebt)}</TableCell><TableCell className="text-right"><CommissionPercentCell agentId={row.id} commissionPercent={Number(row.commissionPercent)} canEdit={user?.role === "admin"} /></TableCell><TableCell><Badge className={row.isActive ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-muted text-muted-foreground hover:bg-muted"}>{row.isActive ? "Faol" : "Nofaol"}</Badge></TableCell></TableRow>)}</TableBody>
+          <Table className="finance-table min-w-[1120px]"><TableHeader><TableRow><SortableHead column="name">Agent</SortableHead><TableHead>Telefon</TableHead><SortableHead column="clientCount" className="text-center">Mijozlar</SortableHead><SortableHead column="debtorCount" className="text-center">Qarzdorlar</SortableHead><SortableHead column="totalSales" className="text-right">Savdo</SortableHead><SortableHead column="totalPaid" className="text-right">To‘lov</SortableHead><SortableHead column="currentDebt" className="text-right">Joriy qarz</SortableHead><TableHead className="text-right">Komissiya %</TableHead><TableHead>Holat</TableHead><TableHead className="w-10" /></TableRow></TableHeader>
+            <TableBody>{rows.map(row => <TableRow key={row.id}><TableCell><div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-cyan-50 text-xs font-bold text-cyan-700">{row.name.charAt(0)}</div><span className="font-semibold text-foreground">{row.name}</span></div></TableCell><TableCell>{row.phone || "—"}</TableCell><TableCell className="text-center font-semibold">{row.clientCount}</TableCell><TableCell className="text-center"><Badge className="rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50">{row.debtorCount}</Badge></TableCell><TableCell className="text-right font-semibold tabular-nums">{formatMoney(row.totalSales)}</TableCell><TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.totalPaid)}</TableCell><TableCell className="text-right font-bold tabular-nums text-rose-700">{formatMoney(row.currentDebt)}</TableCell><TableCell className="text-right"><CommissionPercentCell agentId={row.id} commissionPercent={Number(row.commissionPercent)} canEdit={user?.role === "admin"} /></TableCell><TableCell><Badge className={row.isActive ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-muted text-muted-foreground hover:bg-muted"}>{row.isActive ? "Faol" : "Nofaol"}</Badge></TableCell><TableCell>{user?.role === "admin" && <button type="button" aria-label="Tahrirlash" title="Tahrirlash" className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary" onClick={() => setEditAgent({ id: row.id, name: row.name, phone: row.phone ?? "", note: row.note ?? "", isActive: row.isActive })}><Pencil className="size-4" /></button>}</TableCell></TableRow>)}</TableBody>
           </Table>
           <PaginationBar page={agents.data?.page ?? 1} pageCount={agents.data?.pageCount ?? 1} total={agents.data?.total ?? 0} onChange={setPage} />
         </>}
@@ -242,5 +253,35 @@ export default function Agents() {
     </SectionCard>
     <AgentCommissionSection />
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="rounded-2xl sm:max-w-md"><DialogHeader><DialogTitle>Yangi agent qo‘shish</DialogTitle><DialogDescription>Agentning asosiy aloqa ma’lumotlarini kiriting.</DialogDescription></DialogHeader><div className="space-y-4 py-2"><div className="space-y-2"><Label>Agent F.I.Sh.</Label><Input className="finance-input" value={name} onChange={event => setName(event.target.value)} placeholder="Masalan: Akmal Karimov" /></div><div className="space-y-2"><Label>Telefon raqami</Label><Input className="finance-input" value={phone} onChange={event => setPhone(event.target.value)} placeholder="+998 90 000 00 00" /></div><div className="space-y-2"><Label>Izoh</Label><Textarea value={note} onChange={event => setNote(event.target.value)} placeholder="Qo‘shimcha ma’lumot..." className="min-h-24 rounded-xl" /></div></div><DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Bekor qilish</Button><Button disabled={name.trim().length < 2 || create.isPending} onClick={() => create.mutate({ name, phone: phone || undefined, note: note || undefined })}>{create.isPending ? "Saqlanmoqda..." : "Agentni saqlash"}</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={Boolean(editAgent)} onOpenChange={openState => !openState && setEditAgent(null)}>
+      <DialogContent className="rounded-2xl sm:max-w-md">
+        <DialogHeader><DialogTitle>Agentni tahrirlash</DialogTitle><DialogDescription>Agentning aloqa ma’lumotlari va holatini yangilang.</DialogDescription></DialogHeader>
+        {editAgent && (
+          <div className="space-y-4 py-2">
+            <div className="space-y-2"><Label>Agent F.I.Sh.</Label><Input className="finance-input" value={editAgent.name} onChange={event => setEditAgent({ ...editAgent, name: event.target.value })} /></div>
+            <div className="space-y-2"><Label>Telefon raqami</Label><Input className="finance-input" value={editAgent.phone} onChange={event => setEditAgent({ ...editAgent, phone: event.target.value })} /></div>
+            <div className="space-y-2"><Label>Izoh</Label><Textarea value={editAgent.note} onChange={event => setEditAgent({ ...editAgent, note: event.target.value })} className="min-h-24 rounded-xl" /></div>
+            <label className="flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-muted-foreground">
+              <input type="checkbox" checked={editAgent.isActive} onChange={event => setEditAgent({ ...editAgent, isActive: event.target.checked })} className="h-4 w-4 accent-primary" /> Faol agent
+            </label>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditAgent(null)}>Bekor qilish</Button>
+          <Button
+            disabled={!editAgent || editAgent.name.trim().length < 2 || updateAgent.isPending}
+            onClick={() => editAgent && updateAgent.mutate({
+              id: editAgent.id,
+              name: editAgent.name,
+              phone: editAgent.phone || null,
+              note: editAgent.note || null,
+              isActive: editAgent.isActive,
+            })}
+          >
+            {updateAgent.isPending ? "Saqlanmoqda..." : "Saqlash"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>;
 }

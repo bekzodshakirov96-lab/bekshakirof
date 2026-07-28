@@ -10,6 +10,7 @@ import {
   products,
 } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
+import { logAudit } from "../auditLog";
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
@@ -138,20 +139,38 @@ export const kassaRouter = router({
           .from(kassaDailyActuals)
           .where(and(sql`${kassaDailyActuals.entryDate} >= ${start}`, sql`${kassaDailyActuals.entryDate} <= ${end}`))
           .limit(1);
-        if (existing) {
-          await db
-            .update(kassaDailyActuals)
-            .set({ actualCash: input.actualCash, note: input.note, updatedBy: ctx.user.id })
-            .where(eq(kassaDailyActuals.id, existing.id));
-        } else {
-          await db.insert(kassaDailyActuals).values({
-            entryDate: new Date(input.date),
-            actualCash: input.actualCash,
-            note: input.note,
-            updatedBy: ctx.user.id,
-          });
-        }
-        return { success: true } as const;
+        return db.transaction(async tx => {
+          if (existing) {
+            const [previous] = await tx.select().from(kassaDailyActuals).where(eq(kassaDailyActuals.id, existing.id)).limit(1);
+            await tx
+              .update(kassaDailyActuals)
+              .set({ actualCash: input.actualCash, note: input.note, updatedBy: ctx.user.id })
+              .where(eq(kassaDailyActuals.id, existing.id));
+            await logAudit(tx, {
+              tableName: "kassa_daily_actuals",
+              recordId: existing.id,
+              action: "update",
+              userId: ctx.user.id,
+              before: previous,
+              after: { entryDate: new Date(input.date), actualCash: input.actualCash, note: input.note ?? null },
+            });
+          } else {
+            const [created] = await tx.insert(kassaDailyActuals).values({
+              entryDate: new Date(input.date),
+              actualCash: input.actualCash,
+              note: input.note,
+              updatedBy: ctx.user.id,
+            }).$returningId();
+            await logAudit(tx, {
+              tableName: "kassa_daily_actuals",
+              recordId: created.id,
+              action: "create",
+              userId: ctx.user.id,
+              after: { entryDate: new Date(input.date), actualCash: input.actualCash, note: input.note ?? null },
+            });
+          }
+          return { success: true } as const;
+        });
       }),
   }),
 

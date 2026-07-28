@@ -8,6 +8,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Agents from "./pages/Agents";
 import AktSverka from "./pages/AktSverka";
+import AuditLog from "./pages/AuditLog";
 import Cash from "./pages/Cash";
 import Clients from "./pages/Clients";
 import Containers from "./pages/Containers";
@@ -45,6 +46,7 @@ function Router() {
       <Route path={"/tara"} component={Containers} />
       <Route path={"/import"} component={ImportExcel} />
       <Route path={"/foydalanuvchilar"} component={Users} />
+      <Route path={"/ozgarishlar-tarixi"} component={AuditLog} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

@@ -120,6 +120,7 @@ const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
       { icon: Boxes, label: "Tara nazorati", path: "/tara" },
       { icon: FileSpreadsheet, label: "Excel import", path: "/import" },
       { icon: UserCog, label: "Foydalanuvchilar", path: "/foydalanuvchilar", roles: ["admin"] },
+      { icon: ShieldCheck, label: "O‘zgarishlar tarixi", path: "/ozgarishlar-tarixi", roles: ["admin"] },
     ],
   },
 ];

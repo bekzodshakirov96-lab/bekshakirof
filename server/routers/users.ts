@@ -5,6 +5,7 @@ import { users } from "../../drizzle/schema";
 import { router } from "../_core/trpc";
 import { hashPassword } from "../_core/localAuth";
 import { ownerProcedure } from "../access";
+import { logAudit } from "../auditLog";
 import { createUser, getUserByEmail, requireDb } from "../db";
 
 // The very first account ever registered (id = 1) is the permanent owner and
@@ -75,17 +76,27 @@ export const usersRouter = router({
           path: ["agentId"],
         }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
       const [target] = await db.select().from(users).where(eq(users.id, input.userId)).limit(1);
       if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Foydalanuvchi topilmadi." });
       if (target.id === OWNER_USER_ID) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Rahbar rolini o‘zgartirib bo‘lmaydi." });
       }
-      await db
-        .update(users)
-        .set({ role: input.role, agentId: input.role === "agent" ? input.agentId ?? null : null })
-        .where(eq(users.id, input.userId));
-      return { success: true };
+      return db.transaction(async tx => {
+        await tx
+          .update(users)
+          .set({ role: input.role, agentId: input.role === "agent" ? input.agentId ?? null : null })
+          .where(eq(users.id, input.userId));
+        await logAudit(tx, {
+          tableName: "users",
+          recordId: input.userId,
+          action: "update",
+          userId: ctx.user.id,
+          before: { email: target.email, role: target.role, agentId: target.agentId },
+          after: { email: target.email, role: input.role, agentId: input.role === "agent" ? input.agentId ?? null : null },
+        });
+        return { success: true };
+      });
     }),
 });

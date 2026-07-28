@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, like, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   agents,
+  clientPayments,
   clients,
   containerMovements,
   products,
@@ -14,6 +15,7 @@ import {
   type FastKegCurrentState,
 } from "../../shared/fastKeg";
 import { requireOwnAgent, salesProcedure } from "../access";
+import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import {
   normalizeContainerType,
   reconcileTransactionContainers,
@@ -94,6 +96,9 @@ async function loadAgentClientRows(db: FastKegDatabase, agentId: number) {
       openingDebt: clients.openingDebt,
       totalSales: numberSql`coalesce(sum(${transactions.totalAmount}), 0)`,
       totalPaid: numberSql`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment}), 0)`,
+      // Qarz to'lovlari (savdodan alohida qabul qilingan pul) — subquery bilan, aks holda
+      // transactions bilan JOIN qatorlarni ko'paytirib, yig'indini buzib yuboradi.
+      debtPaid: numberSql`coalesce((select sum(cp.cashAmount + cp.terminalAmount + cp.clickAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
     })
     .from(clients)
     .leftJoin(transactions, eq(transactions.clientId, clients.id))
@@ -132,7 +137,7 @@ async function loadAgentClientRows(db: FastKegDatabase, agentId: number) {
     code: row.code,
     name: row.name,
     phone: row.phone,
-    currentDebt: row.openingDebt + row.totalSales - row.totalPaid,
+    currentDebt: row.openingDebt + row.totalSales - row.totalPaid - (row.debtPaid ?? 0),
     keg30Balance: balanceMap.get(`${row.id}:keg_30`) ?? 0,
     keg50Balance: balanceMap.get(`${row.id}:keg_50`) ?? 0,
   }));
@@ -221,6 +226,7 @@ export const fastKegRouter = router({
 
   saveBatch: salesProcedure.input(saveBatchSchema).mutation(async ({ input, ctx }) => {
     requireOwnAgent(ctx.user.role, ctx.user.agentId, input.agentId);
+    await assertPeriodUnlocked(new Date(input.transactionDate));
     const db = await requireDb();
     return db.transaction(async tx => {
       const sourcePrefix = `fast-keg:${input.idempotencyKey}:`;
@@ -287,6 +293,7 @@ export const fastKegRouter = router({
           openingDebt: clients.openingDebt,
           totalSales: numberSql`coalesce(sum(${transactions.totalAmount}), 0)`,
           totalPaid: numberSql`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment}), 0)`,
+          debtPaid: numberSql`coalesce((select sum(cp.cashAmount + cp.terminalAmount + cp.clickAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
         })
         .from(clients)
         .leftJoin(transactions, eq(transactions.clientId, clients.id))
@@ -356,7 +363,7 @@ export const fastKegRouter = router({
       for (const inputRow of input.rows) {
         const client = clientMap.get(inputRow.clientId)!;
         const current: FastKegCurrentState = {
-          currentDebt: client.openingDebt + client.totalSales - client.totalPaid,
+          currentDebt: client.openingDebt + client.totalSales - client.totalPaid - (client.debtPaid ?? 0),
           currentKeg30Balance: balanceMap.get(balanceKey(client.id, "keg_30")) ?? 0,
           currentKeg50Balance: balanceMap.get(balanceKey(client.id, "keg_50")) ?? 0,
         };
@@ -452,6 +459,28 @@ export const fastKegRouter = router({
             productId: action.product?.id ?? null,
             quantity: action.quantity,
             createdBy: ctx.user.id,
+          });
+        }
+
+        for (const transactionId of transactionIds) {
+          await logAudit(tx, {
+            tableName: "transactions",
+            recordId: transactionId,
+            action: "create",
+            userId: ctx.user.id,
+            after: {
+              source: "Tezkor KEG savdosi",
+              clientId: client.id,
+              agentId: input.agentId,
+              keg30: inputRow.keg30,
+              keg50: inputRow.keg50,
+              returned30: inputRow.returned30,
+              returned50: inputRow.returned50,
+              saleAmount: calculated.saleAmount,
+              cash: inputRow.cash,
+              terminal: inputRow.terminal,
+              transfer: inputRow.transfer,
+            },
           });
         }
 

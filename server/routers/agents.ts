@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, cashEntries, transactions } from "../../drizzle/schema";
+import { agents, cashEntries, clientPayments, transactions } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure, salesProcedure } from "../access";
+import { logAudit } from "../auditLog";
 import {
   enrichClientFinancialRows,
   getClientFinancialRows,
@@ -175,17 +176,22 @@ export const agentsRouter = router({
       return { success: true };
     }),
   /**
-   * Commission per agent for a period, based on the amount actually collected from clients
-   * (cash + terminal + click payments recorded on their transactions) — the unpaid/debt portion
-   * of a sale earns no commission.
+   * Commission per agent for a period, based on the amount actually collected from clients —
+   * both sale payments (cash + terminal + click recorded on their transactions) and standalone
+   * old-debt payments (client_payments, attributed to the agent who collected them). The unpaid/
+   * still-owed portion of a sale earns no commission.
    */
   commissionReport: businessProcedure
     .input(z.object({ from: z.number().int().optional(), to: z.number().int().optional() }))
     .query(async ({ input }) => {
       const db = await requireDb();
-      const periodConditions = [
+      const transactionPeriodConditions = [
         input.from ? sql`${transactions.transactionDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
         input.to ? sql`${transactions.transactionDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+      ].filter(Boolean);
+      const paymentPeriodConditions = [
+        input.from ? sql`${clientPayments.paymentDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
+        input.to ? sql`${clientPayments.paymentDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
       ].filter(Boolean);
 
       const agentRows = await db.select().from(agents).orderBy(asc(agents.name));
@@ -198,14 +204,29 @@ export const agentsRouter = router({
             ),
         })
         .from(transactions)
-        .where(periodConditions.length ? and(...periodConditions) : undefined)
+        .where(transactionPeriodConditions.length ? and(...transactionPeriodConditions) : undefined)
         .groupBy(transactions.agentId);
       const collectedByAgent = new Map(collectedRows.map(row => [row.agentId, row.collectedAmount]));
+
+      const debtPaymentRows = await db
+        .select({
+          agentId: clientPayments.agentId,
+          debtCollectedAmount:
+            sql<number>`coalesce(sum(${clientPayments.cashAmount} + ${clientPayments.terminalAmount} + ${clientPayments.clickAmount}), 0)`.mapWith(
+              Number,
+            ),
+        })
+        .from(clientPayments)
+        .where(paymentPeriodConditions.length ? and(...paymentPeriodConditions) : undefined)
+        .groupBy(clientPayments.agentId);
+      const debtCollectedByAgent = new Map(debtPaymentRows.map(row => [row.agentId, row.debtCollectedAmount]));
 
       return agentRows
         .filter(agent => agent.isActive)
         .map(agent => {
-          const collectedAmount = collectedByAgent.get(agent.id) ?? 0;
+          const saleCollectedAmount = collectedByAgent.get(agent.id) ?? 0;
+          const debtCollectedAmount = debtCollectedByAgent.get(agent.id) ?? 0;
+          const collectedAmount = saleCollectedAmount + debtCollectedAmount;
           const commissionPercent = Number(agent.commissionPercent);
           const commissionAmount = Math.round((collectedAmount * commissionPercent) / 100);
           return { agentId: agent.id, agentName: agent.name, commissionPercent, collectedAmount, commissionAmount };
@@ -222,19 +243,28 @@ export const agentsRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
-      await db.insert(cashEntries).values({
-        sourceKey: `agent-commission:${randomUUID()}`,
-        entryDate: new Date(),
-        type: "expense",
-        category: "Ойлик",
-        agentId: input.agentId,
-        description: `Komissiya (${input.periodLabel})`,
-        cashAmount: input.amount,
-        terminalAmount: 0,
-        clickAmount: 0,
-        source: "manual",
-        createdBy: ctx.user.id,
+      return db.transaction(async tx => {
+        const [created] = await tx.insert(cashEntries).values({
+          sourceKey: `agent-commission:${randomUUID()}`,
+          entryDate: new Date(),
+          type: "expense",
+          category: "Ойлик",
+          agentId: input.agentId,
+          description: `Komissiya (${input.periodLabel})`,
+          cashAmount: input.amount,
+          terminalAmount: 0,
+          clickAmount: 0,
+          source: "manual",
+          createdBy: ctx.user.id,
+        }).$returningId();
+        await logAudit(tx, {
+          tableName: "cash_entries",
+          recordId: created.id,
+          action: "create",
+          userId: ctx.user.id,
+          after: { type: "expense", category: "Ойлик", agentId: input.agentId, cashAmount: input.amount, periodLabel: input.periodLabel },
+        });
+        return { success: true };
       });
-      return { success: true };
     }),
 });

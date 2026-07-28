@@ -1,7 +1,7 @@
 // Self-hosted authentication: email + password, sessions signed as JWTs and
 // stored in an httpOnly cookie. Replaces the Manus-hosted OAuth flow that
 // previously lived in sdk.ts / oauth.ts so this app can run on any server.
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { COOKIE_NAME, SESSION_TTL_MS } from "@shared/const";
 import bcrypt from "bcryptjs";
 import { parse as parseCookieHeader } from "cookie";
 import type { Request } from "express";
@@ -40,7 +40,7 @@ export async function signSession(
   options: { expiresInMs?: number } = {},
 ): Promise<string> {
   const issuedAt = Date.now();
-  const expiresInMs = options.expiresInMs ?? ONE_YEAR_MS;
+  const expiresInMs = options.expiresInMs ?? SESSION_TTL_MS;
   const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1000);
   const secretKey = getSessionSecret();
 

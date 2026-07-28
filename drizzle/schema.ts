@@ -4,6 +4,7 @@ import {
   bigint,
   decimal,
   boolean,
+  text,
   timestamp,
   mysqlEnum,
   index,
@@ -256,6 +257,37 @@ export const factoryOperations = mysqlTable(
 );
 
 /**
+ * Mijozning qarz to'lovi — savdodan alohida yozuv.
+ *
+ * Savdo paytidagi to'lov `transactions` ichida saqlanadi. Ammo mijoz eski
+ * qarzini keyinroq, hech narsa sotib olmasdan to'lashi mumkin — bunday to'lov
+ * savdo emas, shuning uchun alohida jadvalda yuritiladi. Qarz hisobida ikkala
+ * manba ham qo'shib hisoblanadi.
+ */
+export const clientPayments = mysqlTable(
+  "client_payments",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    clientId: int("clientId").references(() => clients.id, { onDelete: "cascade" }).notNull(),
+    /** To'lovni qabul qilgan agent — komissiya (oylik) hisobida shu mijozning
+     * eski qarzidan yig'ilgan pul ham hisobga olinishi uchun. */
+    agentId: int("agentId").references(() => agents.id, { onDelete: "set null" }),
+    paymentDate: timestamp("paymentDate").notNull(),
+    cashAmount: int("cashAmount").default(0).notNull(),
+    terminalAmount: int("terminalAmount").default(0).notNull(),
+    clickAmount: int("clickAmount").default(0).notNull(),
+    note: varchar("note", { length: 1_000 }),
+    createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("client_payments_client_idx").on(table.clientId),
+    index("client_payments_date_idx").on(table.paymentDate),
+    index("client_payments_agent_idx").on(table.agentId),
+  ],
+);
+
+/**
  * Butilka harakati — yig'ilgan bo'sh butilkalarni zavodga sotish hisobi.
  *
  * Uch xil yozuv bir jadvalda yuritiladi — ular bitta zanjirning bo'g'inlari:
@@ -388,6 +420,42 @@ export const agentCashSubmissions = mysqlTable(
   table => [uniqueIndex("agent_cash_submissions_date_agent_unique").on(table.entryDate, table.agentId)],
 );
 
+/**
+ * Har qanday moliyaviy yozuvni yaratish/tahrirlash/o'chirishning to'liq tarixi —
+ * kim, qachon, qaysi jadval-yozuv, eski va yangi qiymatlar. Yozuvlar hech qachon
+ * o'zgartirilmaydi yoki o'chirilmaydi (append-only) — bu jadvalning o'zi ham
+ * hech qanday update/delete procedurasiga ega emas.
+ */
+export const auditLog = mysqlTable(
+  "audit_log",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    tableName: varchar("tableName", { length: 64 }).notNull(),
+    recordId: int("recordId").notNull(),
+    action: mysqlEnum("action", ["create", "update", "delete"]).notNull(),
+    userId: int("userId").references(() => users.id, { onDelete: "set null" }),
+    /** JSON matn — yaratishda null, o'chirishda o'chirilgan qiymat, tahrirlashda eski qiymat. */
+    beforeData: text("beforeData"),
+    /** JSON matn — o'chirishda null, yaratish/tahrirlashda yangi qiymat. */
+    afterData: text("afterData"),
+    reason: varchar("reason", { length: 500 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("audit_log_table_record_idx").on(table.tableName, table.recordId),
+    index("audit_log_created_idx").on(table.createdAt),
+    index("audit_log_user_idx").on(table.userId),
+  ],
+);
+
+/** Oddiy kalit-qiymat sozlamalar — masalan davr qulfi sanasi. */
+export const appSettings = mysqlTable("app_settings", {
+  key: varchar("key", { length: 64 }).primaryKey(),
+  value: varchar("value", { length: 500 }),
+  updatedBy: int("updatedBy").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
 export type Agent = typeof agents.$inferSelect;
 export type InsertAgent = typeof agents.$inferInsert;
 export type Client = typeof clients.$inferSelect;
@@ -405,3 +473,5 @@ export type KassaDailyActual = typeof kassaDailyActuals.$inferSelect;
 export type AgentTakingEntry = typeof agentTakingEntries.$inferSelect;
 export type AgentCashSubmission = typeof agentCashSubmissions.$inferSelect;
 export type DailyProductPrice = typeof dailyProductPrices.$inferSelect;
+export type AuditLog = typeof auditLog.$inferSelect;
+export type AppSetting = typeof appSettings.$inferSelect;

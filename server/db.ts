@@ -16,7 +16,11 @@ function connect() {
   // Despite the promise-wrapper types, this event hands back the underlying
   // callback-style connection, so `.query()` here takes a callback, not a promise.
   pool.on("connection", connection => {
-    connection.query("SET time_zone = '+05:00'", (error: unknown) => {
+    const callbackQuery = connection.query.bind(connection) as unknown as (
+      sql: string,
+      cb: (error: unknown) => void,
+    ) => void;
+    callbackQuery("SET time_zone = '+05:00'", error => {
       if (error) console.warn("[Database] Failed to set session time_zone:", error);
     });
   });

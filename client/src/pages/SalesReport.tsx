@@ -4,11 +4,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDate, formatMoney, formatNumber, localDateInputValue } from "@/lib/format";
+import { formatDate, formatMoney, formatNumber, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
-import { ArrowDown, ArrowUp, ArrowUpDown, RotateCcw, Search, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Pencil, RotateCcw, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,6 +24,31 @@ function containerLabel(value: string | null | undefined) {
   return "Tara";
 }
 
+/** Eski yozuvlarda "KEG 30" kabi ko'rinish nomi, yangilarida "keg_30" kodi saqlangan bo'lishi mumkin. */
+function normalizeContainerTypeValue(value: string | null | undefined): "keg_30" | "keg_50" | "" {
+  if (!value) return "";
+  if (/30/.test(value)) return "keg_30";
+  if (/50/.test(value)) return "keg_50";
+  return "";
+}
+
+type EditTransactionForm = {
+  id: number;
+  date: string;
+  agentId: string;
+  clientId: string;
+  productId: string;
+  quantity: string;
+  salePrice: string;
+  cashPayment: string;
+  terminalPayment: string;
+  clickPayment: string;
+  note: string;
+  returnEnabled: boolean;
+  returnContainerType: "keg_30" | "keg_50" | "";
+  returnQuantity: string;
+};
+
 export default function SalesReport() {
   const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
@@ -36,6 +62,7 @@ export default function SalesReport() {
   const [page, setPage] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; label: string } | null>(null);
+  const [editTarget, setEditTarget] = useState<EditTransactionForm | null>(null);
 
   const agents = trpc.agents.options.useQuery();
   const clients = trpc.clients.options.useQuery();
@@ -61,6 +88,18 @@ export default function SalesReport() {
       await Promise.all([
         utils.transactions.list.invalidate(), utils.dashboard.overview.invalidate(),
         utils.debts.list.invalidate(), utils.containers.invalidate(),
+      ]);
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const updateTransaction = trpc.transactions.update.useMutation({
+    onSuccess: async () => {
+      toast.success("Operatsiya yangilandi.");
+      setEditTarget(null);
+      await Promise.all([
+        utils.transactions.list.invalidate(), utils.dashboard.overview.invalidate(),
+        utils.debts.list.invalidate(), utils.containers.invalidate(), utils.stock.invalidate(),
       ]);
     },
     onError: error => toast.error(error.message),
@@ -225,7 +264,35 @@ export default function SalesReport() {
           <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.transactionDate)}</TableCell><TableCell>{row.agentName || "—"}</TableCell><TableCell className="font-semibold text-foreground">{row.clientName || "—"}</TableCell><TableCell>{row.productName}</TableCell><TableCell className="text-right tabular-nums">{formatNumber(row.quantity, 3)} {row.unit}</TableCell><TableCell className="text-right tabular-nums">{formatMoney(row.salePrice)}</TableCell><TableCell className="text-right font-bold tabular-nums">{formatMoney(row.totalAmount)}</TableCell><TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.cashPayment)}</TableCell><TableCell className="text-right tabular-nums text-violet-700">{formatMoney(row.terminalPayment)}</TableCell><TableCell className="text-right tabular-nums text-cyan-700">{formatMoney(row.clickPayment)}</TableCell>
           <TableCell><div className="space-y-1 text-xs">{row.issuedContainerQuantity > 0 && <div className="font-medium text-rose-700">+ {containerLabel(row.issuedContainerType)}: {row.issuedContainerQuantity}</div>}{row.returnedContainerQuantity > 0 && <div className="font-medium text-emerald-700">− {containerLabel(row.returnedContainerType)}: {row.returnedContainerQuantity}</div>}{row.issuedContainerQuantity === 0 && row.returnedContainerQuantity === 0 && "—"}</div></TableCell>
           <TableCell><Badge variant="outline" className="rounded-lg text-[10px]">{row.source === "excel" ? "Excel" : "Qo‘lda"}</Badge></TableCell>
-          <TableCell><button type="button" aria-label="Operatsiyani o‘chirish" className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600" onClick={() => setDeleteTarget({ id: row.id, label: `${row.clientName || "—"} — ${row.productName}` })}><Trash2 className="size-4" /></button></TableCell>
+          <TableCell>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="Operatsiyani tahrirlash"
+                title="Tahrirlash"
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                onClick={() => setEditTarget({
+                  id: row.id,
+                  date: localDateInputValue(new Date(row.transactionDate)),
+                  agentId: row.agentId ? String(row.agentId) : "",
+                  clientId: row.clientId ? String(row.clientId) : "",
+                  productId: row.productId ? String(row.productId) : "",
+                  quantity: String(row.quantity),
+                  salePrice: String(row.salePrice),
+                  cashPayment: String(row.cashPayment),
+                  terminalPayment: String(row.terminalPayment),
+                  clickPayment: String(row.clickPayment),
+                  note: row.note ?? "",
+                  returnEnabled: row.returnedContainerQuantity > 0,
+                  returnContainerType: normalizeContainerTypeValue(row.returnedContainerType),
+                  returnQuantity: String(row.returnedContainerQuantity || 0),
+                })}
+              >
+                <Pencil className="size-4" />
+              </button>
+              <button type="button" aria-label="Operatsiyani o‘chirish" className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600" onClick={() => setDeleteTarget({ id: row.id, label: `${row.clientName || "—"} — ${row.productName}` })}><Trash2 className="size-4" /></button>
+            </div>
+          </TableCell>
         </TableRow>)}</TableBody></Table><PaginationBar page={journal.data?.page ?? 1} pageCount={journal.data?.pageCount ?? 1} total={journal.data?.total ?? 0} onChange={setPage} />
       </>}</div>
     </SectionCard>
@@ -243,6 +310,90 @@ export default function SalesReport() {
             onClick={() => deleteTarget && deleteTransaction.mutate({ id: deleteTarget.id })}
           >
             {deleteTransaction.isPending ? "O‘chirilmoqda..." : "Ha, o‘chirish"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={Boolean(editTarget)} onOpenChange={openState => !openState && setEditTarget(null)}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto rounded-2xl sm:max-w-xl">
+        <DialogHeader><DialogTitle>Operatsiyani tahrirlash</DialogTitle><DialogDescription>Savdo yozuvining barcha maydonlarini yangilang.</DialogDescription></DialogHeader>
+        {editTarget && (
+          <div className="grid gap-4 py-2 sm:grid-cols-2">
+            <div className="space-y-2"><Label>Sana</Label><Input className="finance-input" type="date" value={editTarget.date} onChange={event => setEditTarget({ ...editTarget, date: event.target.value })} /></div>
+            <div className="space-y-2">
+              <Label>Agent</Label>
+              <select className="finance-input w-full border px-3" value={editTarget.agentId} onChange={event => setEditTarget({ ...editTarget, agentId: event.target.value })}>
+                <option value="">Tanlang</option>
+                {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Mijoz</Label>
+              <select className="finance-input w-full border px-3" value={editTarget.clientId} onChange={event => setEditTarget({ ...editTarget, clientId: event.target.value })}>
+                <option value="">Tanlang</option>
+                {(clients.data ?? []).map(client => <option key={client.id} value={client.id}>{client.code} — {client.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Mahsulot</Label>
+              <select className="finance-input w-full border px-3" value={editTarget.productId} onChange={event => setEditTarget({ ...editTarget, productId: event.target.value })}>
+                <option value="">Tanlang</option>
+                {(products.data ?? []).filter(product => !product.containerType).map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-2"><Label>Miqdor</Label><Input className="finance-input" type="text" inputMode="decimal" value={editTarget.quantity} onChange={event => setEditTarget({ ...editTarget, quantity: sanitizeDecimalInput(event.target.value) })} /></div>
+            <div className="space-y-2"><Label>Narx</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.salePrice} onChange={event => setEditTarget({ ...editTarget, salePrice: sanitizeIntegerInput(event.target.value) })} /></div>
+            <div className="space-y-2"><Label>Naqd to‘lov</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.cashPayment} onChange={event => setEditTarget({ ...editTarget, cashPayment: sanitizeIntegerInput(event.target.value) })} /></div>
+            <div className="space-y-2"><Label>Terminal</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.terminalPayment} onChange={event => setEditTarget({ ...editTarget, terminalPayment: sanitizeIntegerInput(event.target.value) })} /></div>
+            <div className="space-y-2"><Label>Click</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.clickPayment} onChange={event => setEditTarget({ ...editTarget, clickPayment: sanitizeIntegerInput(event.target.value) })} /></div>
+            <div className="space-y-2 sm:col-span-2"><Label>Izoh</Label><Input className="finance-input" value={editTarget.note} onChange={event => setEditTarget({ ...editTarget, note: event.target.value })} placeholder="Ixtiyoriy" /></div>
+            <div className="space-y-2 sm:col-span-2">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked={editTarget.returnEnabled} onChange={event => setEditTarget({ ...editTarget, returnEnabled: event.target.checked, returnContainerType: editTarget.returnContainerType || "keg_30" })} className="h-4 w-4 accent-primary" />
+                Mijoz tara qaytardi
+              </label>
+              {editTarget.returnEnabled && (
+                <div className="mt-2 flex items-center gap-2">
+                  <select className="finance-input h-9 border px-2" value={editTarget.returnContainerType} onChange={event => setEditTarget({ ...editTarget, returnContainerType: event.target.value as "keg_30" | "keg_50" })}>
+                    <option value="keg_30">KEG 30</option>
+                    <option value="keg_50">KEG 50</option>
+                  </select>
+                  <Input className="finance-input h-9 w-24 text-right" type="text" inputMode="numeric" value={editTarget.returnQuantity} onChange={event => setEditTarget({ ...editTarget, returnQuantity: sanitizeIntegerInput(event.target.value) })} />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditTarget(null)}>Bekor qilish</Button>
+          <Button
+            disabled={
+              !editTarget ||
+              !editTarget.agentId || !editTarget.clientId || !editTarget.productId ||
+              Number(editTarget.quantity || 0) <= 0 ||
+              updateTransaction.isPending
+            }
+            onClick={() => {
+              if (!editTarget) return;
+              updateTransaction.mutate({
+                id: editTarget.id,
+                transactionDate: new Date(`${editTarget.date}T12:00:00`).getTime(),
+                agentId: Number(editTarget.agentId),
+                clientId: Number(editTarget.clientId),
+                productId: Number(editTarget.productId),
+                quantity: Number(editTarget.quantity),
+                salePrice: Math.round(Number(editTarget.salePrice || 0)),
+                cashPayment: Math.round(Number(editTarget.cashPayment || 0)),
+                terminalPayment: Math.round(Number(editTarget.terminalPayment || 0)),
+                clickPayment: Math.round(Number(editTarget.clickPayment || 0)),
+                returnContainerType: editTarget.returnEnabled && editTarget.returnContainerType ? editTarget.returnContainerType : null,
+                returnQuantity: editTarget.returnEnabled ? Math.round(Number(editTarget.returnQuantity || 0)) : 0,
+                note: editTarget.note || null,
+              });
+            }}
+          >
+            {updateTransaction.isPending ? "Saqlanmoqda..." : "Saqlash"}
           </Button>
         </DialogFooter>
       </DialogContent>

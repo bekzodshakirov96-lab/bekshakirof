@@ -3,6 +3,7 @@ import { and, count, desc, eq, gte, like, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, cashEntries } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
+import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
@@ -52,11 +53,26 @@ export const cashRouter = router({
       .orderBy(desc(cashEntries.id));
     return rows;
   }),
-  delete: businessProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
-    const db = await requireDb();
-    await db.delete(cashEntries).where(eq(cashEntries.id, input.id));
-    return { success: true } as const;
-  }),
+  delete: businessProcedure
+    .input(z.object({ id: z.number().int().positive(), reason: z.string().trim().max(500).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await requireDb();
+      const [existing] = await db.select().from(cashEntries).where(eq(cashEntries.id, input.id)).limit(1);
+      if (!existing) throw new Error("Kassa yozuvi topilmadi yoki allaqachon o‘chirilgan.");
+      await assertPeriodUnlocked(existing.entryDate);
+      return db.transaction(async tx => {
+        await tx.delete(cashEntries).where(eq(cashEntries.id, input.id));
+        await logAudit(tx, {
+          tableName: "cash_entries",
+          recordId: input.id,
+          action: "delete",
+          userId: ctx.user.id,
+          before: existing,
+          reason: input.reason ?? null,
+        });
+        return { success: true } as const;
+      });
+    }),
   /** Tanlangan sanadan oldingi barcha kunlarning naqd (faqat cashAmount — terminal/click
    * hisobga olinmaydi) qoldig'i — Kunlik jurnalning "Boshlang'ich qoldiq" qatori shundan
    * boshlanadi va har kun avvalgi kunning yakuniy qoldig'i bilan davom etadi. */
@@ -221,23 +237,42 @@ export const cashRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
-      const [created] = await db
-        .insert(cashEntries)
-        .values({
-          sourceKey: `manual:${randomUUID()}`,
-          entryDate: new Date(input.entryDate),
-          type: input.type,
-          category: input.category,
-          agentId: input.agentId ?? null,
-          description: input.description,
-          cashAmount: input.cashAmount,
-          terminalAmount: input.terminalAmount,
-          clickAmount: input.clickAmount,
-          source: "manual",
-          createdBy: ctx.user.id,
-        })
-        .$returningId();
-      return { success: true, id: created.id };
+      await assertPeriodUnlocked(new Date(input.entryDate));
+      return db.transaction(async tx => {
+        const [created] = await tx
+          .insert(cashEntries)
+          .values({
+            sourceKey: `manual:${randomUUID()}`,
+            entryDate: new Date(input.entryDate),
+            type: input.type,
+            category: input.category,
+            agentId: input.agentId ?? null,
+            description: input.description,
+            cashAmount: input.cashAmount,
+            terminalAmount: input.terminalAmount,
+            clickAmount: input.clickAmount,
+            source: "manual",
+            createdBy: ctx.user.id,
+          })
+          .$returningId();
+        await logAudit(tx, {
+          tableName: "cash_entries",
+          recordId: created.id,
+          action: "create",
+          userId: ctx.user.id,
+          after: {
+            entryDate: new Date(input.entryDate),
+            type: input.type,
+            category: input.category,
+            agentId: input.agentId ?? null,
+            description: input.description ?? null,
+            cashAmount: input.cashAmount,
+            terminalAmount: input.terminalAmount,
+            clickAmount: input.clickAmount,
+          },
+        });
+        return { success: true, id: created.id };
+      });
     }),
   update: businessProcedure
     .input(
@@ -252,26 +287,43 @@ export const cashRouter = router({
           cashAmount: z.number().int().min(0),
           terminalAmount: z.number().int().min(0),
           clickAmount: z.number().int().min(0),
+          reason: z.string().trim().max(500).optional(),
         })
         .refine(value => value.cashAmount + value.terminalAmount + value.clickAmount > 0, {
           message: "Kamida bitta to‘lov kanali summasi kiritilishi kerak.",
         }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
-      await db
-        .update(cashEntries)
-        .set({
-          entryDate: new Date(input.entryDate),
-          type: input.type,
-          category: input.category,
-          agentId: input.agentId ?? null,
-          description: input.description ?? null,
-          cashAmount: input.cashAmount,
-          terminalAmount: input.terminalAmount,
-          clickAmount: input.clickAmount,
-        })
-        .where(eq(cashEntries.id, input.id));
-      return { success: true };
+      const [previous] = await db.select().from(cashEntries).where(eq(cashEntries.id, input.id)).limit(1);
+      if (!previous) throw new Error("Kassa yozuvi topilmadi.");
+      await assertPeriodUnlocked(previous.entryDate);
+      await assertPeriodUnlocked(new Date(input.entryDate));
+      return db.transaction(async tx => {
+        await tx
+          .update(cashEntries)
+          .set({
+            entryDate: new Date(input.entryDate),
+            type: input.type,
+            category: input.category,
+            agentId: input.agentId ?? null,
+            description: input.description ?? null,
+            cashAmount: input.cashAmount,
+            terminalAmount: input.terminalAmount,
+            clickAmount: input.clickAmount,
+          })
+          .where(eq(cashEntries.id, input.id));
+        const [updated] = await tx.select().from(cashEntries).where(eq(cashEntries.id, input.id)).limit(1);
+        await logAudit(tx, {
+          tableName: "cash_entries",
+          recordId: input.id,
+          action: "update",
+          userId: ctx.user.id,
+          before: previous,
+          after: updated,
+          reason: input.reason ?? null,
+        });
+        return { success: true };
+      });
     }),
 });

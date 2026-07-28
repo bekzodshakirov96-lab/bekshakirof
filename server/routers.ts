@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { COOKIE_NAME, SESSION_TTL_MS } from "@shared/const";
 import type { User } from "../drizzle/schema";
 import * as db from "./db";
 import { hashPassword, signSession, verifyPassword } from "./_core/localAuth";
@@ -8,6 +8,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { agentsRouter } from "./routers/agents";
+import { auditRouter } from "./routers/audit";
 import { cashRouter } from "./routers/cash";
 import { clientsRouter } from "./routers/clients";
 import { containersRouter } from "./routers/containers";
@@ -72,9 +73,9 @@ export const appRouter = router({
         if (!user) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Foydalanuvchi yaratilmadi." });
         }
-        const token = await signSession(user.id, { expiresInMs: ONE_YEAR_MS });
+        const token = await signSession(user.id, { expiresInMs: SESSION_TTL_MS });
         const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+        ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: SESSION_TTL_MS });
         return { success: true, user: toSafeUser(user) } as const;
       }),
     login: publicProcedure
@@ -94,9 +95,9 @@ export const appRouter = router({
         const valid = await verifyPassword(input.password, user.passwordHash);
         if (!valid) throw invalidCredentialsError;
         await db.touchLastSignedIn(user.id);
-        const token = await signSession(user.id, { expiresInMs: ONE_YEAR_MS });
+        const token = await signSession(user.id, { expiresInMs: SESSION_TTL_MS });
         const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+        ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: SESSION_TTL_MS });
         return { success: true, user: toSafeUser(user) } as const;
       }),
     /** Interfeys alifbosini (lotin/kirill) saqlaydi — tanlov foydalanuvchi hisobiga
@@ -130,6 +131,7 @@ export const appRouter = router({
   stock: stockRouter,
   factory: factoryRouter,
   users: usersRouter,
+  audit: auditRouter,
 });
 
 export type AppRouter = typeof appRouter;

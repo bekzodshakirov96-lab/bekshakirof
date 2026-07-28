@@ -2,12 +2,20 @@ import { ExportMenu } from "@/components/ExportMenu";
 import { ClientStatementDialog } from "@/components/ClientStatementDialog";
 import { DebtBadge, EmptyState, MetricCard, PageHeader, PaginationBar, QueryError, SectionCard, TableLoading } from "@/components/finance-ui";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatMoney, localDateInputValue, sanitizeIntegerInput } from "@/lib/format";
+import { formatDate, formatMoney, localDateInputValue, sanitizeIntegerInput } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
-import { ArrowDown, ArrowUp, ArrowUpDown, Banknote, CircleDollarSign, FileText, HandCoins, RotateCcw, Search, UsersRound } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Banknote, CircleDollarSign, FileText, HandCoins, RotateCcw, Search, Trash2, UsersRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -32,6 +40,7 @@ export default function Debts() {
   const [page, setPage] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
   const [statementClient, setStatementClient] = useState<{ id: number; name: string } | null>(null);
+  const [paymentClient, setPaymentClient] = useState<{ id: number; name: string; currentDebt: number } | null>(null);
   const agents = trpc.agents.options.useQuery();
   const utils = trpc.useUtils();
 
@@ -189,7 +198,12 @@ export default function Debts() {
                   <TableCell className="text-right tabular-nums text-cyan-700">{formatMoney(item.clickPaid)}</TableCell>
                   <TableCell className={`text-right font-bold tabular-nums ${item.currentDebt > 0 ? "text-rose-700" : "text-emerald-700"}`}>{formatMoney(item.currentDebt)}</TableCell>
                   <TableCell><DebtBadge value={item.currentDebt} /></TableCell>
-                  <TableCell><button type="button" aria-label="Akt sverka" title="Akt sverka" className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary" onClick={() => setStatementClient({ id: item.id, name: item.name })}><FileText className="size-4" /></button></TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <button type="button" aria-label="To‘lov qabul qilish" title="To‘lov qabul qilish" className="rounded-lg p-1.5 text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-600" onClick={() => setPaymentClient({ id: item.id, name: item.name, currentDebt: item.currentDebt })}><HandCoins className="size-4" /></button>
+                      <button type="button" aria-label="Akt sverka" title="Akt sverka" className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary" onClick={() => setStatementClient({ id: item.id, name: item.name })}><FileText className="size-4" /></button>
+                    </div>
+                  </TableCell>
                 </TableRow>)}</TableBody>
               </Table>
               <PaginationBar page={debts.data?.page ?? 1} pageCount={debts.data?.pageCount ?? 1} total={debts.data?.total ?? 0} onChange={setPage} />
@@ -203,6 +217,196 @@ export default function Debts() {
         open={Boolean(statementClient)}
         onOpenChange={openState => !openState && setStatementClient(null)}
       />
+      <DebtPaymentDialog
+        client={paymentClient}
+        onClose={() => setPaymentClient(null)}
+        onSaved={() => { void debts.refetch(); }}
+      />
     </div>
+  );
+}
+
+/**
+ * Mijozdan qarz to'lovini qabul qilish oynasi.
+ * Kassaga ta'sir qilmaydi — faqat mijozning qarz balansini kamaytiradi.
+ */
+function DebtPaymentDialog({
+  client,
+  onClose,
+  onSaved,
+}: {
+  client: { id: number; name: string; currentDebt: number } | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const [cash, setCash] = useState("");
+  const [terminal, setTerminal] = useState("");
+  const [click, setClick] = useState("");
+  const [date, setDate] = useState(() => localDateInputValue());
+  const [note, setNote] = useState("");
+
+  function reset() {
+    setCash(""); setTerminal(""); setClick(""); setNote("");
+    setDate(localDateInputValue());
+  }
+
+  const history = trpc.debts.payments.byClient.useQuery(
+    { clientId: client?.id ?? 0 },
+    { enabled: Boolean(client) },
+  );
+
+  const create = trpc.debts.payments.create.useMutation({
+    onSuccess: async () => {
+      toast.success("To‘lov qabul qilindi");
+      reset();
+      onClose();
+      await Promise.all([
+        utils.debts.list.invalidate(),
+        utils.dashboard.overview.invalidate(),
+        utils.debts.payments.byClient.invalidate(),
+      ]);
+      onSaved();
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const deletePayment = trpc.debts.payments.delete.useMutation({
+    onSuccess: async () => {
+      toast.success("To‘lov o‘chirildi");
+      await Promise.all([
+        utils.debts.list.invalidate(),
+        utils.dashboard.overview.invalidate(),
+        utils.debts.payments.byClient.invalidate(),
+      ]);
+      onSaved();
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const total = Number(cash || 0) + Number(terminal || 0) + Number(click || 0);
+  const canSubmit = total > 0 && !create.isPending;
+  /** Qarzdan ortiq to'lov xato emas (avans bo'lishi mumkin), lekin ogohlantiramiz. */
+  const exceedsDebt = client ? total > client.currentDebt && client.currentDebt > 0 : false;
+
+  return (
+    <Dialog open={Boolean(client)} onOpenChange={openState => { if (!openState) { reset(); onClose(); } }}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>To‘lov qabul qilish</DialogTitle>
+          <DialogDescription>
+            {client?.name} — joriy qarzi <span className="font-semibold text-foreground">{formatMoney(client?.currentDebt ?? 0)}</span>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Naqd</label>
+              <Input className="finance-input" inputMode="numeric" placeholder="0" value={cash} onChange={event => setCash(sanitizeIntegerInput(event.target.value))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Terminal</label>
+              <Input className="finance-input" inputMode="numeric" placeholder="0" value={terminal} onChange={event => setTerminal(sanitizeIntegerInput(event.target.value))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Click</label>
+              <Input className="finance-input" inputMode="numeric" placeholder="0" value={click} onChange={event => setClick(sanitizeIntegerInput(event.target.value))} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground">Sana</label>
+            <Input className="finance-input" type="date" value={date} onChange={event => setDate(event.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground">Izoh</label>
+            <Input className="finance-input" placeholder="Ixtiyoriy" value={note} onChange={event => setNote(event.target.value)} />
+          </div>
+
+          <div className="rounded-xl border border-border bg-muted/60 p-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Jami to‘lov</span>
+              <span className="font-bold tabular-nums text-foreground">{formatMoney(total)}</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">To‘lovdan keyingi qarz</span>
+              <span className="font-bold tabular-nums text-foreground">{formatMoney((client?.currentDebt ?? 0) - total)}</span>
+            </div>
+          </div>
+
+          {exceedsDebt && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              To‘lov qarzdan ko‘p — qoldiq avans (haqdorlik) sifatida manfiy ko‘rinadi.
+            </p>
+          )}
+          {total <= 0 && <p className="text-right text-xs font-medium text-rose-600">To‘lov summasi kiritilmagan</p>}
+        </div>
+
+        <div className="mt-1">
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Qarz to‘lovlari tarixi</h4>
+          {history.isLoading ? (
+            <p className="text-xs text-muted-foreground">Yuklanmoqda...</p>
+          ) : !history.data || history.data.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Bu mijozdan hali qarz to‘lovi qabul qilinmagan.</p>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-border">
+              <Table className="finance-table text-xs">
+                <TableHeader><TableRow>
+                  <TableHead>Sana</TableHead>
+                  <TableHead className="text-right">Naqd</TableHead>
+                  <TableHead className="text-right">Terminal</TableHead>
+                  <TableHead className="text-right">Click</TableHead>
+                  <TableHead>Izoh</TableHead>
+                  <TableHead className="w-8" />
+                </TableRow></TableHeader>
+                <TableBody>
+                  {history.data.map(payment => (
+                    <TableRow key={payment.id}>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(payment.paymentDate)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatMoney(payment.cashAmount)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatMoney(payment.terminalAmount)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatMoney(payment.clickAmount)}</TableCell>
+                      <TableCell className="max-w-[140px] truncate text-muted-foreground">{payment.note || "—"}</TableCell>
+                      <TableCell>
+                        <button
+                          type="button"
+                          aria-label="O‘chirish"
+                          title="O‘chirish"
+                          disabled={deletePayment.isPending}
+                          className="rounded-lg p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-50"
+                          onClick={() => deletePayment.mutate({ id: payment.id })}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { reset(); onClose(); }}>Bekor qilish</Button>
+          <Button
+            disabled={!canSubmit}
+            onClick={() => {
+              if (!client) return;
+              create.mutate({
+                clientId: client.id,
+                paymentDate: new Date(`${date}T12:00:00`).getTime(),
+                cashAmount: Number(cash || 0),
+                terminalAmount: Number(terminal || 0),
+                clickAmount: Number(click || 0),
+                note: note || undefined,
+              });
+            }}
+          >
+            {create.isPending ? "Saqlanmoqda..." : "Saqlash"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

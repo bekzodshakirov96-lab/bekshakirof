@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatMoney, formatNumber, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { calculateContainerNet } from "@shared/containerPreview";
-import { BarChart3, PackageCheck, Search, ShoppingCart, Trash2 } from "lucide-react";
+import { BarChart3, HandCoins, PackageCheck, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -47,11 +47,16 @@ export default function Transactions() {
   const [cashPayment, setCashPayment] = useState("");
   const [terminalPayment, setTerminalPayment] = useState("");
   const [clickPayment, setClickPayment] = useState("");
+  const [debtPayment, setDebtPayment] = useState("");
   const [note, setNote] = useState("");
 
   const agents = trpc.agents.options.useQuery();
   const clients = trpc.clients.options.useQuery();
   const products = trpc.products.list.useQuery({});
+  const clientDebt = trpc.debts.currentDebt.useQuery(
+    { clientId: Number(clientId) },
+    { enabled: Boolean(clientId) },
+  );
 
   useEffect(() => {
     if (isAgentRole && user?.agentId && !agentId) setAgentId(String(user.agentId));
@@ -88,12 +93,32 @@ export default function Transactions() {
 
   const createMultiple = trpc.transactions.createMultiple.useMutation({
     onSuccess: async result => {
-      toast.success(`${result.lineCount} ta mahsulot bo‘yicha savdo saqlandi: ${formatMoney(result.cartTotal)}`);
+      const saleMessage = `${result.lineCount} ta mahsulot bo‘yicha savdo saqlandi: ${formatMoney(result.cartTotal)}`;
+      toast.success(
+        result.debtPaymentAmount > 0
+          ? `${saleMessage}. Qarzga qo‘shimcha ${formatMoney(result.debtPaymentAmount)} to‘lov qabul qilindi.`
+          : saleMessage,
+      );
       setCart([]);
-      setCashPayment(""); setTerminalPayment(""); setClickPayment(""); setNote("");
+      setCashPayment(""); setTerminalPayment(""); setClickPayment(""); setDebtPayment(""); setNote("");
       await Promise.all([
         utils.transactions.list.invalidate(), utils.dashboard.overview.invalidate(),
-        utils.debts.list.invalidate(), utils.containers.invalidate(),
+        utils.debts.list.invalidate(), utils.debts.currentDebt.invalidate(), utils.containers.invalidate(),
+      ]);
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  /** Mahsulot tanlanmagan holatda ham — mijozdan faqat eski qarz to'lovi qabul qilish uchun. */
+  const createDebtOnlyPayment = trpc.debts.payments.create.useMutation({
+    onSuccess: async (_result, variables) => {
+      toast.success(`Qarz to‘lovi qabul qilindi: ${formatMoney(variables.cashAmount ?? 0)}`);
+      setDebtPayment(""); setNote("");
+      await Promise.all([
+        utils.dashboard.overview.invalidate(),
+        utils.debts.list.invalidate(),
+        utils.debts.currentDebt.invalidate(),
+        utils.debts.payments.byClient.invalidate(),
       ]);
     },
     onError: error => toast.error(error.message),
@@ -185,6 +210,19 @@ export default function Transactions() {
       cashPayment: Math.round(Number(cashPayment || 0)),
       terminalPayment: Math.round(Number(terminalPayment || 0)),
       clickPayment: Math.round(Number(clickPayment || 0)),
+      debtPaymentAmount: Math.round(Number(debtPayment || 0)),
+      note: note || undefined,
+    });
+  }
+
+  const currentDebt = clientDebt.data?.currentDebt ?? 0;
+  const debtOnlyCanSubmit = Boolean(agentId) && Boolean(clientId) && Number(debtPayment || 0) > 0 && !createDebtOnlyPayment.isPending;
+
+  function submitDebtOnly() {
+    createDebtOnlyPayment.mutate({
+      clientId: Number(clientId),
+      paymentDate: new Date(`${date}T12:00:00`).getTime(),
+      cashAmount: Math.round(Number(debtPayment || 0)),
       note: note || undefined,
     });
   }
@@ -207,13 +245,13 @@ export default function Transactions() {
             className="finance-input w-full border px-3 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
             value={agentId}
             disabled={isAgentRole}
-            onChange={event => { setAgentId(event.target.value); setClientId(""); }}
+            onChange={event => { setAgentId(event.target.value); setClientId(""); setDebtPayment(""); }}
           >
             <option value="">Tanlang</option>
             {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
           </select>
         </div>
-        <div className="space-y-2"><Label>Mijoz</Label><select className="finance-input w-full border px-3" value={clientId} onChange={event => setClientId(event.target.value)} disabled={!agentId}><option value="">Tanlang</option>{availableClients.map(client => <option key={client.id} value={client.id}>{client.code} — {client.name}</option>)}</select></div>
+        <div className="space-y-2"><Label>Mijoz</Label><select className="finance-input w-full border px-3" value={clientId} onChange={event => { setClientId(event.target.value); setDebtPayment(""); }} disabled={!agentId}><option value="">Tanlang</option>{availableClients.map(client => <option key={client.id} value={client.id}>{client.code} — {client.name}</option>)}</select></div>
       </div>
     </SectionCard>
 
@@ -310,6 +348,12 @@ export default function Transactions() {
           <div className="space-y-2"><Label>Terminal</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={terminalPayment} onChange={event => setTerminalPayment(sanitizeIntegerInput(event.target.value))} /></div>
           <div className="space-y-2"><Label>Click</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={clickPayment} onChange={event => setClickPayment(sanitizeIntegerInput(event.target.value))} /></div>
         </div>
+        {clientId && currentDebt > 0 && (
+          <div className="mt-4">
+            <DebtCloseCard currentDebt={currentDebt} value={debtPayment} onChange={setDebtPayment} />
+          </div>
+        )}
+
         <div className="mt-4 space-y-2"><Label>Izoh</Label><Input className="finance-input" value={note} onChange={event => setNote(event.target.value)} placeholder="Ixtiyoriy" /></div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -340,5 +384,64 @@ export default function Transactions() {
         </div>
       </SectionCard>
     )}
+
+    {cart.length === 0 && agentId && clientId && currentDebt > 0 && (
+      <SectionCard
+        title="3. Qarz to‘lovi"
+        description="Mahsulot tanlanmagan bo‘lsa ham, mijozdan qabul qilingan pulni to‘g‘ridan-to‘g‘ri eski qarzga yozib qo‘yishingiz mumkin."
+      >
+        <DebtCloseCard currentDebt={currentDebt} value={debtPayment} onChange={setDebtPayment} />
+        <div className="mt-4 space-y-2"><Label>Izoh</Label><Input className="finance-input" value={note} onChange={event => setNote(event.target.value)} placeholder="Ixtiyoriy" /></div>
+        <div className="mt-6 flex justify-end">
+          <Button
+            size="lg"
+            className="h-12 rounded-xl px-8 font-semibold"
+            disabled={!debtOnlyCanSubmit}
+            onClick={submitDebtOnly}
+          >
+            {createDebtOnlyPayment.isPending ? "Saqlanmoqda..." : `Qarz to‘lovini saqlash — ${formatMoney(Number(debtPayment || 0))}`}
+          </Button>
+        </div>
+      </SectionCard>
+    )}
   </div>;
+}
+
+function DebtCloseCard({
+  currentDebt,
+  value,
+  onChange,
+}: {
+  currentDebt: number;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="rounded-2xl border-2 border-rose-300 bg-rose-50/70 p-4 dark:border-rose-800 dark:bg-rose-950/30">
+      <div className="flex items-center gap-2 text-sm font-bold text-rose-700 dark:text-rose-400">
+        <HandCoins className="size-4" />
+        Qarzni yopish (ixtiyoriy)
+      </div>
+      <p className="mt-1 text-xs text-rose-700/80 dark:text-rose-400/80">
+        Mijozning joriy qarzi <span className="font-semibold">{formatMoney(currentDebt)}</span>. Agent qo‘shimcha naqd pul
+        olib kelgan bo‘lsa, shu yerga kiriting — to‘g‘ridan-to‘g‘ri mijozning eski qarzidan kamayadi.
+      </p>
+      <div className="mt-3 max-w-xs space-y-1.5">
+        <Label className="text-rose-700 dark:text-rose-400">Qo‘shimcha naqd to‘lov</Label>
+        <Input
+          className="finance-input border-rose-300 focus-visible:ring-rose-300"
+          type="text"
+          inputMode="numeric"
+          placeholder="0"
+          value={value}
+          onChange={event => onChange(sanitizeIntegerInput(event.target.value))}
+        />
+      </div>
+      {Number(value || 0) > currentDebt && (
+        <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-400">
+          Kiritilgan summa joriy qarzdan katta — ortiqcha qism mijozning haqdorligi sifatida qoladi.
+        </p>
+      )}
+    </div>
+  );
 }

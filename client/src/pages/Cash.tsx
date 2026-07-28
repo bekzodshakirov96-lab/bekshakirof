@@ -7,6 +7,7 @@ import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeInteger
 import { trpc } from "@/lib/trpc";
 import {
   Banknote,
+  Calculator,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -895,6 +896,95 @@ function AgentProductMatrix({ date }: { date: string }) {
   );
 }
 
+/**
+ * Kassani jismonan sanab, tizim hisoblagan qoldiq bilan solishtirish — kamomad/ortiqchani
+ * shu yerda ko'rish uchun. `kassa.actualCash.upsert` yozadi, `daySummary` javobidagi
+ * actualCash/actualCashNote/actualDiff orqali o'qiladi.
+ */
+function ActualCashCard({
+  date,
+  timestamp,
+  kassaQoldigi,
+  data,
+  onSaved,
+}: {
+  date: string;
+  timestamp: number;
+  kassaQoldigi: number;
+  data: { actualCash: number | null; actualCashNote: string; actualDiff: number | null } | undefined;
+  onSaved: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    setValue(data?.actualCash != null ? String(data.actualCash) : "");
+    setNote(data?.actualCashNote ?? "");
+  }, [timestamp, data?.actualCash, data?.actualCashNote]);
+
+  const upsert = trpc.kassa.actualCash.upsert.useMutation({
+    onSuccess: () => {
+      toast.success("Haqiqiy naqd saqlandi");
+      onSaved();
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const hasValue = data?.actualCash != null;
+  const diff = data?.actualDiff ?? 0;
+
+  return (
+    <div className="mt-5 rounded-2xl border border-border bg-card p-5">
+      <div className="mb-1 flex items-center gap-2"><Calculator className="size-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Haqiqiy sanalgan naqd — {date}</h3></div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Kassadagi pulni jismonan sanab shu yerga kiriting — tizim hisoblangan qoldiq bilan
+        ({formatMoney(kassaQoldigi)}) solishtirib, farqni (kamomad yoki ortiqcha) ko'rsatadi.
+      </p>
+      <div className="grid items-end gap-3 sm:grid-cols-[200px_1fr_auto]">
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-muted-foreground">Sanalgan summa</label>
+          <Input
+            className="finance-input"
+            type="text"
+            inputMode="numeric"
+            placeholder="0"
+            value={value}
+            onChange={event => setValue(sanitizeIntegerInput(event.target.value))}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-muted-foreground">Izoh</label>
+          <Input
+            className="finance-input"
+            placeholder="Ixtiyoriy"
+            value={note}
+            onChange={event => setNote(event.target.value)}
+          />
+        </div>
+        <Button
+          disabled={value === "" || upsert.isPending}
+          onClick={() =>
+            upsert.mutate({ date: timestamp, actualCash: Math.round(Number(value || 0)), note: note || undefined })
+          }
+        >
+          {upsert.isPending ? "Saqlanmoqda..." : "Saqlash"}
+        </Button>
+      </div>
+      {hasValue && (
+        <div
+          className={`mt-3 rounded-xl border p-3 text-sm font-semibold ${
+            diff === 0
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-rose-200 bg-rose-50 text-rose-700"
+          }`}
+        >
+          {diff === 0 ? "Mos keladi — farq yo'q." : `Farq: ${formatMoney(diff)} ${diff > 0 ? "(ortiqcha)" : "(kamomad)"}`}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Cash() {
   const [date, setDate] = useState(today());
   const timestamp = dateToTimestamp(date);
@@ -932,6 +1022,14 @@ export default function Cash() {
           tone={data && data.problemAgentCount > 0 ? "rose" : "green"}
         />
       </div>
+
+      <ActualCashCard
+        date={date}
+        timestamp={timestamp}
+        kassaQoldigi={kassaQoldigi}
+        data={data}
+        onSaved={() => daySummary.refetch()}
+      />
 
       <div className="mt-5 rounded-2xl border border-border bg-card p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { agents, clients, transactions } from "../drizzle/schema";
+import { agents, clientPayments, clients, transactions } from "../drizzle/schema";
 import { requireDb } from "./db";
 
 const numberSql = (template: TemplateStringsArray, ...params: unknown[]) =>
@@ -23,6 +23,11 @@ export async function getClientFinancialRows() {
       terminalPaid: numberSql`coalesce(sum(${transactions.terminalPayment}), 0)`,
       clickPaid: numberSql`coalesce(sum(${transactions.clickPayment}), 0)`,
       transactionCount: numberSql`count(${transactions.id})`,
+      // Qarz to'lovlari alohida subquery bilan olinadi — ikkinchi LEFT JOIN
+      // qatorlarni ko'paytirib, savdo summalarini ham buzib yuborardi.
+      debtPaidCash: numberSql`coalesce((select sum(cp.cashAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
+      debtPaidTerminal: numberSql`coalesce((select sum(cp.terminalAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
+      debtPaidClick: numberSql`coalesce((select sum(cp.clickAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
     })
     .from(clients)
     .leftJoin(agents, eq(clients.agentId, agents.id))
@@ -44,10 +49,32 @@ export function enrichClientFinancialRows(
   rows: Awaited<ReturnType<typeof getClientFinancialRows>>,
 ) {
   return rows.map(row => {
-    const totalPaid = row.cashPaid + row.terminalPaid + row.clickPaid;
+    /** Savdo paytida to'langan pul. */
+    const salePaid = row.cashPaid + row.terminalPaid + row.clickPaid;
+    /** Keyinchalik alohida qabul qilingan qarz to'lovlari. */
+    const debtPaid = row.debtPaidCash + row.debtPaidTerminal + row.debtPaidClick;
+    const totalPaid = salePaid + debtPaid;
     const currentDebt = row.openingDebt + row.totalSales - totalPaid;
-    return { ...row, totalPaid, currentDebt };
+    return { ...row, salePaid, debtPaid, totalPaid, currentDebt };
   });
+}
+
+/** Bitta mijozning joriy qarzini tez olish — Yangi savdo formasida "qarzni yopish" maydoni uchun. */
+export async function getClientCurrentDebt(clientId: number): Promise<number> {
+  const db = await requireDb();
+  const [row] = await db
+    .select({
+      openingDebt: clients.openingDebt,
+      totalSales: numberSql`coalesce(sum(${transactions.totalAmount}), 0)`,
+      salePaid: numberSql`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment}), 0)`,
+      debtPaid: numberSql`coalesce((select sum(cp.cashAmount + cp.terminalAmount + cp.clickAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
+    })
+    .from(clients)
+    .leftJoin(transactions, eq(transactions.clientId, clients.id))
+    .where(eq(clients.id, clientId))
+    .groupBy(clients.id, clients.openingDebt);
+  if (!row) return 0;
+  return row.openingDebt + row.totalSales - row.salePaid - row.debtPaid;
 }
 
 export function paginate<T>(items: T[], page: number, pageSize: number) {

@@ -1,9 +1,12 @@
 import "dotenv/config";
 import express from "express";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
+import { authenticateRequest } from "./localAuth";
 import { createContext } from "./context";
 import { UPLOADS_DIR } from "../storage";
 import { serveStatic, setupVite } from "./vite";
@@ -39,11 +42,41 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  // Reverse proxy ortida ishlaganda haqiqiy mijoz IP'sini olish uchun (rate-limit shunga tayanadi).
+  app.set("trust proxy", 1);
+  // Standart xavfsizlik header'lari. Vite dev serveri inline skript/HMR ishlatgani uchun
+  // CSP faqat production'da yoqiladi.
+  app.use(
+    helmet({
+      contentSecurityPolicy: process.env.NODE_ENV === "development" ? false : undefined,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  // Uploaded files (e.g. imported Excel workbooks) are stored on local disk
-  // and served back from here. See server/storage.ts.
+  // Parolni ketma-ket taxmin qilishga (brute-force) qarshi: bitta IP'dan 15 daqiqada
+  // 20 ta login urinishi. Faqat login yo'liga qo'llanadi, oddiy ishlashga xalaqit bermaydi.
+  app.use(
+    "/api/trpc/auth.login",
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: 20,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: "Juda ko'p urinish. 15 daqiqadan so'ng qayta urinib ko'ring." },
+    }),
+  );
+  // Yuklangan fayllar (import qilingan Excel jadvallari) — butun savdo/mijoz ma'lumotini
+  // o'z ichiga oladi, shuning uchun faqat tizimga kirgan foydalanuvchiga beriladi.
+  app.use("/uploads", async (req, res, next) => {
+    const user = await authenticateRequest(req);
+    if (!user) {
+      res.status(401).json({ error: "Avval tizimga kiring." });
+      return;
+    }
+    next();
+  });
   app.use("/uploads", express.static(UPLOADS_DIR));
   // tRPC API
   app.use(

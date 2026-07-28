@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, cashEntries, clients, products, transactions } from "../../drizzle/schema";
+import { agents, cashEntries, clientPayments, clients, products, transactions } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure, requireOwnAgent, salesProcedure } from "../access";
+import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import {
   normalizeContainerType,
   reconcileTransactionContainers,
@@ -294,6 +295,7 @@ export const transactionsRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       requireOwnAgent(ctx.user.role, ctx.user.agentId, input.agentId);
+      await assertPeriodUnlocked(new Date(input.transactionDate));
       const db = await requireDb();
       return db.transaction(async tx => {
         const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).limit(1);
@@ -346,6 +348,13 @@ export const transactionsRouter = router({
           quantity: input.quantity,
           createdBy: ctx.user.id,
         });
+        await logAudit(tx, {
+          tableName: "transactions",
+          recordId: created.id,
+          action: "create",
+          userId: ctx.user.id,
+          after: { clientId: input.clientId, agentId: input.agentId, productName: product.name, quantity: input.quantity, salePrice: input.salePrice, totalAmount, cashPayment: input.cashPayment, terminalPayment: input.terminalPayment, clickPayment: input.clickPayment },
+        });
         return { success: true, totalAmount, containerImpact };
       });
     }),
@@ -378,6 +387,10 @@ export const transactionsRouter = router({
           cashPayment: z.number().int().min(0).default(0),
           terminalPayment: z.number().int().min(0).default(0),
           clickPayment: z.number().int().min(0).default(0),
+          /** Savdo summasidan tashqari, shu mijozning eski qarzini yopish uchun qo'shimcha
+           * naqd pul — alohida `client_payments` yozuvi sifatida saqlanadi, savat jamisiga
+           * cheklanmaydi. */
+          debtPaymentAmount: z.number().int().min(0).default(0),
           note: z.string().max(1_000).optional(),
         })
         .refine(value => {
@@ -393,6 +406,7 @@ export const transactionsRouter = router({
         ),
     )
     .mutation(async ({ input, ctx }) => {
+      await assertPeriodUnlocked(new Date(input.transactionDate));
       const db = await requireDb();
       return db.transaction(async tx => {
         const productRows = await tx
@@ -481,10 +495,43 @@ export const transactionsRouter = router({
             quantity: item.quantity,
             createdBy: ctx.user.id,
           });
+          await logAudit(tx, {
+            tableName: "transactions",
+            recordId: created.id,
+            action: "create",
+            userId: ctx.user.id,
+            after: { clientId: input.clientId, agentId: input.agentId, productName: product.name, quantity: item.quantity, salePrice: item.salePrice, totalAmount, cashPayment: cashTake, terminalPayment: terminalTake, clickPayment: clickTake },
+          });
           results.push({ productName: product.name, totalAmount });
         }
 
-        return { success: true, cartTotal, lineCount: results.length, lines: results } as const;
+        if (input.debtPaymentAmount > 0) {
+          const [createdPayment] = await tx.insert(clientPayments).values({
+            clientId: input.clientId,
+            agentId: input.agentId,
+            paymentDate: transactionDate,
+            cashAmount: input.debtPaymentAmount,
+            terminalAmount: 0,
+            clickAmount: 0,
+            note: "Yangi savdo orqali qabul qilingan qo‘shimcha to‘lov (eski qarz)",
+            createdBy: ctx.user.id,
+          }).$returningId();
+          await logAudit(tx, {
+            tableName: "client_payments",
+            recordId: createdPayment.id,
+            action: "create",
+            userId: ctx.user.id,
+            after: { clientId: input.clientId, agentId: input.agentId, cashAmount: input.debtPaymentAmount, source: "Yangi savdo" },
+          });
+        }
+
+        return {
+          success: true,
+          cartTotal,
+          lineCount: results.length,
+          lines: results,
+          debtPaymentAmount: input.debtPaymentAmount,
+        } as const;
       });
     }),
   update: businessProcedure
@@ -504,6 +551,7 @@ export const transactionsRouter = router({
           returnContainerType: z.enum(["keg_30", "keg_50"]).nullable().optional(),
           returnQuantity: z.number().int().min(0).max(1_000_000).default(0),
           note: z.string().max(1_000).nullable().optional(),
+          reason: z.string().trim().max(500).optional(),
         })
         .refine(
           value => value.cashPayment + value.terminalPayment + value.clickPayment <= value.quantity * value.salePrice,
@@ -512,6 +560,12 @@ export const transactionsRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
+      const [previous] = await db.select().from(transactions).where(eq(transactions.id, input.id)).limit(1);
+      if (!previous) throw new Error("Operatsiya topilmadi.");
+      // Eski ham, yangi ham qulflangan davrga tushmasligi kerak — aks holda yozuvni
+      // qulflangan kundan chiqarib yoki qulflangan kunga kiritib qo'yish mumkin bo'lardi.
+      await assertPeriodUnlocked(previous.transactionDate);
+      await assertPeriodUnlocked(new Date(input.transactionDate));
       return db.transaction(async tx => {
         const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).limit(1);
         if (!product) throw new Error("Mahsulot topilmadi.");
@@ -561,19 +615,40 @@ export const transactionsRouter = router({
           quantity: input.quantity,
           createdBy: ctx.user.id,
         });
+        const [updated] = await tx.select().from(transactions).where(eq(transactions.id, input.id)).limit(1);
+        await logAudit(tx, {
+          tableName: "transactions",
+          recordId: input.id,
+          action: "update",
+          userId: ctx.user.id,
+          before: previous,
+          after: updated,
+          reason: input.reason ?? null,
+        });
         return { success: true, totalAmount, containerImpact };
       });
     }),
   /** Deletes one transaction. Linked container_movements and stockMovements cascade-delete automatically (FK ON DELETE CASCADE). */
   delete: businessProcedure
-    .input(z.object({ id: z.number().int().positive() }))
-    .mutation(async ({ input }) => {
+    .input(z.object({ id: z.number().int().positive(), reason: z.string().trim().max(500).optional() }))
+    .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
-      const [existing] = await db.select({ id: transactions.id }).from(transactions).where(eq(transactions.id, input.id)).limit(1);
+      const [existing] = await db.select().from(transactions).where(eq(transactions.id, input.id)).limit(1);
       if (!existing) {
         throw new Error("Operatsiya topilmadi yoki allaqachon o‘chirilgan.");
       }
-      await db.delete(transactions).where(eq(transactions.id, input.id));
-      return { success: true } as const;
+      await assertPeriodUnlocked(existing.transactionDate);
+      return db.transaction(async tx => {
+        await tx.delete(transactions).where(eq(transactions.id, input.id));
+        await logAudit(tx, {
+          tableName: "transactions",
+          recordId: input.id,
+          action: "delete",
+          userId: ctx.user.id,
+          before: existing,
+          reason: input.reason ?? null,
+        });
+        return { success: true } as const;
+      });
     }),
 });

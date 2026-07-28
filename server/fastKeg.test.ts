@@ -74,6 +74,13 @@ vi.mock("./db", () => ({
   }),
 }));
 
+// Bu testlar KEG savdosi mantiqini tekshiradi — davr qulfi va audit yozuvi
+// alohida mavzular, shuning uchun ular bu yerda o'chirib qo'yiladi.
+vi.mock("./auditLog", () => ({
+  assertPeriodUnlocked: async () => undefined,
+  logAudit: async () => undefined,
+}));
+
 vi.mock("./containerAccounting", async importOriginal => {
   const actual = await importOriginal<typeof import("./containerAccounting")>();
   return {
@@ -126,6 +133,8 @@ function clientRow(id: number, overrides: Record<string, unknown> = {}) {
     openingDebt: 1_000,
     totalSales: 0,
     totalPaid: 0,
+    /** Savdodan alohida qabul qilingan qarz to'lovlari (client_payments). */
+    debtPaid: 0,
     ...overrides,
   };
 }
