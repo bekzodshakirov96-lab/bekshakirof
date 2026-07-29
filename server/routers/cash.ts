@@ -46,6 +46,7 @@ export const cashRouter = router({
         cashAmount: cashEntries.cashAmount,
         terminalAmount: cashEntries.terminalAmount,
         clickAmount: cashEntries.clickAmount,
+        transferAmount: cashEntries.transferAmount,
       })
       .from(cashEntries)
       .leftJoin(agents, eq(cashEntries.agentId, agents.id))
@@ -125,6 +126,7 @@ export const cashRouter = router({
           cashAmount: cashEntries.cashAmount,
           terminalAmount: cashEntries.terminalAmount,
           clickAmount: cashEntries.clickAmount,
+          transferAmount: cashEntries.transferAmount,
           source: cashEntries.source,
         })
         .from(cashEntries)
@@ -175,6 +177,7 @@ export const cashRouter = router({
           cashAmount: cashEntries.cashAmount,
           terminalAmount: cashEntries.terminalAmount,
           clickAmount: cashEntries.clickAmount,
+          transferAmount: cashEntries.transferAmount,
         })
         .from(cashEntries)
         .leftJoin(agents, eq(cashEntries.agentId, agents.id))
@@ -182,7 +185,7 @@ export const cashRouter = router({
         .orderBy(desc(cashEntries.entryDate), desc(cashEntries.id));
       const summary = rows.reduce(
         (acc, row) => {
-          const total = row.cashAmount + row.terminalAmount + row.clickAmount;
+          const total = row.cashAmount + row.terminalAmount + row.clickAmount + row.transferAmount;
           if (row.type === "income") acc.income += total; else acc.expense += total;
           return acc;
         },
@@ -202,8 +205,9 @@ export const cashRouter = router({
           cashAmount: z.number().int().min(0).default(0),
           terminalAmount: z.number().int().min(0).default(0),
           clickAmount: z.number().int().min(0).default(0),
+          transferAmount: z.number().int().min(0).default(0),
         })
-        .refine(value => value.cashAmount + value.terminalAmount + value.clickAmount > 0, {
+        .refine(value => value.cashAmount + value.terminalAmount + value.clickAmount + value.transferAmount > 0, {
           message: "Kamida bitta to‘lov kanali summasi kiritilishi kerak.",
         }),
     )
@@ -223,6 +227,7 @@ export const cashRouter = router({
             cashAmount: input.cashAmount,
             terminalAmount: input.terminalAmount,
             clickAmount: input.clickAmount,
+            transferAmount: input.transferAmount,
             source: "manual",
             createdBy: ctx.user.id,
           })
@@ -241,6 +246,7 @@ export const cashRouter = router({
             cashAmount: input.cashAmount,
             terminalAmount: input.terminalAmount,
             clickAmount: input.clickAmount,
+            transferAmount: input.transferAmount,
           },
         });
         return { success: true, id: created.id };
@@ -259,9 +265,10 @@ export const cashRouter = router({
           cashAmount: z.number().int().min(0),
           terminalAmount: z.number().int().min(0),
           clickAmount: z.number().int().min(0),
+          transferAmount: z.number().int().min(0).default(0),
           reason: z.string().trim().max(500).optional(),
         })
-        .refine(value => value.cashAmount + value.terminalAmount + value.clickAmount > 0, {
+        .refine(value => value.cashAmount + value.terminalAmount + value.clickAmount + value.transferAmount > 0, {
           message: "Kamida bitta to‘lov kanali summasi kiritilishi kerak.",
         }),
     )
@@ -283,6 +290,7 @@ export const cashRouter = router({
             cashAmount: input.cashAmount,
             terminalAmount: input.terminalAmount,
             clickAmount: input.clickAmount,
+            transferAmount: input.transferAmount,
           })
           .where(eq(cashEntries.id, input.id));
         const [updated] = await tx.select().from(cashEntries).where(eq(cashEntries.id, input.id)).limit(1);

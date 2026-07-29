@@ -47,17 +47,18 @@ type CashEntryRow = {
   cashAmount: number;
   terminalAmount: number;
   clickAmount: number;
+  transferAmount: number;
 };
 
 type DraftRow = {
-  agentId: string; reason: string; terminal: string; click: string;
+  agentId: string; reason: string; terminal: string; click: string; transfer: string;
   amounts: Record<string, string>;
   /** Har bir toifa uchun avtomatik saqlangandan keyingi cashEntries.id — bor bo'lsa,
    * keyingi o'zgarishlar yangi yozuv yaratmaydi, mavjudini yangilaydi. */
   entryIds: Record<string, number | null>;
 };
 const emptyDraftRow = (): DraftRow => ({
-  agentId: "", reason: "", terminal: "", click: "",
+  agentId: "", reason: "", terminal: "", click: "", transfer: "",
   amounts: Object.fromEntries(JOURNAL_COLUMNS.map(name => [name, ""])),
   entryIds: Object.fromEntries(JOURNAL_COLUMNS.map(name => [name, null])),
 });
@@ -141,6 +142,7 @@ function DailyJournalGrid({
   );
   const terminalTotal = useMemo(() => entries.reduce((sum, entry) => sum + entry.terminalAmount, 0), [entries]);
   const clickTotal = useMemo(() => entries.reduce((sum, entry) => sum + entry.clickAmount, 0), [entries]);
+  const transferTotal = useMemo(() => entries.reduce((sum, entry) => sum + entry.transferAmount, 0), [entries]);
 
   function commitExistingAgent(entry: CashEntryRow, value: string) {
     const agentId = value ? Number(value) : null;
@@ -148,7 +150,7 @@ function DailyJournalGrid({
     update.mutate({
       id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId,
       description: entry.description ?? undefined,
-      cashAmount: entry.cashAmount, terminalAmount: entry.terminalAmount, clickAmount: entry.clickAmount,
+      cashAmount: entry.cashAmount, terminalAmount: entry.terminalAmount, clickAmount: entry.clickAmount, transferAmount: entry.transferAmount,
     });
   }
 
@@ -158,32 +160,33 @@ function DailyJournalGrid({
     update.mutate({
       id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId: entry.agentId,
       description: next || undefined,
-      cashAmount: entry.cashAmount, terminalAmount: entry.terminalAmount, clickAmount: entry.clickAmount,
+      cashAmount: entry.cashAmount, terminalAmount: entry.terminalAmount, clickAmount: entry.clickAmount, transferAmount: entry.transferAmount,
     });
   }
 
   function commitExistingCash(entry: CashEntryRow, value: string) {
     const cashAmount = Math.round(Number(value || 0));
     if (cashAmount === entry.cashAmount) return;
-    if (cashAmount + entry.terminalAmount + entry.clickAmount <= 0) { del.mutate({ id: entry.id }); return; }
+    if (cashAmount + entry.terminalAmount + entry.clickAmount + entry.transferAmount <= 0) { del.mutate({ id: entry.id }); return; }
     update.mutate({
       id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId: entry.agentId,
       description: entry.description ?? undefined,
-      cashAmount, terminalAmount: entry.terminalAmount, clickAmount: entry.clickAmount,
+      cashAmount, terminalAmount: entry.terminalAmount, clickAmount: entry.clickAmount, transferAmount: entry.transferAmount,
     });
   }
 
-  function commitExistingChannel(entry: CashEntryRow, channel: "terminal" | "click", value: string) {
+  function commitExistingChannel(entry: CashEntryRow, channel: "terminal" | "click" | "transfer", value: string) {
     const amount = Math.round(Number(value || 0));
-    const current = channel === "terminal" ? entry.terminalAmount : entry.clickAmount;
+    const current = channel === "terminal" ? entry.terminalAmount : channel === "click" ? entry.clickAmount : entry.transferAmount;
     if (amount === current) return;
     const terminalAmount = channel === "terminal" ? amount : entry.terminalAmount;
     const clickAmount = channel === "click" ? amount : entry.clickAmount;
-    if (entry.cashAmount + terminalAmount + clickAmount <= 0) { del.mutate({ id: entry.id }); return; }
+    const transferAmount = channel === "transfer" ? amount : entry.transferAmount;
+    if (entry.cashAmount + terminalAmount + clickAmount + transferAmount <= 0) { del.mutate({ id: entry.id }); return; }
     update.mutate({
       id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId: entry.agentId,
       description: entry.description ?? undefined,
-      cashAmount: entry.cashAmount, terminalAmount, clickAmount,
+      cashAmount: entry.cashAmount, terminalAmount, clickAmount, transferAmount,
     });
   }
 
@@ -206,12 +209,23 @@ function DailyJournalGrid({
     if (!draft) return;
     const nextEntryIds = { ...draft.entryIds };
     let idsChanged = false;
+    const terminalVal = Math.round(Number(draft.terminal || 0));
+    const clickVal = Math.round(Number(draft.click || 0));
+    const transferVal = Math.round(Number(draft.transfer || 0));
+    // Приход кег/пет naqd katagi 0 bo'lsa-yu, Терминал/Click/Перечисление to'ldirilgan
+    // bo'lsa — pul hech qayerga (Kassa jamiPrihod'ga ham, Агент х Товар'ning Касса
+    // ustuniga ham) yozilmay, ko'zdan yo'qolib qolmasligi uchun standart bo'yicha
+    // "Приход кег" toifasiga yoziladi (naqd=0, boshqa kanallar bilan birga).
+    const hasIncomeCash = INCOME_CATEGORIES.some(name => Math.round(Number(draft.amounts[name] || 0)) > 0);
+    const fallbackIncomeCategory =
+      !hasIncomeCash && (terminalVal > 0 || clickVal > 0 || transferVal > 0) ? INCOME_CATEGORIES[0] : null;
     for (const category of JOURNAL_COLUMNS) {
       const amount = Math.round(Number(draft.amounts[category] || 0));
       const existingId = draft.entryIds[category];
       const type = CATEGORY_TYPE[category];
+      const isFallback = category === fallbackIncomeCategory;
       try {
-        if (amount <= 0) {
+        if (amount <= 0 && !isFallback) {
           if (existingId) {
             await del.mutateAsync({ id: existingId });
             nextEntryIds[category] = null;
@@ -224,8 +238,9 @@ function DailyJournalGrid({
           agentId: draft.agentId ? Number(draft.agentId) : undefined,
           description: type === "expense" ? draft.reason.trim() || undefined : undefined,
           cashAmount: amount,
-          terminalAmount: Math.round(Number(draft.terminal || 0)),
-          clickAmount: Math.round(Number(draft.click || 0)),
+          terminalAmount: terminalVal,
+          clickAmount: clickVal,
+          transferAmount: transferVal,
         };
         if (existingId) {
           await update.mutateAsync({ id: existingId, ...payload });
@@ -272,7 +287,8 @@ function DailyJournalGrid({
 
   const TERMINAL_COL = JOURNAL_COLUMNS.length + 1;
   const CLICK_COL = JOURNAL_COLUMNS.length + 2;
-  const REASON_COL = JOURNAL_COLUMNS.length + 3;
+  const TRANSFER_COL = JOURNAL_COLUMNS.length + 3;
+  const REASON_COL = JOURNAL_COLUMNS.length + 4;
   const totalJournalRows = sortedEntries.length + drafts.length;
 
   /** Strelkalar bilan katakdan katakka o'tish: ustun bo'ylab Yuqori/Past, qator
@@ -334,6 +350,7 @@ function DailyJournalGrid({
             {JOURNAL_COLUMNS.map(name => <th key={name} className={`whitespace-nowrap px-3 py-2.5 text-right ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" : ""}`}>{name}</th>)}
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Терминал</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Click</th>
+            <th className="whitespace-nowrap px-3 py-2.5 text-right">Перечисление</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-left">Нимага расход</th>
             <th className="w-11" />
           </tr>
@@ -405,6 +422,19 @@ function DailyJournalGrid({
                     onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
                     onBlur={event => commitExistingChannel(entry, "click", event.target.value)}
                     onKeyDown={event => onAmountKeyDown(event, rowIndex, CLICK_COL)}
+                  />
+                </td>
+                <td className="px-1.5 py-1">
+                  <input
+                    key={`transfer-${entry.id}-${entry.transferAmount}`}
+                    type="text" inputMode="numeric"
+                    data-journal-cell={`${rowIndex}-${TRANSFER_COL}`}
+                    defaultValue={entry.transferAmount ? String(entry.transferAmount) : ""}
+                    placeholder="0"
+                    className={cellInputClass}
+                    onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
+                    onBlur={event => commitExistingChannel(entry, "transfer", event.target.value)}
+                    onKeyDown={event => onAmountKeyDown(event, rowIndex, TRANSFER_COL)}
                   />
                 </td>
                 <td className="px-1.5 py-1">
@@ -495,6 +525,17 @@ function DailyJournalGrid({
               </td>
               <td className="px-1.5 py-1">
                 <input
+                  type="text" inputMode="numeric"
+                  data-journal-cell={`${rowIndex}-${TRANSFER_COL}`}
+                  value={draft.transfer}
+                  placeholder="0"
+                  className={`${cellInputClass} text-muted-foreground`}
+                  onChange={event => { updateDraft(index, { transfer: sanitizeIntegerInput(event.target.value) }); scheduleAutoSave(index); }}
+                  onKeyDown={event => onAmountKeyDown(event, rowIndex, TRANSFER_COL)}
+                />
+              </td>
+              <td className="px-1.5 py-1">
+                <input
                   value={draft.reason}
                   data-journal-cell={`${rowIndex}-${REASON_COL}`}
                   placeholder="Нимага расход"
@@ -519,6 +560,7 @@ function DailyJournalGrid({
             {totals.map((value, index) => <td key={JOURNAL_COLUMNS[index]} className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${JOURNAL_COLUMNS[index] === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" : ""}`}>{formatMoney(value)}</td>)}
             <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(terminalTotal)}</td>
             <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(clickTotal)}</td>
+            <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(transferTotal)}</td>
             <td colSpan={2} />
           </tr>
           <tr className="border-t-2 border-sky-100 bg-sky-50/70 text-xs font-bold text-sky-900">

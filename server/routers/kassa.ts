@@ -92,6 +92,18 @@ async function computePendingByChannel(timestamp: number) {
       ),
     );
 
+  // Presel guruhi kabi — bu tizimdan tashqarida sotilib, Kunlik jurnalga Перечисление
+  // sifatida qo'lda yozib qo'yiladigan savdolar. Bu pul bankka darhol tushmagani uchun
+  // "haqiqatda tasdiqlangan" tomonga emas, aynan shu "kutilgan" tomonga qo'shiladi —
+  // tasdiqlanguncha (kassaDailyActuals.transferConfirmed) qoldiq sifatida ko'rinib turadi.
+  const [expectedTransferEntries] = await db
+    .select({
+      today: numberSql`coalesce(sum(case when ${cashEntries.entryDate} >= ${todayStart} then ${cashEntries.transferAmount} else 0 end), 0)`,
+      cumulative: numberSql`coalesce(sum(${cashEntries.transferAmount}), 0)`,
+    })
+    .from(cashEntries)
+    .where(and(eq(cashEntries.type, "income"), sql`${cashEntries.entryDate} <= ${end}`));
+
   const [actualConfirmed] = await db
     .select({
       terminalToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${todayStart} then ${kassaDailyActuals.terminalConfirmed} else 0 end), 0)`,
@@ -106,9 +118,13 @@ async function computePendingByChannel(timestamp: number) {
 
   const channel = (name: "cash" | "terminal" | "click" | "transfer") => {
     const key = name === "cash" ? "cash" : name;
-    const expectedToday = expected[`${key}Today` as keyof typeof expected] + expectedDebt[`${key}Today` as keyof typeof expectedDebt];
-    const expectedCumulative =
+    let expectedToday = expected[`${key}Today` as keyof typeof expected] + expectedDebt[`${key}Today` as keyof typeof expectedDebt];
+    let expectedCumulative =
       expected[`${key}Cumulative` as keyof typeof expected] + expectedDebt[`${key}Cumulative` as keyof typeof expectedDebt];
+    if (name === "transfer") {
+      expectedToday += expectedTransferEntries.today;
+      expectedCumulative += expectedTransferEntries.cumulative;
+    }
     const actualToday = name === "cash" ? actualCash.today : actualConfirmed[`${key}Today` as keyof typeof actualConfirmed];
     const actualCumulative =
       name === "cash" ? actualCash.cumulative : actualConfirmed[`${key}Cumulative` as keyof typeof actualConfirmed];

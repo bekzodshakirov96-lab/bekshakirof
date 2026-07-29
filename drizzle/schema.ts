@@ -158,6 +158,11 @@ export const cashEntries = mysqlTable(
     cashAmount: int("cashAmount").default(0).notNull(),
     terminalAmount: int("terminalAmount").default(0).notNull(),
     clickAmount: int("clickAmount").default(0).notNull(),
+    // Перечисление — masalan presel guruhining bank o'tkazmasi orqali savdosi. Naqd/Terminal/
+    // Click'dan farqli o'laroq bu pul kassaga darhol tushmaydi (bankka tushishi haftalar
+    // olishi mumkin), shuning uchun kassaQoldigi hisobiga qo'shilmaydi — faqat "Kutilayotgan
+    // kassa" panelida kutilayotgan summa sifatida ko'rsatiladi, toki tasdiqlanmaguncha.
+    transferAmount: int("transferAmount").default(0).notNull(),
     source: mysqlEnum("source", ["manual", "excel"]).default("manual").notNull(),
     createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),

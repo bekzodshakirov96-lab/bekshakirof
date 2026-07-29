@@ -1,0 +1,1 @@
+ALTER TABLE `cash_entries` ADD `transferAmount` int DEFAULT 0 NOT NULL;
