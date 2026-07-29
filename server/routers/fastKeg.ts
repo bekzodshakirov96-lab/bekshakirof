@@ -41,10 +41,11 @@ const fastKegRowSchema = z
     returned50: quantitySchema.default(0),
     cash: paymentSchema,
     terminal: paymentSchema,
+    click: paymentSchema,
     transfer: paymentSchema,
   })
   .refine(
-    row => row.keg30 + row.keg50 + row.returned30 + row.returned50 + row.cash + row.terminal + row.transfer > 0,
+    row => row.keg30 + row.keg50 + row.returned30 + row.returned50 + row.cash + row.terminal + row.click + row.transfer > 0,
     { message: "Mijoz qatorida kamida bitta KEG, tara yoki to‘lov qiymati bo‘lishi kerak." },
   );
 
@@ -95,10 +96,10 @@ async function loadAgentClientRows(db: FastKegDatabase, agentId: number) {
       phone: clients.phone,
       openingDebt: clients.openingDebt,
       totalSales: numberSql`coalesce(sum(${transactions.totalAmount}), 0)`,
-      totalPaid: numberSql`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment}), 0)`,
+      totalPaid: numberSql`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment} + ${transactions.transferPayment}), 0)`,
       // Qarz to'lovlari (savdodan alohida qabul qilingan pul) — subquery bilan, aks holda
       // transactions bilan JOIN qatorlarni ko'paytirib, yig'indini buzib yuboradi.
-      debtPaid: numberSql`coalesce((select sum(cp.cashAmount + cp.terminalAmount + cp.clickAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
+      debtPaid: numberSql`coalesce((select sum(cp.cashAmount + cp.terminalAmount + cp.clickAmount + cp.transferAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
     })
     .from(clients)
     .leftJoin(transactions, eq(transactions.clientId, clients.id))
@@ -292,8 +293,8 @@ export const fastKegRouter = router({
           name: clients.name,
           openingDebt: clients.openingDebt,
           totalSales: numberSql`coalesce(sum(${transactions.totalAmount}), 0)`,
-          totalPaid: numberSql`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment}), 0)`,
-          debtPaid: numberSql`coalesce((select sum(cp.cashAmount + cp.terminalAmount + cp.clickAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
+          totalPaid: numberSql`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment} + ${transactions.transferPayment}), 0)`,
+          debtPaid: numberSql`coalesce((select sum(cp.cashAmount + cp.terminalAmount + cp.clickAmount + cp.transferAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
         })
         .from(clients)
         .leftJoin(transactions, eq(transactions.clientId, clients.id))
@@ -352,6 +353,7 @@ export const fastKegRouter = router({
         returned50: number;
         cash: number;
         terminal: number;
+        click: number;
         transfer: number;
         saleAmount: number;
         endingDebt: number;
@@ -433,7 +435,8 @@ export const fastKegRouter = router({
               totalAmount,
               cashPayment: actionIndex === 0 ? inputRow.cash : 0,
               terminalPayment: actionIndex === 0 ? inputRow.terminal : 0,
-              clickPayment: actionIndex === 0 ? inputRow.transfer : 0,
+              clickPayment: actionIndex === 0 ? inputRow.click : 0,
+              transferPayment: actionIndex === 0 ? inputRow.transfer : 0,
               note: `Tezkor KEG savdosi • ${input.idempotencyKey}`,
               source: "manual",
               createdBy: ctx.user.id,
@@ -479,6 +482,7 @@ export const fastKegRouter = router({
               saleAmount: calculated.saleAmount,
               cash: inputRow.cash,
               terminal: inputRow.terminal,
+              click: inputRow.click,
               transfer: inputRow.transfer,
             },
           });

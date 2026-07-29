@@ -17,10 +17,12 @@ function clientRow(overrides: Record<string, unknown> = {}) {
     cashPaid: 2_000_000,
     terminalPaid: 1_500_000,
     clickPaid: 500_000,
+    transferPaid: 0,
     transactionCount: 3,
     debtPaidCash: 0,
     debtPaidTerminal: 0,
     debtPaidClick: 0,
+    debtPaidTransfer: 0,
     ...overrides,
   }] as Parameters<typeof enrichClientFinancialRows>[0];
 }
@@ -46,6 +48,15 @@ describe("moliyaviy hisob-kitoblar", () => {
     );
     expect(result.salePaid).toBe(4_000_000);
     expect(result.debtPaid).toBe(500_000);
+  });
+
+  it("bank o‘tkazmasi (Перечисление) ham savdo va qarz to‘lovi hisobiga qo‘shiladi", () => {
+    const [result] = enrichClientFinancialRows(
+      clientRow({ transferPaid: 400_000, debtPaidTransfer: 100_000 }),
+    );
+    expect(result.salePaid).toBe(4_400_000);
+    expect(result.debtPaid).toBe(100_000);
+    expect(result.currentDebt).toBe(1_500_000);
   });
 
   it("qarzdan ortiq to‘lov manfiy qarz (avans) beradi", () => {

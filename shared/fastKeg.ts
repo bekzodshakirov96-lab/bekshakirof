@@ -5,6 +5,9 @@ export type FastKegQuantities = {
   returned50: number;
   cash: number;
   terminal: number;
+  /** Click ilovasi orqali kartadan-kartaga to'lov. */
+  click: number;
+  /** Bank o'tkazmasi — mijoz (odatda firma) hisob-raqamidan bizning hisob-raqamimizga. */
   transfer: number;
 };
 
@@ -29,7 +32,7 @@ export function calculateFastKegRow(
   const issued30 = quantities.keg30 * pricing.keg30UnitsPerItem;
   const issued50 = quantities.keg50 * pricing.keg50UnitsPerItem;
   const saleAmount = quantities.keg30 * pricing.keg30Price + quantities.keg50 * pricing.keg50Price;
-  const totalPayment = quantities.cash + quantities.terminal + quantities.transfer;
+  const totalPayment = quantities.cash + quantities.terminal + quantities.click + quantities.transfer;
   const endingDebt = current.currentDebt + saleAmount - totalPayment;
   const endingKeg30Balance = current.currentKeg30Balance + issued30 - quantities.returned30;
   const endingKeg50Balance = current.currentKeg50Balance + issued50 - quantities.returned50;
@@ -57,6 +60,7 @@ export function summarizeFastKegRows(
     returned50: number;
     cash: number;
     terminal: number;
+    click: number;
     transfer: number;
     saleAmount: number;
     endingDebt: number;
@@ -69,6 +73,7 @@ export function summarizeFastKegRows(
       returned50: summary.returned50 + row.returned50,
       cash: summary.cash + row.cash,
       terminal: summary.terminal + row.terminal,
+      click: summary.click + row.click,
       transfer: summary.transfer + row.transfer,
       saleAmount: summary.saleAmount + row.saleAmount,
       endingDebt: summary.endingDebt + row.endingDebt,
@@ -81,6 +86,7 @@ export function summarizeFastKegRows(
       returned50: 0,
       cash: 0,
       terminal: 0,
+      click: 0,
       transfer: 0,
       saleAmount: 0,
       endingDebt: 0,

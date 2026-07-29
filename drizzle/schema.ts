@@ -127,6 +127,10 @@ export const transactions = mysqlTable(
     cashPayment: int("cashPayment").default(0).notNull(),
     terminalPayment: int("terminalPayment").default(0).notNull(),
     clickPayment: int("clickPayment").default(0).notNull(),
+    /** Bank o'tkazmasi — mijozning (odatda firma) hisob-raqamidan bizning hisob-raqamimizga
+     * to'g'ridan-to'g'ri tushgan pul, naqd/terminal/Click'dan farqli ravishda agent buni
+     * jismonan yig'may topshiradi. */
+    transferPayment: int("transferPayment").default(0).notNull(),
     note: varchar("note", { length: 255 }),
     source: mysqlEnum("source", ["manual", "excel"]).default("manual").notNull(),
     createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
@@ -276,6 +280,7 @@ export const clientPayments = mysqlTable(
     cashAmount: int("cashAmount").default(0).notNull(),
     terminalAmount: int("terminalAmount").default(0).notNull(),
     clickAmount: int("clickAmount").default(0).notNull(),
+    transferAmount: int("transferAmount").default(0).notNull(),
     note: varchar("note", { length: 1_000 }),
     createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),

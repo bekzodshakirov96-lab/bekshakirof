@@ -38,6 +38,7 @@ type EntryValue = {
   returned50: string;
   cash: string;
   terminal: string;
+  click: string;
   transfer: string;
 };
 
@@ -51,6 +52,7 @@ type SaveFeedback = {
     saleAmount?: number;
     cash?: number;
     terminal?: number;
+    click?: number;
     transfer?: number;
     endingDebt?: number;
     endingKeg30Balance?: number;
@@ -59,7 +61,7 @@ type SaveFeedback = {
   }>;
 };
 
-const EMPTY_ENTRY: EntryValue = { keg30: "", keg50: "", returned30: "", returned50: "", cash: "", terminal: "", transfer: "" };
+const EMPTY_ENTRY: EntryValue = { keg30: "", keg50: "", returned30: "", returned50: "", cash: "", terminal: "", click: "", transfer: "" };
 
 function createIdempotencyKey() {
   return `fk_${crypto.randomUUID().replaceAll("-", "")}`;
@@ -83,13 +85,14 @@ function quantitiesOf(value: EntryValue): FastKegQuantities {
     returned50: numeric(value.returned50),
     cash: numeric(value.cash),
     terminal: numeric(value.terminal),
+    click: numeric(value.click),
     transfer: numeric(value.transfer),
   };
 }
 
 function hasValue(value: EntryValue) {
   const row = quantitiesOf(value);
-  return row.keg30 + row.keg50 + row.returned30 + row.returned50 + row.cash + row.terminal + row.transfer > 0;
+  return row.keg30 + row.keg50 + row.returned30 + row.returned50 + row.cash + row.terminal + row.click + row.transfer > 0;
 }
 
 const entryFields: Array<{ key: keyof EntryValue; label: string; tone: string }> = [
@@ -99,7 +102,8 @@ const entryFields: Array<{ key: keyof EntryValue; label: string; tone: string }>
   { key: "returned50", label: "Tara 50 qaytdi", tone: "focus-visible:ring-teal-400 bg-teal-50/55" },
   { key: "cash", label: "Наличные", tone: "focus-visible:ring-violet-400 bg-violet-50/55" },
   { key: "terminal", label: "Терминаль", tone: "focus-visible:ring-fuchsia-400 bg-fuchsia-50/55" },
-  { key: "transfer", label: "Перечисление", tone: "focus-visible:ring-sky-400 bg-sky-50/55" },
+  { key: "click", label: "Click", tone: "focus-visible:ring-sky-400 bg-sky-50/55" },
+  { key: "transfer", label: "Перечисление", tone: "focus-visible:ring-indigo-400 bg-indigo-50/55" },
 ];
 
 export default function FastKeg() {
@@ -178,6 +182,7 @@ export default function FastKeg() {
             saleAmount: row.saleAmount,
             cash: row.cash,
             terminal: row.terminal,
+            click: row.click,
             transfer: row.transfer,
             endingDebt: row.endingDebt,
             endingKeg30Balance: row.endingKeg30Balance,
@@ -385,7 +390,7 @@ export default function FastKeg() {
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard label="KEG 30 qoldig‘i" value={`${endingKeg30Total} dona`} helper={`O‘zgarish: ${netKeg30Total >= 0 ? "+" : ""}${netKeg30Total} • sotildi: ${summary.keg30}`} icon={PackageCheck} tone="amber" />
         <SummaryCard label="KEG 50 qoldig‘i" value={`${endingKeg50Total} dona`} helper={`O‘zgarish: ${netKeg50Total >= 0 ? "+" : ""}${netKeg50Total} • sotildi: ${summary.keg50}`} icon={RotateCcw} tone="green" />
-        <SummaryCard label="Jami to‘lov" value={formatMoney(summary.cash + summary.terminal + summary.transfer)} helper={`Наличные: ${formatMoney(summary.cash)} • Терминаль: ${formatMoney(summary.terminal)} • Перечисление: ${formatMoney(summary.transfer)}`} icon={Banknote} tone="violet" />
+        <SummaryCard label="Jami to‘lov" value={formatMoney(summary.cash + summary.terminal + summary.click + summary.transfer)} helper={`Наличные: ${formatMoney(summary.cash)} • Терминаль: ${formatMoney(summary.terminal)} • Click: ${formatMoney(summary.click)} • Перечисление: ${formatMoney(summary.transfer)}`} icon={Banknote} tone="violet" />
         <SummaryCard label="Yakuniy qarzlar" value={formatMoney(summary.endingDebt)} helper={`${selectedIds.length} ta mijoz bo‘yicha`} icon={CircleDollarSign} tone="rose" />
       </div>
 
@@ -439,7 +444,7 @@ export default function FastKeg() {
                   </div>
                   {saveFeedback.kind === "success" ? (
                     <p className="mt-1 text-xs opacity-75">
-                      Savdo: {formatMoney(client.saleAmount ?? 0)} • To‘lov: {formatMoney((client.cash ?? 0) + (client.terminal ?? 0) + (client.transfer ?? 0))} •
+                      Savdo: {formatMoney(client.saleAmount ?? 0)} • To‘lov: {formatMoney((client.cash ?? 0) + (client.terminal ?? 0) + (client.click ?? 0) + (client.transfer ?? 0))} •
                       Yakuniy qarz: {formatMoney(client.endingDebt ?? 0)} • Tara 30/50: {client.endingKeg30Balance ?? 0}/{client.endingKeg50Balance ?? 0}
                     </p>
                   ) : (
@@ -532,8 +537,8 @@ export default function FastKeg() {
             <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-sm font-bold text-foreground">Ketma-ket KEG kiritish jadvali</h3><p className="mt-1 text-xs text-muted-foreground">Tab yoki ←/→ — qo‘shni katak, Enter/↑/↓ — shu ustundagi keyingi yoki oldingi mijoz.</p></div>{selectedIds.length > 0 ? <Button variant="outline" size="sm" onClick={() => { setSelectedIds([]); setEntries({}); }} className="h-9 rounded-xl"><Eraser className="mr-2 h-4 w-4" />Jadvalni tozalash</Button> : null}</div>
             {draft.isError ? <QueryError description={draft.error.message} onRetry={() => draft.refetch()} /> : !agentId ? <div className="flex min-h-24 items-center justify-center px-6 text-center text-xs text-muted-foreground">Jadval agent va mijozlar tanlangach to‘ldiriladi.</div> : selectedIds.length === 0 ? <div className="flex min-h-40 flex-col items-center justify-center px-6 text-center"><div className="grid h-10 w-10 place-items-center rounded-xl bg-cyan-50 text-cyan-700"><Boxes className="h-5 w-5" /></div><p className="mt-3 text-sm font-bold text-foreground">Mijozlarni tanlang</p><p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">Yuqoridagi ro‘yxatdan mijozlarni belgilasangiz, ular tanlash tartibida shu jadvalga avtomatik joylashadi.</p></div> : draft.isLoading ? <div className="flex min-h-40 items-center justify-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Qarz va tara qoldiqlari yuklanmoqda...</div> : (
               <div className="overflow-x-auto overscroll-x-contain">
-                <Table className="min-w-[1890px]">
-                  <TableHeader><TableRow className="bg-muted/80"><TableHead className="sticky left-0 z-20 w-12 bg-muted text-center">№</TableHead><TableHead className="sticky left-12 z-20 min-w-[210px] bg-muted">Mijoz</TableHead><TableHead className="min-w-[130px] text-right">Hozirgi qarz</TableHead><TableHead className="min-w-[105px] bg-amber-50/70 text-center text-amber-800">KEG 30</TableHead><TableHead className="min-w-[105px] bg-cyan-50/70 text-center text-cyan-800">KEG 50</TableHead><TableHead className="min-w-[115px] bg-emerald-50/70 text-center text-emerald-800">Tara 30</TableHead><TableHead className="min-w-[115px] bg-teal-50/70 text-center text-teal-800">Tara 50</TableHead><TableHead className="min-w-[130px] bg-violet-50/70 text-center text-violet-800">Наличные</TableHead><TableHead className="min-w-[130px] bg-fuchsia-50/70 text-center text-fuchsia-800">Терминаль</TableHead><TableHead className="min-w-[140px] bg-sky-50/70 text-center text-sky-800">Перечисление</TableHead><TableHead className="min-w-[130px] text-right">Savdo</TableHead><TableHead className="min-w-[120px] text-right">Qoldiq 30</TableHead><TableHead className="min-w-[120px] text-right">Qoldiq 50</TableHead><TableHead className="min-w-[140px] text-right">Yakuniy qarz</TableHead><TableHead className="w-14" /></TableRow></TableHeader>
+                <Table className="min-w-[2160px]">
+                  <TableHeader><TableRow className="bg-muted/80"><TableHead className="sticky left-0 z-20 w-12 bg-muted text-center">№</TableHead><TableHead className="sticky left-12 z-20 min-w-[210px] bg-muted">Mijoz</TableHead><TableHead className="min-w-[130px] text-right">Hozirgi qarz</TableHead><TableHead className="min-w-[105px] bg-amber-50/70 text-center text-amber-800">KEG 30</TableHead><TableHead className="min-w-[105px] bg-cyan-50/70 text-center text-cyan-800">KEG 50</TableHead><TableHead className="min-w-[115px] bg-emerald-50/70 text-center text-emerald-800">Tara 30</TableHead><TableHead className="min-w-[115px] bg-teal-50/70 text-center text-teal-800">Tara 50</TableHead><TableHead className="min-w-[130px] bg-violet-50/70 text-center text-violet-800">Наличные</TableHead><TableHead className="min-w-[130px] bg-fuchsia-50/70 text-center text-fuchsia-800">Терминаль</TableHead><TableHead className="min-w-[130px] bg-sky-50/70 text-center text-sky-800">Click</TableHead><TableHead className="min-w-[140px] bg-indigo-50/70 text-center text-indigo-800">Перечисление</TableHead><TableHead className="min-w-[130px] text-right">Savdo</TableHead><TableHead className="min-w-[120px] text-right">Qoldiq 30</TableHead><TableHead className="min-w-[120px] text-right">Qoldiq 50</TableHead><TableHead className="min-w-[140px] text-right">Yakuniy qarz</TableHead><TableHead className="w-14" /></TableRow></TableHeader>
                   <TableBody>{computedRows.map((row, rowIndex) => {
                     const missingProduct =
                       ((row.quantities.keg30 > 0 || row.quantities.returned30 > 0) && !keg30Product) ||

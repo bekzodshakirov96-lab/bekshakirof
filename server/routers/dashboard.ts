@@ -34,6 +34,7 @@ export const dashboardRouter = router({
         cashIncome: sql<number>`coalesce(sum(${transactions.cashPayment}), 0)`.mapWith(Number),
         terminalIncome: sql<number>`coalesce(sum(${transactions.terminalPayment}), 0)`.mapWith(Number),
         clickIncome: sql<number>`coalesce(sum(${transactions.clickPayment}), 0)`.mapWith(Number),
+        transferIncome: sql<number>`coalesce(sum(${transactions.transferPayment}), 0)`.mapWith(Number),
         soldQuantity: sql<number>`coalesce(sum(${transactions.quantity}), 0)`.mapWith(Number),
       })
       .from(transactions)
@@ -56,6 +57,7 @@ export const dashboardRouter = router({
         cashReceived: transactions.cashPayment,
         terminalReceived: transactions.terminalPayment,
         clickReceived: transactions.clickPayment,
+        transferReceived: transactions.transferPayment,
       })
       .from(transactions)
       .orderBy(transactions.transactionDate);
@@ -65,7 +67,7 @@ export const dashboardRouter = router({
       const month = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
       const current = monthlyMap.get(month) ?? { month, sales: 0, received: 0 };
       current.sales += Number(row.sales);
-      current.received += Number(row.cashReceived) + Number(row.terminalReceived) + Number(row.clickReceived);
+      current.received += Number(row.cashReceived) + Number(row.terminalReceived) + Number(row.clickReceived) + Number(row.transferReceived);
       monthlyMap.set(month, current);
     }
     const monthly = Array.from(monthlyMap.values());
@@ -90,7 +92,7 @@ export const dashboardRouter = router({
         agentName: agents.name,
         productName: transactions.productName,
         totalAmount: transactions.totalAmount,
-        paid: sql<number>`${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment}`.mapWith(
+        paid: sql<number>`${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment} + ${transactions.transferPayment}`.mapWith(
           Number,
         ),
       })
@@ -141,7 +143,7 @@ export const dashboardRouter = router({
       .where(and(...cashPeriodConditions));
 
     const totalReceived =
-      transactionTotals.cashIncome + transactionTotals.terminalIncome + transactionTotals.clickIncome;
+      transactionTotals.cashIncome + transactionTotals.terminalIncome + transactionTotals.clickIncome + transactionTotals.transferIncome;
 
     return {
       summary: {
@@ -151,6 +153,7 @@ export const dashboardRouter = router({
         cashIncome: transactionTotals.cashIncome,
         terminalIncome: transactionTotals.terminalIncome,
         clickIncome: transactionTotals.clickIncome,
+        transferIncome: transactionTotals.transferIncome,
         activeClients: clientTotals.activeClients,
         soldQuantity: transactionTotals.soldQuantity,
       },

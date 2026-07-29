@@ -47,6 +47,7 @@ export default function Transactions() {
   const [cashPayment, setCashPayment] = useState("");
   const [terminalPayment, setTerminalPayment] = useState("");
   const [clickPayment, setClickPayment] = useState("");
+  const [transferPayment, setTransferPayment] = useState("");
   const [debtPayment, setDebtPayment] = useState("");
   const [note, setNote] = useState("");
 
@@ -100,7 +101,7 @@ export default function Transactions() {
           : saleMessage,
       );
       setCart([]);
-      setCashPayment(""); setTerminalPayment(""); setClickPayment(""); setDebtPayment(""); setNote("");
+      setCashPayment(""); setTerminalPayment(""); setClickPayment(""); setTransferPayment(""); setDebtPayment(""); setNote("");
       await Promise.all([
         utils.transactions.list.invalidate(), utils.dashboard.overview.invalidate(),
         utils.debts.list.invalidate(), utils.debts.currentDebt.invalidate(), utils.containers.invalidate(),
@@ -159,7 +160,7 @@ export default function Transactions() {
 
   const lineTotals = cart.map(line => Math.round(Number(line.quantity || 0) * Number(line.salePrice || 0)));
   const cartTotal = lineTotals.reduce((sum, value) => sum + value, 0);
-  const paid = Number(cashPayment || 0) + Number(terminalPayment || 0) + Number(clickPayment || 0);
+  const paid = Number(cashPayment || 0) + Number(terminalPayment || 0) + Number(clickPayment || 0) + Number(transferPayment || 0);
 
   const containerTotals = cart.reduce(
     (totals, line) => {
@@ -210,6 +211,7 @@ export default function Transactions() {
       cashPayment: Math.round(Number(cashPayment || 0)),
       terminalPayment: Math.round(Number(terminalPayment || 0)),
       clickPayment: Math.round(Number(clickPayment || 0)),
+      transferPayment: Math.round(Number(transferPayment || 0)),
       debtPaymentAmount: Math.round(Number(debtPayment || 0)),
       note: note || undefined,
     });
@@ -342,11 +344,12 @@ export default function Transactions() {
     </SectionCard>
 
     {cart.length > 0 && (
-      <SectionCard title="3. To‘lov" description="Naqd, terminal va Click orqali to‘langan summani kiriting">
-        <div className="grid gap-4 sm:grid-cols-3">
+      <SectionCard title="3. To‘lov" description="Naqd, terminal, Click va Перечисление orqali to‘langan summani kiriting">
+        <div className="grid gap-4 sm:grid-cols-4">
           <div className="space-y-2"><Label>Naqd to‘lov</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={cashPayment} onChange={event => setCashPayment(sanitizeIntegerInput(event.target.value))} /></div>
           <div className="space-y-2"><Label>Terminal</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={terminalPayment} onChange={event => setTerminalPayment(sanitizeIntegerInput(event.target.value))} /></div>
           <div className="space-y-2"><Label>Click</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={clickPayment} onChange={event => setClickPayment(sanitizeIntegerInput(event.target.value))} /></div>
+          <div className="space-y-2"><Label>Перечисление</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={transferPayment} onChange={event => setTransferPayment(sanitizeIntegerInput(event.target.value))} /></div>
         </div>
         {clientId && currentDebt > 0 && (
           <div className="mt-4">

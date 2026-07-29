@@ -130,7 +130,7 @@ export default function Dashboard() {
           <MetricCard label="Jami tushum" value={formatMoney(data.summary.totalReceived, true)} helper="Barcha to‘lov kanallari" icon={HandCoins} tone="green" trend={receivedTrend} />
           <MetricCard label="Joriy qarzdorlik" value={formatMoney(data.summary.currentDebt, true)} helper="Mijozlar qoldiq qarzi" icon={CircleDollarSign} tone="rose" />
           <MetricCard label="Naqd tushum" value={formatMoney(data.summary.cashIncome, true)} helper="Naqd to‘lovlar" icon={Banknote} tone="amber" />
-          <MetricCard label="Terminal tushumi" value={formatMoney(data.summary.terminalIncome, true)} helper={`Click: ${formatMoney(data.summary.clickIncome, true)}`} icon={CreditCard} tone="violet" />
+          <MetricCard label="Terminal tushumi" value={formatMoney(data.summary.terminalIncome, true)} helper={`Click: ${formatMoney(data.summary.clickIncome, true)} • Перечисление: ${formatMoney(data.summary.transferIncome, true)}`} icon={CreditCard} tone="violet" />
           <MetricCard label="Faol mijozlar" value={data.summary.activeClients.toLocaleString("uz-UZ")} helper="Hamkor savdo nuqtalari" icon={Building2} tone="cyan" />
         </div>
       )}

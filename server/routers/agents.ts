@@ -202,9 +202,11 @@ export const agentsRouter = router({
     }),
   /**
    * Commission per agent for a period, based on the amount actually collected from clients —
-   * both sale payments (cash + terminal + click recorded on their transactions) and standalone
-   * old-debt payments (client_payments, attributed to the agent who collected them). The unpaid/
-   * still-owed portion of a sale earns no commission.
+   * both sale payments (cash + terminal + click + Перечисление recorded on their transactions)
+   * and standalone old-debt payments (client_payments, attributed to the agent who collected
+   * them). Bank transfers (Перечисление) count too, even though the agent doesn't physically
+   * handle that money — the client still paid it off through that agent's relationship. The
+   * unpaid/still-owed portion of a sale earns no commission.
    */
   commissionReport: businessProcedure
     .input(z.object({ from: z.number().int().optional(), to: z.number().int().optional() }))
@@ -224,7 +226,7 @@ export const agentsRouter = router({
         .select({
           agentId: transactions.agentId,
           collectedAmount:
-            sql<number>`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment}), 0)`.mapWith(
+            sql<number>`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment} + ${transactions.transferPayment}), 0)`.mapWith(
               Number,
             ),
         })
@@ -237,7 +239,7 @@ export const agentsRouter = router({
         .select({
           agentId: clientPayments.agentId,
           debtCollectedAmount:
-            sql<number>`coalesce(sum(${clientPayments.cashAmount} + ${clientPayments.terminalAmount} + ${clientPayments.clickAmount}), 0)`.mapWith(
+            sql<number>`coalesce(sum(${clientPayments.cashAmount} + ${clientPayments.terminalAmount} + ${clientPayments.clickAmount} + ${clientPayments.transferAmount}), 0)`.mapWith(
               Number,
             ),
         })

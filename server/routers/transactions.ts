@@ -151,6 +151,7 @@ export const transactionsRouter = router({
         cashPayment: transactions.cashPayment,
         terminalPayment: transactions.terminalPayment,
         clickPayment: transactions.clickPayment,
+        transferPayment: transactions.transferPayment,
         note: transactions.note,
         source: transactions.source,
         issuedContainerType:
@@ -227,6 +228,7 @@ export const transactionsRouter = router({
         cashPayment: transactions.cashPayment,
         terminalPayment: transactions.terminalPayment,
         clickPayment: transactions.clickPayment,
+        transferPayment: transactions.transferPayment,
         note: transactions.note,
         source: transactions.source,
         issuedContainerType:
@@ -256,6 +258,7 @@ export const transactionsRouter = router({
         cashPayment: result.cashPayment + row.cashPayment,
         terminalPayment: result.terminalPayment + row.terminalPayment,
         clickPayment: result.clickPayment + row.clickPayment,
+        transferPayment: result.transferPayment + row.transferPayment,
         issuedContainers: result.issuedContainers + row.issuedContainerQuantity,
         returnedContainers: result.returnedContainers + row.returnedContainerQuantity,
       }),
@@ -265,6 +268,7 @@ export const transactionsRouter = router({
         cashPayment: 0,
         terminalPayment: 0,
         clickPayment: 0,
+        transferPayment: 0,
         issuedContainers: 0,
         returnedContainers: 0,
       },
@@ -284,12 +288,13 @@ export const transactionsRouter = router({
           cashPayment: z.number().int().min(0).default(0),
           terminalPayment: z.number().int().min(0).default(0),
           clickPayment: z.number().int().min(0).default(0),
+          transferPayment: z.number().int().min(0).default(0),
           returnContainerType: z.enum(["keg_30", "keg_50"]).nullable().optional(),
           returnQuantity: z.number().int().min(0).max(1_000_000).default(0),
           note: z.string().max(1_000).optional(),
         })
         .refine(
-          value => value.cashPayment + value.terminalPayment + value.clickPayment <= value.quantity * value.salePrice,
+          value => value.cashPayment + value.terminalPayment + value.clickPayment + value.transferPayment <= value.quantity * value.salePrice,
           { message: "To‘lov summasi savdo summasidan oshmasligi kerak." },
         ),
     )
@@ -322,6 +327,7 @@ export const transactionsRouter = router({
             cashPayment: input.cashPayment,
             terminalPayment: input.terminalPayment,
             clickPayment: input.clickPayment,
+            transferPayment: input.transferPayment,
             note: input.note,
             source: "manual",
             createdBy: ctx.user.id,
@@ -353,7 +359,7 @@ export const transactionsRouter = router({
           recordId: created.id,
           action: "create",
           userId: ctx.user.id,
-          after: { clientId: input.clientId, agentId: input.agentId, productName: product.name, quantity: input.quantity, salePrice: input.salePrice, totalAmount, cashPayment: input.cashPayment, terminalPayment: input.terminalPayment, clickPayment: input.clickPayment },
+          after: { clientId: input.clientId, agentId: input.agentId, productName: product.name, quantity: input.quantity, salePrice: input.salePrice, totalAmount, cashPayment: input.cashPayment, terminalPayment: input.terminalPayment, clickPayment: input.clickPayment, transferPayment: input.transferPayment },
         });
         return { success: true, totalAmount, containerImpact };
       });
@@ -387,6 +393,7 @@ export const transactionsRouter = router({
           cashPayment: z.number().int().min(0).default(0),
           terminalPayment: z.number().int().min(0).default(0),
           clickPayment: z.number().int().min(0).default(0),
+          transferPayment: z.number().int().min(0).default(0),
           /** Savdo summasidan tashqari, shu mijozning eski qarzini yopish uchun qo'shimcha
            * naqd pul — alohida `client_payments` yozuvi sifatida saqlanadi, savat jamisiga
            * cheklanmaydi. */
@@ -400,7 +407,7 @@ export const transactionsRouter = router({
         .refine(
           value => {
             const cartTotal = value.items.reduce((sum, item) => sum + Math.round(item.quantity * item.salePrice), 0);
-            return value.cashPayment + value.terminalPayment + value.clickPayment <= cartTotal;
+            return value.cashPayment + value.terminalPayment + value.clickPayment + value.transferPayment <= cartTotal;
           },
           { message: "To‘lov summasi savat jamisidan oshmasligi kerak." },
         ),
@@ -416,7 +423,7 @@ export const transactionsRouter = router({
         const productById = new Map(productRows.map(product => [product.id, product]));
 
         const lineTotals = input.items.map(item => Math.round(item.quantity * item.salePrice));
-        let remainingBudget = input.cashPayment + input.terminalPayment + input.clickPayment;
+        let remainingBudget = input.cashPayment + input.terminalPayment + input.clickPayment + input.transferPayment;
         const lineAllocatedTotal = lineTotals.map(total => {
           const take = Math.min(total, remainingBudget);
           remainingBudget -= take;
@@ -426,6 +433,7 @@ export const transactionsRouter = router({
         let remainingCash = input.cashPayment;
         let remainingTerminal = input.terminalPayment;
         let remainingClick = input.clickPayment;
+        let remainingTransfer = input.transferPayment;
         const transactionDate = new Date(input.transactionDate);
         // Tannarx nusxasi savatdagi barcha mahsulotlar uchun bir marta olinadi.
         const unitCosts = await fetchAverageCosts(tx, input.items.map(item => item.productId));
@@ -446,7 +454,10 @@ export const transactionsRouter = router({
           need -= terminalTake;
           remainingTerminal -= terminalTake;
           const clickTake = Math.min(need, remainingClick);
+          need -= clickTake;
           remainingClick -= clickTake;
+          const transferTake = Math.min(need, remainingTransfer);
+          remainingTransfer -= transferTake;
 
           const totalAmount = lineTotals[i];
           cartTotal += totalAmount;
@@ -468,6 +479,7 @@ export const transactionsRouter = router({
               cashPayment: cashTake,
               terminalPayment: terminalTake,
               clickPayment: clickTake,
+              transferPayment: transferTake,
               note: input.note,
               source: "manual",
               createdBy: ctx.user.id,
@@ -500,7 +512,7 @@ export const transactionsRouter = router({
             recordId: created.id,
             action: "create",
             userId: ctx.user.id,
-            after: { clientId: input.clientId, agentId: input.agentId, productName: product.name, quantity: item.quantity, salePrice: item.salePrice, totalAmount, cashPayment: cashTake, terminalPayment: terminalTake, clickPayment: clickTake },
+            after: { clientId: input.clientId, agentId: input.agentId, productName: product.name, quantity: item.quantity, salePrice: item.salePrice, totalAmount, cashPayment: cashTake, terminalPayment: terminalTake, clickPayment: clickTake, transferPayment: transferTake },
           });
           results.push({ productName: product.name, totalAmount });
         }
@@ -548,13 +560,14 @@ export const transactionsRouter = router({
           cashPayment: z.number().int().min(0),
           terminalPayment: z.number().int().min(0),
           clickPayment: z.number().int().min(0),
+          transferPayment: z.number().int().min(0).default(0),
           returnContainerType: z.enum(["keg_30", "keg_50"]).nullable().optional(),
           returnQuantity: z.number().int().min(0).max(1_000_000).default(0),
           note: z.string().max(1_000).nullable().optional(),
           reason: z.string().trim().max(500).optional(),
         })
         .refine(
-          value => value.cashPayment + value.terminalPayment + value.clickPayment <= value.quantity * value.salePrice,
+          value => value.cashPayment + value.terminalPayment + value.clickPayment + value.transferPayment <= value.quantity * value.salePrice,
           { message: "To‘lov summasi savdo summasidan oshmasligi kerak." },
         ),
     )
@@ -591,6 +604,7 @@ export const transactionsRouter = router({
             cashPayment: input.cashPayment,
             terminalPayment: input.terminalPayment,
             clickPayment: input.clickPayment,
+            transferPayment: input.transferPayment,
             note: input.note ?? null,
           })
           .where(eq(transactions.id, input.id));

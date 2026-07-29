@@ -103,6 +103,7 @@ export const debtsRouter = router({
             cashAmount: clientPayments.cashAmount,
             terminalAmount: clientPayments.terminalAmount,
             clickAmount: clientPayments.clickAmount,
+            transferAmount: clientPayments.transferAmount,
             note: clientPayments.note,
           })
           .from(clientPayments)
@@ -118,8 +119,9 @@ export const debtsRouter = router({
           cashAmount: z.number().int().min(0).default(0),
           terminalAmount: z.number().int().min(0).default(0),
           clickAmount: z.number().int().min(0).default(0),
+          transferAmount: z.number().int().min(0).default(0),
           note: z.string().max(1_000).optional(),
-        }).refine(value => value.cashAmount + value.terminalAmount + value.clickAmount > 0, {
+        }).refine(value => value.cashAmount + value.terminalAmount + value.clickAmount + value.transferAmount > 0, {
           message: "To'lov summasi kiritilmagan.",
         }),
       )
@@ -143,6 +145,7 @@ export const debtsRouter = router({
             cashAmount: input.cashAmount,
             terminalAmount: input.terminalAmount,
             clickAmount: input.clickAmount,
+            transferAmount: input.transferAmount,
             note: input.note?.trim() || null,
             createdBy: ctx.user.id,
           }).$returningId();
@@ -157,6 +160,7 @@ export const debtsRouter = router({
               cashAmount: input.cashAmount,
               terminalAmount: input.terminalAmount,
               clickAmount: input.clickAmount,
+              transferAmount: input.transferAmount,
               note: input.note?.trim() || null,
             },
           });
@@ -246,19 +250,19 @@ export const debtsRouter = router({
       let openingBalance = client.openingDebt;
       if (fromDate) {
         const priorRows = await db
-          .select({ totalAmount: transactions.totalAmount, cashPayment: transactions.cashPayment, terminalPayment: transactions.terminalPayment, clickPayment: transactions.clickPayment })
+          .select({ totalAmount: transactions.totalAmount, cashPayment: transactions.cashPayment, terminalPayment: transactions.terminalPayment, clickPayment: transactions.clickPayment, transferPayment: transactions.transferPayment })
           .from(transactions)
           .where(and(eq(transactions.clientId, input.clientId), lt(transactions.transactionDate, fromDate)));
         for (const row of priorRows) {
-          openingBalance += row.totalAmount - (row.cashPayment + row.terminalPayment + row.clickPayment);
+          openingBalance += row.totalAmount - (row.cashPayment + row.terminalPayment + row.clickPayment + row.transferPayment);
         }
         // Davr boshigacha qabul qilingan qarz to'lovlari ham boshlang'ich qoldiqni kamaytiradi.
         const priorPayments = await db
-          .select({ cashAmount: clientPayments.cashAmount, terminalAmount: clientPayments.terminalAmount, clickAmount: clientPayments.clickAmount })
+          .select({ cashAmount: clientPayments.cashAmount, terminalAmount: clientPayments.terminalAmount, clickAmount: clientPayments.clickAmount, transferAmount: clientPayments.transferAmount })
           .from(clientPayments)
           .where(and(eq(clientPayments.clientId, input.clientId), lt(clientPayments.paymentDate, fromDate)));
         for (const row of priorPayments) {
-          openingBalance -= row.cashAmount + row.terminalAmount + row.clickAmount;
+          openingBalance -= row.cashAmount + row.terminalAmount + row.clickAmount + row.transferAmount;
         }
       }
 
@@ -278,6 +282,7 @@ export const debtsRouter = router({
           cashPayment: transactions.cashPayment,
           terminalPayment: transactions.terminalPayment,
           clickPayment: transactions.clickPayment,
+          transferPayment: transactions.transferPayment,
         })
         .from(transactions)
         .where(and(...ledgerConditions))
@@ -290,6 +295,7 @@ export const debtsRouter = router({
           cashAmount: clientPayments.cashAmount,
           terminalAmount: clientPayments.terminalAmount,
           clickAmount: clientPayments.clickAmount,
+          transferAmount: clientPayments.transferAmount,
           note: clientPayments.note,
         })
         .from(clientPayments)
@@ -313,6 +319,7 @@ export const debtsRouter = router({
         cashPayment: number;
         terminalPayment: number;
         clickPayment: number;
+        transferPayment: number;
         kind: "sale" | "payment";
       };
       const combined: LedgerEntry[] = [
@@ -327,6 +334,7 @@ export const debtsRouter = router({
           cashPayment: row.cashAmount,
           terminalPayment: row.terminalAmount,
           clickPayment: row.clickAmount,
+          transferPayment: row.transferAmount,
           kind: "payment" as const,
         })),
       ].sort((a, b) => {
@@ -336,7 +344,7 @@ export const debtsRouter = router({
 
       let running = openingBalance;
       const ledger = combined.map(row => {
-        const paid = row.cashPayment + row.terminalPayment + row.clickPayment;
+        const paid = row.cashPayment + row.terminalPayment + row.clickPayment + row.transferPayment;
         running += row.totalAmount - paid;
         return { ...row, paid, balanceAfter: running };
       });

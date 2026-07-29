@@ -102,6 +102,7 @@ export default function Debts() {
         { title: "Naqd", value: row => row.cashPaid, width: 58, align: "right" },
         { title: "Terminal", value: row => row.terminalPaid, width: 58, align: "right" },
         { title: "Click", value: row => row.clickPaid, width: 55, align: "right" },
+        { title: "Перечисление", value: row => row.transferPaid, width: 60, align: "right" },
         { title: "Qoldiq qarz", value: row => row.currentDebt, width: 65, align: "right" },
       ];
       const options = {
@@ -173,7 +174,7 @@ export default function Debts() {
           <Button type="button" variant="outline" onClick={clearFilters} className="gap-2 bg-card"><RotateCcw className="size-4" />Tozalash</Button>
         </div>
         <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
-          {debts.isLoading ? <TableLoading columns={11} /> : items.length === 0 ? <EmptyState description="Qidiruv yoki filterlarni o‘zgartirib ko‘ring." /> : (
+          {debts.isLoading ? <TableLoading columns={12} /> : items.length === 0 ? <EmptyState description="Qidiruv yoki filterlarni o‘zgartirib ko‘ring." /> : (
             <>
               <Table className="finance-table min-w-[1180px]">
                 <TableHeader><TableRow>
@@ -182,7 +183,7 @@ export default function Debts() {
                   <SortableHead column="agentName">Agent</SortableHead>
                   <SortableHead column="openingDebt" className="text-right">Boshlang‘ich qarz</SortableHead>
                   <SortableHead column="totalSales" className="text-right">Jami savdo</SortableHead>
-                  <TableHead className="text-right">Naqd</TableHead><TableHead className="text-right">Terminal</TableHead><TableHead className="text-right">Click</TableHead>
+                  <TableHead className="text-right">Naqd</TableHead><TableHead className="text-right">Terminal</TableHead><TableHead className="text-right">Click</TableHead><TableHead className="text-right">Перечисление</TableHead>
                   <SortableHead column="currentDebt" className="text-right">Qoldiq qarz</SortableHead>
                   <TableHead>Holat</TableHead>
                   <TableHead className="w-10" />
@@ -196,6 +197,7 @@ export default function Debts() {
                   <TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(item.cashPaid)}</TableCell>
                   <TableCell className="text-right tabular-nums text-violet-700">{formatMoney(item.terminalPaid)}</TableCell>
                   <TableCell className="text-right tabular-nums text-cyan-700">{formatMoney(item.clickPaid)}</TableCell>
+                  <TableCell className="text-right tabular-nums text-indigo-700">{formatMoney(item.transferPaid)}</TableCell>
                   <TableCell className={`text-right font-bold tabular-nums ${item.currentDebt > 0 ? "text-rose-700" : "text-emerald-700"}`}>{formatMoney(item.currentDebt)}</TableCell>
                   <TableCell><DebtBadge value={item.currentDebt} /></TableCell>
                   <TableCell>
@@ -243,11 +245,12 @@ function DebtPaymentDialog({
   const [cash, setCash] = useState("");
   const [terminal, setTerminal] = useState("");
   const [click, setClick] = useState("");
+  const [transfer, setTransfer] = useState("");
   const [date, setDate] = useState(() => localDateInputValue());
   const [note, setNote] = useState("");
 
   function reset() {
-    setCash(""); setTerminal(""); setClick(""); setNote("");
+    setCash(""); setTerminal(""); setClick(""); setTransfer(""); setNote("");
     setDate(localDateInputValue());
   }
 
@@ -284,7 +287,7 @@ function DebtPaymentDialog({
     onError: error => toast.error(error.message),
   });
 
-  const total = Number(cash || 0) + Number(terminal || 0) + Number(click || 0);
+  const total = Number(cash || 0) + Number(terminal || 0) + Number(click || 0) + Number(transfer || 0);
   const canSubmit = total > 0 && !create.isPending;
   /** Qarzdan ortiq to'lov xato emas (avans bo'lishi mumkin), lekin ogohlantiramiz. */
   const exceedsDebt = client ? total > client.currentDebt && client.currentDebt > 0 : false;
@@ -300,7 +303,7 @@ function DebtPaymentDialog({
         </DialogHeader>
 
         <div className="grid gap-3">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground">Naqd</label>
               <Input className="finance-input" inputMode="numeric" placeholder="0" value={cash} onChange={event => setCash(sanitizeIntegerInput(event.target.value))} />
@@ -312,6 +315,10 @@ function DebtPaymentDialog({
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground">Click</label>
               <Input className="finance-input" inputMode="numeric" placeholder="0" value={click} onChange={event => setClick(sanitizeIntegerInput(event.target.value))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Перечисление</label>
+              <Input className="finance-input" inputMode="numeric" placeholder="0" value={transfer} onChange={event => setTransfer(sanitizeIntegerInput(event.target.value))} />
             </div>
           </div>
           <div className="space-y-1.5">
@@ -356,6 +363,7 @@ function DebtPaymentDialog({
                   <TableHead className="text-right">Naqd</TableHead>
                   <TableHead className="text-right">Terminal</TableHead>
                   <TableHead className="text-right">Click</TableHead>
+                  <TableHead className="text-right">Перечисление</TableHead>
                   <TableHead>Izoh</TableHead>
                   <TableHead className="w-8" />
                 </TableRow></TableHeader>
@@ -366,6 +374,7 @@ function DebtPaymentDialog({
                       <TableCell className="text-right tabular-nums">{formatMoney(payment.cashAmount)}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatMoney(payment.terminalAmount)}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatMoney(payment.clickAmount)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatMoney(payment.transferAmount)}</TableCell>
                       <TableCell className="max-w-[140px] truncate text-muted-foreground">{payment.note || "—"}</TableCell>
                       <TableCell>
                         <button
@@ -399,6 +408,7 @@ function DebtPaymentDialog({
                 cashAmount: Number(cash || 0),
                 terminalAmount: Number(terminal || 0),
                 clickAmount: Number(click || 0),
+                transferAmount: Number(transfer || 0),
                 note: note || undefined,
               });
             }}

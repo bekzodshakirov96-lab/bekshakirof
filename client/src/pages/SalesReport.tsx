@@ -43,6 +43,7 @@ type EditTransactionForm = {
   cashPayment: string;
   terminalPayment: string;
   clickPayment: string;
+  transferPayment: string;
   note: string;
   returnEnabled: boolean;
   returnContainerType: "keg_30" | "keg_50" | "";
@@ -146,6 +147,7 @@ export default function SalesReport() {
         { title: "Naqd", value: row => row.cashPayment, width: 52, align: "right" },
         { title: "Terminal", value: row => row.terminalPayment, width: 52, align: "right" },
         { title: "Click", value: row => row.clickPayment, width: 48, align: "right" },
+        { title: "Перечисление", value: row => row.transferPayment, width: 62, align: "right" },
         { title: "Tara berildi", value: row => row.issuedContainerQuantity ? `${containerLabel(row.issuedContainerType)}: ${row.issuedContainerQuantity}` : "—", width: 58 },
         { title: "Tara qaytdi", value: row => row.returnedContainerQuantity ? `${containerLabel(row.returnedContainerType)}: ${row.returnedContainerQuantity}` : "—", width: 58 },
       ];
@@ -158,6 +160,7 @@ export default function SalesReport() {
           { label: "Jami savdo", value: data.summary.totalAmount },
           { label: "Naqd", value: data.summary.cashPayment },
           { label: "Terminal + Click", value: data.summary.terminalPayment + data.summary.clickPayment },
+          { label: "Перечисление", value: data.summary.transferPayment },
         ],
       };
       if (format === "xlsx") await exportReportXlsx(options);
@@ -257,11 +260,11 @@ export default function SalesReport() {
         <Input type="date" className="finance-input" value={toDate} onChange={event => { setToDate(event.target.value); setPage(1); }} aria-label="Tugash sanasi" />
         <Button variant="outline" className="gap-2 bg-card" onClick={clearFilters}><RotateCcw className="size-4" />Tozalash</Button>
       </div>
-      <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">{journal.isLoading ? <TableLoading columns={13} /> : rows.length === 0 ? <EmptyState /> : <>
-        <Table className="finance-table min-w-[1520px]"><TableHeader><TableRow>
-          <SortableHead column="transactionDate">Sana</SortableHead><SortableHead column="agentName">Agent</SortableHead><SortableHead column="clientName">Mijoz</SortableHead><SortableHead column="productName">Mahsulot</SortableHead><SortableHead column="quantity" className="text-right">Miqdor</SortableHead><TableHead className="text-right">Narx</TableHead><SortableHead column="totalAmount" className="text-right">Jami</SortableHead><TableHead className="text-right">Naqd</TableHead><TableHead className="text-right">Terminal</TableHead><TableHead className="text-right">Click</TableHead><TableHead>Tara ta’siri</TableHead><TableHead>Manba</TableHead><TableHead className="w-10" />
+      <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">{journal.isLoading ? <TableLoading columns={14} /> : rows.length === 0 ? <EmptyState /> : <>
+        <Table className="finance-table min-w-[1620px]"><TableHeader><TableRow>
+          <SortableHead column="transactionDate">Sana</SortableHead><SortableHead column="agentName">Agent</SortableHead><SortableHead column="clientName">Mijoz</SortableHead><SortableHead column="productName">Mahsulot</SortableHead><SortableHead column="quantity" className="text-right">Miqdor</SortableHead><TableHead className="text-right">Narx</TableHead><SortableHead column="totalAmount" className="text-right">Jami</SortableHead><TableHead className="text-right">Naqd</TableHead><TableHead className="text-right">Terminal</TableHead><TableHead className="text-right">Click</TableHead><TableHead className="text-right">Перечисление</TableHead><TableHead>Tara ta’siri</TableHead><TableHead>Manba</TableHead><TableHead className="w-10" />
         </TableRow></TableHeader><TableBody>{rows.map(row => <TableRow key={row.id}>
-          <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.transactionDate)}</TableCell><TableCell>{row.agentName || "—"}</TableCell><TableCell className="font-semibold text-foreground">{row.clientName || "—"}</TableCell><TableCell>{row.productName}</TableCell><TableCell className="text-right tabular-nums">{formatNumber(row.quantity, 3)} {row.unit}</TableCell><TableCell className="text-right tabular-nums">{formatMoney(row.salePrice)}</TableCell><TableCell className="text-right font-bold tabular-nums">{formatMoney(row.totalAmount)}</TableCell><TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.cashPayment)}</TableCell><TableCell className="text-right tabular-nums text-violet-700">{formatMoney(row.terminalPayment)}</TableCell><TableCell className="text-right tabular-nums text-cyan-700">{formatMoney(row.clickPayment)}</TableCell>
+          <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.transactionDate)}</TableCell><TableCell>{row.agentName || "—"}</TableCell><TableCell className="font-semibold text-foreground">{row.clientName || "—"}</TableCell><TableCell>{row.productName}</TableCell><TableCell className="text-right tabular-nums">{formatNumber(row.quantity, 3)} {row.unit}</TableCell><TableCell className="text-right tabular-nums">{formatMoney(row.salePrice)}</TableCell><TableCell className="text-right font-bold tabular-nums">{formatMoney(row.totalAmount)}</TableCell><TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.cashPayment)}</TableCell><TableCell className="text-right tabular-nums text-violet-700">{formatMoney(row.terminalPayment)}</TableCell><TableCell className="text-right tabular-nums text-cyan-700">{formatMoney(row.clickPayment)}</TableCell><TableCell className="text-right tabular-nums text-indigo-700">{formatMoney(row.transferPayment)}</TableCell>
           <TableCell><div className="space-y-1 text-xs">{row.issuedContainerQuantity > 0 && <div className="font-medium text-rose-700">+ {containerLabel(row.issuedContainerType)}: {row.issuedContainerQuantity}</div>}{row.returnedContainerQuantity > 0 && <div className="font-medium text-emerald-700">− {containerLabel(row.returnedContainerType)}: {row.returnedContainerQuantity}</div>}{row.issuedContainerQuantity === 0 && row.returnedContainerQuantity === 0 && "—"}</div></TableCell>
           <TableCell><Badge variant="outline" className="rounded-lg text-[10px]">{row.source === "excel" ? "Excel" : "Qo‘lda"}</Badge></TableCell>
           <TableCell>
@@ -282,6 +285,7 @@ export default function SalesReport() {
                   cashPayment: String(row.cashPayment),
                   terminalPayment: String(row.terminalPayment),
                   clickPayment: String(row.clickPayment),
+                  transferPayment: String(row.transferPayment),
                   note: row.note ?? "",
                   returnEnabled: row.returnedContainerQuantity > 0,
                   returnContainerType: normalizeContainerTypeValue(row.returnedContainerType),
@@ -347,6 +351,7 @@ export default function SalesReport() {
             <div className="space-y-2"><Label>Naqd to‘lov</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.cashPayment} onChange={event => setEditTarget({ ...editTarget, cashPayment: sanitizeIntegerInput(event.target.value) })} /></div>
             <div className="space-y-2"><Label>Terminal</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.terminalPayment} onChange={event => setEditTarget({ ...editTarget, terminalPayment: sanitizeIntegerInput(event.target.value) })} /></div>
             <div className="space-y-2"><Label>Click</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.clickPayment} onChange={event => setEditTarget({ ...editTarget, clickPayment: sanitizeIntegerInput(event.target.value) })} /></div>
+            <div className="space-y-2"><Label>Перечисление</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.transferPayment} onChange={event => setEditTarget({ ...editTarget, transferPayment: sanitizeIntegerInput(event.target.value) })} /></div>
             <div className="space-y-2 sm:col-span-2"><Label>Izoh</Label><Input className="finance-input" value={editTarget.note} onChange={event => setEditTarget({ ...editTarget, note: event.target.value })} placeholder="Ixtiyoriy" /></div>
             <div className="space-y-2 sm:col-span-2">
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -387,6 +392,7 @@ export default function SalesReport() {
                 cashPayment: Math.round(Number(editTarget.cashPayment || 0)),
                 terminalPayment: Math.round(Number(editTarget.terminalPayment || 0)),
                 clickPayment: Math.round(Number(editTarget.clickPayment || 0)),
+                transferPayment: Math.round(Number(editTarget.transferPayment || 0)),
                 returnContainerType: editTarget.returnEnabled && editTarget.returnContainerType ? editTarget.returnContainerType : null,
                 returnQuantity: editTarget.returnEnabled ? Math.round(Number(editTarget.returnQuantity || 0)) : 0,
                 note: editTarget.note || null,

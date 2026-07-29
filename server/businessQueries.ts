@@ -22,12 +22,14 @@ export async function getClientFinancialRows() {
       cashPaid: numberSql`coalesce(sum(${transactions.cashPayment}), 0)`,
       terminalPaid: numberSql`coalesce(sum(${transactions.terminalPayment}), 0)`,
       clickPaid: numberSql`coalesce(sum(${transactions.clickPayment}), 0)`,
+      transferPaid: numberSql`coalesce(sum(${transactions.transferPayment}), 0)`,
       transactionCount: numberSql`count(${transactions.id})`,
       // Qarz to'lovlari alohida subquery bilan olinadi — ikkinchi LEFT JOIN
       // qatorlarni ko'paytirib, savdo summalarini ham buzib yuborardi.
       debtPaidCash: numberSql`coalesce((select sum(cp.cashAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
       debtPaidTerminal: numberSql`coalesce((select sum(cp.terminalAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
       debtPaidClick: numberSql`coalesce((select sum(cp.clickAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
+      debtPaidTransfer: numberSql`coalesce((select sum(cp.transferAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
     })
     .from(clients)
     .leftJoin(agents, eq(clients.agentId, agents.id))
@@ -50,9 +52,9 @@ export function enrichClientFinancialRows(
 ) {
   return rows.map(row => {
     /** Savdo paytida to'langan pul. */
-    const salePaid = row.cashPaid + row.terminalPaid + row.clickPaid;
+    const salePaid = row.cashPaid + row.terminalPaid + row.clickPaid + row.transferPaid;
     /** Keyinchalik alohida qabul qilingan qarz to'lovlari. */
-    const debtPaid = row.debtPaidCash + row.debtPaidTerminal + row.debtPaidClick;
+    const debtPaid = row.debtPaidCash + row.debtPaidTerminal + row.debtPaidClick + row.debtPaidTransfer;
     const totalPaid = salePaid + debtPaid;
     const currentDebt = row.openingDebt + row.totalSales - totalPaid;
     return { ...row, salePaid, debtPaid, totalPaid, currentDebt };
@@ -66,8 +68,8 @@ export async function getClientCurrentDebt(clientId: number): Promise<number> {
     .select({
       openingDebt: clients.openingDebt,
       totalSales: numberSql`coalesce(sum(${transactions.totalAmount}), 0)`,
-      salePaid: numberSql`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment}), 0)`,
-      debtPaid: numberSql`coalesce((select sum(cp.cashAmount + cp.terminalAmount + cp.clickAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
+      salePaid: numberSql`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment} + ${transactions.transferPayment}), 0)`,
+      debtPaid: numberSql`coalesce((select sum(cp.cashAmount + cp.terminalAmount + cp.clickAmount + cp.transferAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
     })
     .from(clients)
     .leftJoin(transactions, eq(transactions.clientId, clients.id))
