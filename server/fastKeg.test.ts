@@ -22,6 +22,7 @@ function createSelectChain(rows: Array<Record<string, unknown>>) {
     where: () => chain,
     groupBy: () => chain,
     orderBy: () => chain,
+    for: () => chain,
     limit: (limit: number) => {
       selectedRows = selectedRows.slice(0, limit);
       return chain;
@@ -36,7 +37,11 @@ function createTransactionDouble() {
   let selectIndex = 0;
   return {
     select: () => {
-      const rows = [state.existingRows, state.productRows, state.financialRows, state.balanceRows][selectIndex] ?? [];
+      // Tartib saveBatch'dagi so'rovlar ketma-ketligiga mos: dublikat tekshiruvi →
+      // mahsulotlar → mijoz qatorlarini FOR UPDATE bilan qulflash (natija ishlatilmaydi,
+      // shuning uchun bo'sh massiv) → moliyaviy qatorlar → tara qoldig'i.
+      const rows =
+        [state.existingRows, state.productRows, [], state.financialRows, state.balanceRows][selectIndex] ?? [];
       selectIndex += 1;
       return createSelectChain(rows);
     },

@@ -286,6 +286,16 @@ export const fastKegRouter = router({
       }
 
       const clientIds = input.rows.map(row => row.clientId);
+      // Shu mijozlar qatoriga qulf qo'yamiz — bir xil mijoz uchun ikkita saveBatch
+      // chaqiruvi deyarli bir vaqtda kelsa (tarmoq qayta urinishi, ikki qurilma va h.k.),
+      // ikkinchisi shu yerda birinchisi commit bo'lguncha kutadi, keyin qarz/tara
+      // qoldig'ini YANGILANGAN holatda o'qiydi. Aks holda ikkalasi ham eski balansni
+      // "yetarli" deb hisoblab, umumiy qoldiq manfiy bo'lib qolishi mumkin edi (lost update).
+      await tx
+        .select({ id: clients.id })
+        .from(clients)
+        .where(inArray(clients.id, clientIds))
+        .for("update");
       const financialRows = await tx
         .select({
           id: clients.id,

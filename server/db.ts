@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { InsertUser, users } from "../drizzle/schema";
+import { appSettings, InsertUser, users } from "../drizzle/schema";
 
 // MySQL TIMESTAMP columns (entryDate, transactionDate, etc.) are stored as UTC
 // internally and converted using the CONNECTION'S session time_zone on every
@@ -51,18 +51,41 @@ export async function requireDb() {
 }
 
 /** True when this is the very first account ever created (the permanent owner). */
+/** Faqat "hali sozlanmagan tizim" ekranini ko'rsatish/yashirish uchun — o'qish
+ * uchun, poyga holatidan himoyalanmagan. Haqiqiy "birinchi admin" qarori
+ * `claimFirstAdmin()` orqali atomik tarzda qabul qilinadi. */
 export async function isFirstUser(): Promise<boolean> {
   const db = await requireDb();
   const [row] = await db.select({ id: users.id }).from(users).limit(1);
   return !row;
 }
 
+/** Tizimda birinchi bo'lib ro'yxatdan o'tgan (demak, admin bo'lishi kerak bo'lgan)
+ * so'rovni atomik tarzda aniqlaydi. `app_settings.key` PRIMARY KEY ekanidan
+ * foydalanib, bir martalik "mutex" sifatida ishlatiladi — ikki so'rov bir vaqtda
+ * kelsa ham, faqat bittasi ushbu INSERT'da g'olib chiqadi (boshqasi duplicate-key
+ * xatosi bilan yiqiladi), shuning uchun ikkalasi ham admin bo'lib qolish xavfi yo'q. */
+export async function claimFirstAdmin(): Promise<boolean> {
+  const db = await requireDb();
+  // Allaqachon foydalanuvchi bor tizimlarda (masalan bu tuzatishdan oldin
+  // o'rnatilgan, `app_settings` qatori hali yo'q bo'lgan real tizimlar) bootstrap
+  // da'vosi hech qachon berilmasin — aks holda birinchi keyingi `register`
+  // chaqiruvi noto'g'ri ravishda yana bitta admin yaratib qo'yardi.
+  const [existingUser] = await db.select({ id: users.id }).from(users).limit(1);
+  if (existingUser) return false;
+  try {
+    await db.insert(appSettings).values({ key: "bootstrapAdminClaimed", value: "1" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function createUser(user: InsertUser) {
   const db = await requireDb();
-  const isFirst = await isFirstUser();
   const [created] = await db
     .insert(users)
-    .values({ ...user, role: isFirst ? "admin" : (user.role ?? "user") })
+    .values({ ...user, role: user.role ?? "user" })
     .$returningId();
   return getUserById(created.id);
 }
@@ -85,6 +108,14 @@ export async function touchLastSignedIn(id: number) {
   const db = await getDb();
   if (!db) return;
   await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, id));
+}
+
+/** Logout paytida chaqiriladi — shu foydalanuvchining barcha oldingi (o'g'irlangan
+ * nusxalari ham) tokenlarini bekor qiladi, chunki ularning ichidagi tokenVersion
+ * endi bazadagi qiymatga mos kelmaydi (server/_core/localAuth.ts:authenticateRequest). */
+export async function incrementTokenVersion(id: number) {
+  const db = await requireDb();
+  await db.update(users).set({ tokenVersion: sql`${users.tokenVersion} + 1` }).where(eq(users.id, id));
 }
 
 /** Foydalanuvchi tanlagan interfeys alifbosini saqlaydi (lotin yoki kirill). */

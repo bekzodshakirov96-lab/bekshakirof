@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, gte, lt, lte } from "drizzle-orm";
 import { z } from "zod";
 import { agents, clientPayments, clients, containerMovements, transactions } from "../../drizzle/schema";
@@ -47,6 +48,23 @@ const listInput = z.object({
 
 type DebtFilterInput = z.infer<typeof filterInput>;
 
+/** Agent rolidagi foydalanuvchi faqat o'ziga biriktirilgan mijozning qarz/to'lov
+ * ma'lumotini so'rasa ruxsat beradi — aks holda `clientId`ni to'g'ridan-to'g'ri
+ * kiritib, boshqa agentning mijozini ko'rish mumkin bo'lib qolardi. Rahbar/buxgalter
+ * uchun cheklovsiz. */
+async function assertClientOwnedByAgent(
+  db: Awaited<ReturnType<typeof requireDb>>,
+  clientId: number,
+  userRole: string,
+  userAgentId: number | null,
+) {
+  if (userRole !== "agent") return;
+  const [client] = await db.select({ agentId: clients.agentId }).from(clients).where(eq(clients.id, clientId)).limit(1);
+  if (!client || client.agentId !== userAgentId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Bu mijoz sizga biriktirilmagan." });
+  }
+}
+
 async function loadDebtRows(input: DebtFilterInput) {
   const search = normalizeSearch(input.search);
   return enrichClientFinancialRows(await getClientFinancialRows())
@@ -94,8 +112,9 @@ export const debtsRouter = router({
   payments: router({
     byClient: debtsViewProcedure
       .input(z.object({ clientId: z.number().int().positive() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const db = await requireDb();
+        await assertClientOwnedByAgent(db, input.clientId, ctx.user.role, ctx.user.agentId);
         return db
           .select({
             id: clientPayments.id,
@@ -203,9 +222,17 @@ export const debtsRouter = router({
   /** Bitta mijozning joriy qarzi — Yangi savdo formasidagi "qarzni yopish" maydoni uchun. */
   currentDebt: debtsViewProcedure
     .input(z.object({ clientId: z.number().int().positive() }))
-    .query(async ({ input }) => ({ currentDebt: await getClientCurrentDebt(input.clientId) })),
-  list: debtsViewProcedure.input(listInput).query(async ({ input }) => {
-    const rows = await loadDebtRows(input);
+    .query(async ({ input, ctx }) => {
+      const db = await requireDb();
+      await assertClientOwnedByAgent(db, input.clientId, ctx.user.role, ctx.user.agentId);
+      return { currentDebt: await getClientCurrentDebt(input.clientId) };
+    }),
+  list: debtsViewProcedure.input(listInput).query(async ({ input, ctx }) => {
+    // Agent rolidagi foydalanuvchi uchun filtr har doim o'z agentId'siga qattiq
+    // bog'lanadi — so'ralgan (yoki umuman berilmagan) agentId e'tiborga olinmaydi,
+    // aks holda boshqa agentlarning butun mijozlar ro'yxati ochilib qolardi.
+    const effectiveInput = ctx.user.role === "agent" ? { ...input, agentId: ctx.user.agentId ?? -1 } : input;
+    const rows = await loadDebtRows(effectiveInput);
     return {
       ...paginate(rows, input.page, input.pageSize),
       summary: summarizeDebtRows(rows),
@@ -226,8 +253,9 @@ export const debtsRouter = router({
    * issue/return movements with a running net, and the resulting closing balance. */
   clientStatement: debtsViewProcedure
     .input(z.object({ clientId: z.number().int().positive(), from: z.number().int().optional(), to: z.number().int().optional() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = await requireDb();
+      await assertClientOwnedByAgent(db, input.clientId, ctx.user.role, ctx.user.agentId);
       const [client] = await db
         .select({
           id: clients.id,

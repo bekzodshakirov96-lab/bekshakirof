@@ -69,6 +69,17 @@ describe("report export browser helpers", () => {
     );
   });
 
+  it("neutralizes leading =/+/-/@ in exported cell text so Excel can't run it as a formula (CSV injection)", async () => {
+    const maliciousOptions = {
+      ...options,
+      rows: [{ client: "=cmd|'/c calc'!A1", debt: 1 }],
+    };
+    await exportReportXlsx(maliciousOptions);
+
+    const dataRowsCall = xlsxMocks.aoaToSheet.mock.calls[1]?.[0] as unknown[][];
+    expect(dataRowsCall[1][0]).toBe("'=cmd|'/c calc'!A1");
+  });
+
   it("creates a Unicode landscape PDF and starts the download", async () => {
     await exportReportPdf(options);
 

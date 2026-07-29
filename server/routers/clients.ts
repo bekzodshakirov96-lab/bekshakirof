@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { clients } from "../../drizzle/schema";
 import { clientsViewProcedure, ownerProcedure } from "../access";
 import { logAudit } from "../auditLog";
@@ -13,8 +13,14 @@ import { router } from "../_core/trpc";
 import { requireDb } from "../db";
 
 export const clientsRouter = router({
-  options: clientsViewProcedure.query(async () => {
+  options: clientsViewProcedure.query(async ({ ctx }) => {
     const db = await requireDb();
+    // Agent rolidagi foydalanuvchiga faqat o'ziga biriktirilgan mijozlar ko'rsatiladi
+    // — aks holda mijoz tanlash ro'yxatida boshqa agentlarning mijozlari ham chiqardi.
+    const where =
+      ctx.user.role === "agent"
+        ? and(eq(clients.isActive, true), eq(clients.agentId, ctx.user.agentId ?? -1))
+        : eq(clients.isActive, true);
     return db
       .select({
         id: clients.id,
@@ -23,7 +29,7 @@ export const clientsRouter = router({
         agentId: clients.agentId,
       })
       .from(clients)
-      .where(eq(clients.isActive, true))
+      .where(where)
       .orderBy(asc(clients.name));
   }),
   list: clientsViewProcedure
@@ -38,8 +44,11 @@ export const clientsRouter = router({
         })
         .default({ debtOnly: false, page: 1, pageSize: 25 }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const search = normalizeSearch(input.search);
+      // Agent uchun so'ralgan agentId e'tiborga olinmaydi — doim o'zinikiga qattiq
+      // cheklanadi (aks holda boshqa agentning butun mijozlar ro'yxati ochilardi).
+      const effectiveAgentId = ctx.user.role === "agent" ? ctx.user.agentId ?? -1 : input.agentId;
       const rows = enrichClientFinancialRows(await getClientFinancialRows())
         .filter(row => {
           const matchesSearch =
@@ -49,7 +58,7 @@ export const clientsRouter = router({
             (row.phone ?? "").toLocaleLowerCase("uz-Latn").includes(search);
           return (
             matchesSearch &&
-            (!input.agentId || row.agentId === input.agentId) &&
+            (!effectiveAgentId || row.agentId === effectiveAgentId) &&
             (!input.debtOnly || row.currentDebt > 0)
           );
         })
@@ -67,14 +76,17 @@ export const clientsRouter = router({
         openingDebt: z.number().int().min(0).max(9_000_000_000_000).default(0),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
+      // Agent yangi mijozni doim faqat o'z nomiga yaratadi — boshqa agentga
+      // biriktirib qo'ya olmaydi (aks holda kiritilgan agentId'ga ishoniladi).
+      const agentId = ctx.user.role === "agent" ? ctx.user.agentId : input.agentId ?? null;
       const [created] = await db
         .insert(clients)
         .values({
           code: input.code,
           name: input.name,
-          agentId: input.agentId ?? null,
+          agentId,
           phone: input.phone,
           address: input.address,
           openingDebt: input.openingDebt,

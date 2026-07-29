@@ -1,7 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import { COOKIE_NAME } from "../shared/const";
 import type { TrpcContext } from "./_core/context";
+
+const { incrementTokenVersion } = vi.hoisted(() => ({
+  incrementTokenVersion: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("./db", () => ({
+  incrementTokenVersion,
+}));
 
 type CookieCall = {
   name: string;
@@ -19,6 +27,9 @@ function createAuthContext(): { ctx: TrpcContext; clearedCookies: CookieCall[] }
     name: "Sample User",
     passwordHash: "irrelevant-for-this-test",
     role: "user",
+    agentId: null,
+    language: "latin",
+    tokenVersion: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     lastSignedIn: new Date(),
@@ -41,13 +52,15 @@ function createAuthContext(): { ctx: TrpcContext; clearedCookies: CookieCall[] }
 }
 
 describe("auth.logout", () => {
-  it("clears the session cookie and reports success", async () => {
+  it("clears the session cookie, revokes the session (tokenVersion bump), and reports success", async () => {
+    incrementTokenVersion.mockClear();
     const { ctx, clearedCookies } = createAuthContext();
     const caller = appRouter.createCaller(ctx);
 
     const result = await caller.auth.logout();
 
     expect(result).toEqual({ success: true });
+    expect(incrementTokenVersion).toHaveBeenCalledWith(1);
     expect(clearedCookies).toHaveLength(1);
     expect(clearedCookies[0]?.name).toBe(COOKIE_NAME);
     expect(clearedCookies[0]?.options).toMatchObject({

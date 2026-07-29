@@ -33,10 +33,15 @@ function getSessionSecret() {
   return new TextEncoder().encode(secret);
 }
 
-export type SessionPayload = { userId: number };
+export type SessionPayload = { userId: number; tokenVersion: number };
 
+/** `tokenVersion` foydalanuvchining joriy `users.tokenVersion` qiymati bilan birga
+ * imzolanadi. Har logout'da bu qiymat DB'da +1 oshadi (server/db.ts:incrementTokenVersion),
+ * shu sababli o'sha paytdan oldin chiqarilgan har qanday token (o'g'irlangan nusxasi
+ * ham) `authenticateRequest`da mos kelmay, rad etiladi. */
 export async function signSession(
   userId: number,
+  tokenVersion: number = 0,
   options: { expiresInMs?: number } = {},
 ): Promise<string> {
   const issuedAt = Date.now();
@@ -44,7 +49,7 @@ export async function signSession(
   const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1000);
   const secretKey = getSessionSecret();
 
-  return new SignJWT({ userId })
+  return new SignJWT({ userId, tokenVersion })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setExpirationTime(expirationSeconds)
     .sign(secretKey);
@@ -58,9 +63,9 @@ export async function verifySession(
   try {
     const secretKey = getSessionSecret();
     const { payload } = await jwtVerify(cookieValue, secretKey, { algorithms: ["HS256"] });
-    const { userId } = payload as Record<string, unknown>;
-    if (typeof userId !== "number") return null;
-    return { userId };
+    const { userId, tokenVersion } = payload as Record<string, unknown>;
+    if (typeof userId !== "number" || typeof tokenVersion !== "number") return null;
+    return { userId, tokenVersion };
   } catch (error) {
     console.warn("[Auth] Session verification failed", String(error));
     return null;
@@ -88,5 +93,7 @@ export async function authenticateRequest(req: Request): Promise<User | null> {
   if (!session) return null;
 
   const user = await db.getUserById(session.userId);
-  return user ?? null;
+  if (!user) return null;
+  if (user.tokenVersion !== session.tokenVersion) return null;
+  return user;
 }

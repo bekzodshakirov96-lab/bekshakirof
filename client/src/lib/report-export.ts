@@ -57,6 +57,18 @@ function displayValue(value: ReportValue) {
   return L(value);
 }
 
+/** Excel/Google Sheets katakka yozilganda `=`/`+`/`-`/`@` bilan boshlangan matnni
+ * formula/buyruq sifatida bajaradi (CSV/DDE injection) — mijoz nomi, izoh kabi
+ * foydalanuvchi kiritgan matnlar orqali. Shunday belgidan boshlansa, oldiga `'`
+ * qo'shib zararsizlantiramiz (Excelda ko'rinadigan matn o'zgarmaydi, faqat formula
+ * sifatida bajarilmay qoladi). Faqat xlsx eksportida kerak — PDF matn sifatida
+ * chiqadi, hech qachon bajarilmaydi. */
+function xlsxSafeValue(value: ReportValue) {
+  const displayed = displayValue(value);
+  if (typeof displayed === "string" && /^[=+\-@\t\r]/.test(displayed)) return `'${displayed}`;
+  return displayed;
+}
+
 function pdfValue(value: ReportValue) {
   const displayed = displayValue(value);
   if (typeof displayed === "number") return displayed.toLocaleString("uz-UZ");
@@ -75,7 +87,7 @@ export async function exportReportXlsx<Row>(options: ReportExportOptions<Row>) {
 
   if (options.summary?.length) {
     summaryRows.push([], [L("Ko‘rsatkich"), L("Qiymat")]);
-    options.summary.forEach(item => summaryRows.push([L(item.label), displayValue(item.value)]));
+    options.summary.forEach(item => summaryRows.push([L(item.label), xlsxSafeValue(item.value)]));
   }
 
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
@@ -84,7 +96,7 @@ export async function exportReportXlsx<Row>(options: ReportExportOptions<Row>) {
 
   const dataRows = [
     options.columns.map(column => L(column.title)),
-    ...options.rows.map(row => options.columns.map(column => displayValue(column.value(row)))),
+    ...options.rows.map(row => options.columns.map(column => xlsxSafeValue(column.value(row)))),
   ];
   const dataSheet = XLSX.utils.aoa_to_sheet(dataRows);
   dataSheet["!cols"] = options.columns.map(column => ({

@@ -5,6 +5,19 @@ import type { TrpcContext } from "./context";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
+  // Standart tRPC xato shakli `data.stack`ni klientga qaytaradi — bu serverning
+  // to'liq fayl yo'lini va ichki tuzilishini hatto autentifikatsiya qilinmagan
+  // so'rovlarga ham oshkor qiladi. To'liq xabar server konsolida (`onError`
+  // orqali, server/_core/index.ts) qoladi, klientga esa hech qachon yuborilmaydi.
+  errorFormatter({ shape }) {
+    return {
+      ...shape,
+      data: {
+        ...shape.data,
+        stack: undefined,
+      },
+    };
+  },
 });
 
 export const router = t.router;

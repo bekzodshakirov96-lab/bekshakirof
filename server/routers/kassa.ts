@@ -12,7 +12,7 @@ import {
   transactions,
 } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
-import { logAudit } from "../auditLog";
+import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
@@ -260,6 +260,7 @@ export const kassaRouter = router({
     upsert: businessProcedure
       .input(z.object({ date: z.number().int(), actualCash: z.number().int().min(0), note: z.string().max(500).optional() }))
       .mutation(async ({ input, ctx }) => {
+        await assertPeriodUnlocked(new Date(input.date));
         const db = await requireDb();
         const { start, end } = dayRange(input.date);
         const [existing] = await db
@@ -317,6 +318,7 @@ export const kassaRouter = router({
         }),
       )
       .mutation(async ({ input, ctx }) => {
+        await assertPeriodUnlocked(new Date(input.date));
         const db = await requireDb();
         const { start, end } = dayRange(input.date);
         const [existing] = await db
@@ -417,6 +419,7 @@ export const kassaRouter = router({
         }),
       )
       .mutation(async ({ input, ctx }) => {
+        await assertPeriodUnlocked(new Date(input.date));
         const db = await requireDb();
         const [product] = await db.select().from(products).where(eq(products.id, input.productId)).limit(1);
         if (!product) throw new Error("Mahsulot topilmadi.");
@@ -455,6 +458,7 @@ export const kassaRouter = router({
         const db = await requireDb();
         const [row] = await db.select().from(agentTakingEntries).where(eq(agentTakingEntries.id, input.id)).limit(1);
         if (!row) throw new Error("Yozuv topilmadi.");
+        await assertPeriodUnlocked(row.entryDate);
         const amount = Math.round(input.quantity * row.unitPrice);
         await db
           .update(agentTakingEntries)
@@ -464,6 +468,13 @@ export const kassaRouter = router({
       }),
     remove: businessProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
       const db = await requireDb();
+      const [row] = await db
+        .select({ entryDate: agentTakingEntries.entryDate })
+        .from(agentTakingEntries)
+        .where(eq(agentTakingEntries.id, input.id))
+        .limit(1);
+      if (!row) throw new Error("Yozuv topilmadi.");
+      await assertPeriodUnlocked(row.entryDate);
       await db.delete(agentTakingEntries).where(eq(agentTakingEntries.id, input.id));
       return { success: true } as const;
     }),
@@ -488,6 +499,7 @@ export const kassaRouter = router({
     upsert: businessProcedure
       .input(z.object({ date: z.number().int(), productId: z.number().int().positive(), unitPrice: z.number().int().min(0).nullable() }))
       .mutation(async ({ input, ctx }) => {
+        await assertPeriodUnlocked(new Date(input.date));
         const db = await requireDb();
         const { start, end } = dayRange(input.date);
         const [existing] = await db
@@ -539,6 +551,7 @@ export const kassaRouter = router({
         }),
       )
       .mutation(async ({ input, ctx }) => {
+        await assertPeriodUnlocked(new Date(input.date));
         const db = await requireDb();
         const { start, end } = dayRange(input.date);
         const [existing] = await db

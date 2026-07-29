@@ -21,9 +21,9 @@ describe("localAuth password hashing", () => {
 
 describe("localAuth session tokens", () => {
   it("signs and verifies a session round-trip for the given user id", async () => {
-    const token = await signSession(42);
+    const token = await signSession(42, 3);
     const session = await verifySession(token);
-    expect(session).toEqual({ userId: 42 });
+    expect(session).toEqual({ userId: 42, tokenVersion: 3 });
   });
 
   it("rejects a tampered token", async () => {

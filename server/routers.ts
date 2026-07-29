@@ -54,7 +54,9 @@ export const appRouter = router({
         }),
       )
       .mutation(async ({ ctx, input }) => {
-        if (!(await db.isFirstUser())) {
+        // Atomik "mutex" — ikkita so'rov bir vaqtda kelsa ham, faqat bittasi
+        // birinchi admin bo'lib qolishni yutadi (server/db.ts:claimFirstAdmin).
+        if (!(await db.claimFirstAdmin())) {
           throw new TRPCError({
             code: "FORBIDDEN",
             message: "Ro‘yxatdan o‘tish yopiq. Yangi hisob uchun rahbar yoki buxgalterga murojaat qiling.",
@@ -69,11 +71,12 @@ export const appRouter = router({
           name: input.name,
           email: input.email,
           passwordHash,
+          role: "admin",
         });
         if (!user) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Foydalanuvchi yaratilmadi." });
         }
-        const token = await signSession(user.id, { expiresInMs: SESSION_TTL_MS });
+        const token = await signSession(user.id, user.tokenVersion, { expiresInMs: SESSION_TTL_MS });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: SESSION_TTL_MS });
         return { success: true, user: toSafeUser(user) } as const;
@@ -95,7 +98,7 @@ export const appRouter = router({
         const valid = await verifyPassword(input.password, user.passwordHash);
         if (!valid) throw invalidCredentialsError;
         await db.touchLastSignedIn(user.id);
-        const token = await signSession(user.id, { expiresInMs: SESSION_TTL_MS });
+        const token = await signSession(user.id, user.tokenVersion, { expiresInMs: SESSION_TTL_MS });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: SESSION_TTL_MS });
         return { success: true, user: toSafeUser(user) } as const;
@@ -109,7 +112,13 @@ export const appRouter = router({
         await db.setUserLanguage(ctx.user.id, input.language);
         return { success: true } as const;
       }),
-    logout: publicProcedure.mutation(({ ctx }) => {
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      // tokenVersion oshadi — shu orqali ushbu foydalanuvchining boshqa joyda
+      // saqlangan/o'g'irlangan har qanday token nusxasi ham darhol bekor bo'ladi
+      // (faqat joriy brauzerdagi cookie emas).
+      if (ctx.user) {
+        await db.incrementTokenVersion(ctx.user.id);
+      }
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return {

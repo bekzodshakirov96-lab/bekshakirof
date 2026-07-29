@@ -302,6 +302,9 @@ export const transactionsRouter = router({
       requireOwnAgent(ctx.user.role, ctx.user.agentId, input.agentId);
       await assertPeriodUnlocked(new Date(input.transactionDate));
       const db = await requireDb();
+      const [client] = await db.select({ agentId: clients.agentId }).from(clients).where(eq(clients.id, input.clientId)).limit(1);
+      if (!client) throw new Error("Mijoz topilmadi.");
+      if (client.agentId !== input.agentId) throw new Error("Bu mijoz ko‘rsatilgan agentga biriktirilmagan.");
       return db.transaction(async tx => {
         const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).limit(1);
         if (!product) throw new Error("Mahsulot topilmadi.");
@@ -371,7 +374,7 @@ export const transactionsRouter = router({
    * payment never exceeds its own line total — debt math stays consistent because
    * client debt is always computed as a live sum across all transactions.
    */
-  createMultiple: businessProcedure
+  createMultiple: salesProcedure
     .input(
       z
         .object({
@@ -409,8 +412,12 @@ export const transactionsRouter = router({
       // kanaldan kelgan bo'lsa, o'sha kanalga yozilgan holda).
     )
     .mutation(async ({ input, ctx }) => {
+      requireOwnAgent(ctx.user.role, ctx.user.agentId, input.agentId);
       await assertPeriodUnlocked(new Date(input.transactionDate));
       const db = await requireDb();
+      const [client] = await db.select({ agentId: clients.agentId }).from(clients).where(eq(clients.id, input.clientId)).limit(1);
+      if (!client) throw new Error("Mijoz topilmadi.");
+      if (client.agentId !== input.agentId) throw new Error("Bu mijoz ko‘rsatilgan agentga biriktirilmagan.");
       return db.transaction(async tx => {
         const productRows = await tx
           .select()

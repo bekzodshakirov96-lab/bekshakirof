@@ -30,6 +30,11 @@ export const users = mysqlTable("users", {
   /** bcrypt hash of the user's password. Never store or return plaintext. */
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
   role: mysqlEnum("role", ["user", "admin", "accountant", "agent", "sklad"]).default("user").notNull(),
+  /** Har bir logout'da +1 oshadi. JWT ichidagi tokenVersion shu qiymatga mos kelmasa,
+   * sessiya rad etiladi — shu orqali o'g'irlangan/nusxalangan token logout qilingandan
+   * keyin ham ishlatilib qolmasligi ta'minlanadi (JWT o'zi statik va muddati tugamaguncha
+   * amal qilaverar edi). */
+  tokenVersion: int("tokenVersion").default(0).notNull(),
   /** role="agent" bo'lganda — bu foydalanuvchi qaysi agent profiliga tegishli ekanini bildiradi;
    * shu orqali uning savdo/KEG kiritishlari faqat o'z nomiga cheklanadi. */
   agentId: int("agentId"),

@@ -84,6 +84,11 @@ async function startServer() {
     createExpressMiddleware({
       router: appRouter,
       createContext,
+      // To'liq xato (stack bilan) faqat server konsolida qoladi — klientga
+      // yuboriladigan javobdan stack olib tashlangan (server/_core/trpc.ts).
+      onError({ error, path }) {
+        console.error(`[tRPC] ${path ?? "<unknown>"}:`, error);
+      },
     })
   );
   // development mode uses Vite, production mode uses static files
