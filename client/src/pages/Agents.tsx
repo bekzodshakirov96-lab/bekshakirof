@@ -67,7 +67,7 @@ function AgentCommissionSection() {
   const payCommission = trpc.agents.payCommission.useMutation({
     onSuccess: async () => {
       toast.success("Komissiya Kassa'ga Ойлик xarajati sifatida yozildi");
-      await Promise.all([utils.cash.summary.invalidate(), utils.dashboard.overview.invalidate()]);
+      await utils.dashboard.overview.invalidate();
     },
     onError: error => toast.error(error.message),
   });

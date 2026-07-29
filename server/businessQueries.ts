@@ -57,7 +57,14 @@ export function enrichClientFinancialRows(
     const debtPaid = row.debtPaidCash + row.debtPaidTerminal + row.debtPaidClick + row.debtPaidTransfer;
     const totalPaid = salePaid + debtPaid;
     const currentDebt = row.openingDebt + row.totalSales - totalPaid;
-    return { ...row, salePaid, debtPaid, totalPaid, currentDebt };
+    // Kanal bo'yicha ko'rsatiladigan ustunlar (Qarzdorlik jadvali) — savdo va qarz
+    // to'lovini birga qo'shib ko'rsatishi kerak, aks holda ustunlar yig'indisi
+    // jami to'lovdan kam chiqib, mijoz aslida qancha pul topshirganini yashirib qo'yadi.
+    const cashReceived = row.cashPaid + row.debtPaidCash;
+    const terminalReceived = row.terminalPaid + row.debtPaidTerminal;
+    const clickReceived = row.clickPaid + row.debtPaidClick;
+    const transferReceived = row.transferPaid + row.debtPaidTransfer;
+    return { ...row, salePaid, debtPaid, totalPaid, currentDebt, cashReceived, terminalReceived, clickReceived, transferReceived };
   });
 }
 

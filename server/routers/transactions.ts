@@ -403,14 +403,10 @@ export const transactionsRouter = router({
         .refine(value => {
           const productIds = value.items.map(item => item.productId);
           return new Set(productIds).size === productIds.length;
-        }, { message: "Bir mahsulot savatda faqat bir marta bo‘lishi mumkin." })
-        .refine(
-          value => {
-            const cartTotal = value.items.reduce((sum, item) => sum + Math.round(item.quantity * item.salePrice), 0);
-            return value.cashPayment + value.terminalPayment + value.clickPayment + value.transferPayment <= cartTotal;
-          },
-          { message: "To‘lov summasi savat jamisidan oshmasligi kerak." },
-        ),
+        }, { message: "Bir mahsulot savatda faqat bir marta bo‘lishi mumkin." }),
+      // To'lov savat jamisidan oshishi endi taqiqlanmaydi — ortiqcha qism pastda
+      // avtomatik ravishda mijozning eski qarzini yopishga yo'naltiriladi (qaysi
+      // kanaldan kelgan bo'lsa, o'sha kanalga yozilgan holda).
     )
     .mutation(async ({ input, ctx }) => {
       await assertPeriodUnlocked(new Date(input.transactionDate));
@@ -517,15 +513,30 @@ export const transactionsRouter = router({
           results.push({ productName: product.name, totalAmount });
         }
 
-        if (input.debtPaymentAmount > 0) {
+        // Savatga yetmagan (line-by-line taqsimlangandan keyin ortib qolgan) har bir kanal
+        // summasi — mijoz savdo narxidan ko'proq pul topshirgani uchun avtomatik ravishda
+        // eski qarzni yopishga yo'naltiriladi, aynan qaysi kanaldan kelgan bo'lsa o'sha
+        // kanalga yozilgan holda (Kutilayotgan kassa panelidagi hisob to'g'ri qolishi uchun).
+        const overpaidCash = remainingCash;
+        const overpaidTerminal = remainingTerminal;
+        const overpaidClick = remainingClick;
+        const overpaidTransfer = remainingTransfer;
+        const totalDebtCash = input.debtPaymentAmount + overpaidCash;
+        const totalDebtPayment = totalDebtCash + overpaidTerminal + overpaidClick + overpaidTransfer;
+
+        if (totalDebtPayment > 0) {
           const [createdPayment] = await tx.insert(clientPayments).values({
             clientId: input.clientId,
             agentId: input.agentId,
             paymentDate: transactionDate,
-            cashAmount: input.debtPaymentAmount,
-            terminalAmount: 0,
-            clickAmount: 0,
-            note: "Yangi savdo orqali qabul qilingan qo‘shimcha to‘lov (eski qarz)",
+            cashAmount: totalDebtCash,
+            terminalAmount: overpaidTerminal,
+            clickAmount: overpaidClick,
+            transferAmount: overpaidTransfer,
+            note:
+              overpaidCash + overpaidTerminal + overpaidClick + overpaidTransfer > 0
+                ? "Yangi savdo orqali qabul qilingan qo‘shimcha to‘lov (savdo narxidan ortiqcha qismi avtomatik eski qarzga yozildi)"
+                : "Yangi savdo orqali qabul qilingan qo‘shimcha to‘lov (eski qarz)",
             createdBy: ctx.user.id,
           }).$returningId();
           await logAudit(tx, {
@@ -533,7 +544,15 @@ export const transactionsRouter = router({
             recordId: createdPayment.id,
             action: "create",
             userId: ctx.user.id,
-            after: { clientId: input.clientId, agentId: input.agentId, cashAmount: input.debtPaymentAmount, source: "Yangi savdo" },
+            after: {
+              clientId: input.clientId,
+              agentId: input.agentId,
+              cashAmount: totalDebtCash,
+              terminalAmount: overpaidTerminal,
+              clickAmount: overpaidClick,
+              transferAmount: overpaidTransfer,
+              source: "Yangi savdo",
+            },
           });
         }
 
@@ -542,7 +561,7 @@ export const transactionsRouter = router({
           cartTotal,
           lineCount: results.length,
           lines: results,
-          debtPaymentAmount: input.debtPaymentAmount,
+          debtPaymentAmount: totalDebtPayment,
         } as const;
       });
     }),

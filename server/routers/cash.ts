@@ -90,34 +90,6 @@ export const cashRouter = router({
       .where(sql`${cashEntries.entryDate} < ${toMySqlDate(dayStart)}`);
     return { openingBalance: row.balance };
   }),
-  summary: businessProcedure.query(async () => {
-    const db = await requireDb();
-    const [row] = await db
-      .select({
-        cashBalance:
-          sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' then ${cashEntries.cashAmount} else -${cashEntries.cashAmount} end), 0)`.mapWith(
-            Number,
-          ),
-        terminalBalance:
-          sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' then ${cashEntries.terminalAmount} else -${cashEntries.terminalAmount} end), 0)`.mapWith(
-            Number,
-          ),
-        clickBalance:
-          sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' then ${cashEntries.clickAmount} else -${cashEntries.clickAmount} end), 0)`.mapWith(
-            Number,
-          ),
-        yearlyIncome:
-          sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' and year(${cashEntries.entryDate}) = year(current_date()) then ${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} else 0 end), 0)`.mapWith(
-            Number,
-          ),
-        yearlyExpense:
-          sql<number>`coalesce(sum(case when ${cashEntries.type} = 'expense' and year(${cashEntries.entryDate}) = year(current_date()) then ${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} else 0 end), 0)`.mapWith(
-            Number,
-          ),
-      })
-      .from(cashEntries);
-    return row;
-  }),
   list: businessProcedure
     .input(
       z

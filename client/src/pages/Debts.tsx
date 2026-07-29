@@ -99,10 +99,10 @@ export default function Debts() {
         { title: "Agent", value: row => row.agentName || "—", width: 70 },
         { title: "Boshlang‘ich qarz", value: row => row.openingDebt, width: 65, align: "right" },
         { title: "Jami savdo", value: row => row.totalSales, width: 62, align: "right" },
-        { title: "Naqd", value: row => row.cashPaid, width: 58, align: "right" },
-        { title: "Terminal", value: row => row.terminalPaid, width: 58, align: "right" },
-        { title: "Click", value: row => row.clickPaid, width: 55, align: "right" },
-        { title: "Перечисление", value: row => row.transferPaid, width: 60, align: "right" },
+        { title: "Naqd", value: row => row.cashReceived, width: 58, align: "right" },
+        { title: "Terminal", value: row => row.terminalReceived, width: 58, align: "right" },
+        { title: "Click", value: row => row.clickReceived, width: 55, align: "right" },
+        { title: "Перечисление", value: row => row.transferReceived, width: 60, align: "right" },
         { title: "Qoldiq qarz", value: row => row.currentDebt, width: 65, align: "right" },
       ];
       const options = {
@@ -194,10 +194,10 @@ export default function Debts() {
                   <TableCell>{item.agentName || "—"}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoney(item.openingDebt)}</TableCell>
                   <TableCell className="text-right font-semibold tabular-nums">{formatMoney(item.totalSales)}</TableCell>
-                  <TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(item.cashPaid)}</TableCell>
-                  <TableCell className="text-right tabular-nums text-violet-700">{formatMoney(item.terminalPaid)}</TableCell>
-                  <TableCell className="text-right tabular-nums text-cyan-700">{formatMoney(item.clickPaid)}</TableCell>
-                  <TableCell className="text-right tabular-nums text-indigo-700">{formatMoney(item.transferPaid)}</TableCell>
+                  <TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(item.cashReceived)}</TableCell>
+                  <TableCell className="text-right tabular-nums text-violet-700">{formatMoney(item.terminalReceived)}</TableCell>
+                  <TableCell className="text-right tabular-nums text-cyan-700">{formatMoney(item.clickReceived)}</TableCell>
+                  <TableCell className="text-right tabular-nums text-indigo-700">{formatMoney(item.transferReceived)}</TableCell>
                   <TableCell className={`text-right font-bold tabular-nums ${item.currentDebt > 0 ? "text-rose-700" : "text-emerald-700"}`}>{formatMoney(item.currentDebt)}</TableCell>
                   <TableCell><DebtBadge value={item.currentDebt} /></TableCell>
                   <TableCell>

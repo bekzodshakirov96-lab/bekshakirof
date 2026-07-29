@@ -103,7 +103,6 @@ function DailyJournalGrid({
   const invalidate = () =>
     Promise.all([
       utils.cash.byDate.invalidate({ date: timestamp }),
-      utils.cash.summary.invalidate(),
       utils.cash.openingBalance.invalidate(),
       utils.kassa.daySummary.invalidate({ date: timestamp }),
       utils.dashboard.overview.invalidate(),
@@ -1142,7 +1141,6 @@ export default function Cash() {
   const timestamp = dateToTimestamp(date);
   const daySummary = trpc.kassa.daySummary.useQuery({ date: timestamp });
   const prihodEntries = trpc.cash.byDate.useQuery({ date: timestamp });
-  const cashSummary = trpc.cash.summary.useQuery();
 
   const allEntries = prihodEntries.data ?? [];
 
@@ -1161,8 +1159,7 @@ export default function Cash() {
         description="Kunlik jurnal va agentlar bo'yicha tezkor nazorat."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Naqd pul" value={formatMoney(cashSummary.data?.cashBalance, true)} helper="Umumiy qoldiq" icon={Banknote} tone="amber" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Jami Приход" value={formatMoney(data?.jamiPrihod, true)} helper="Tanlangan kun" icon={Banknote} tone="green" />
         <MetricCard label="Jami Расход" value={formatMoney(data?.jamiRasxod, true)} helper="Tanlangan kun" icon={Banknote} tone="rose" />
         <MetricCard label="Қолдиқ" value={formatMoney(kassaQoldigi, true)} helper="Приход - Расход" icon={Landmark} tone="cyan" />

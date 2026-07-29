@@ -59,6 +59,16 @@ describe("moliyaviy hisob-kitoblar", () => {
     expect(result.currentDebt).toBe(1_500_000);
   });
 
+  it("kanal ustunlari savdo va qarz to‘lovini birga ko‘rsatadi (Qarzdorlik jadvali uchun)", () => {
+    // Mijoz savdoda 2 000 000 naqd to'lagan, keyin yana 500 000 naqd qarz to'lovi qilgan —
+    // jadvaldagi "Naqd" ustuni ikkalasini ham qamrab olishi kerak, faqat savdo qismini emas.
+    const [result] = enrichClientFinancialRows(clientRow({ debtPaidCash: 500_000 }));
+    expect(result.cashReceived).toBe(2_500_000);
+    expect(result.terminalReceived).toBe(1_500_000);
+    expect(result.clickReceived).toBe(500_000);
+    expect(result.transferReceived).toBe(0);
+  });
+
   it("qarzdan ortiq to‘lov manfiy qarz (avans) beradi", () => {
     const [result] = enrichClientFinancialRows(clientRow({ debtPaidCash: 3_000_000 }));
     expect(result.currentDebt).toBe(-1_000_000);
