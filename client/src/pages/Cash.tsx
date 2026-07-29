@@ -6,6 +6,8 @@ import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import {
+  AlertTriangle,
+  ArrowLeftRight,
   Banknote,
   Calculator,
   ChevronDown,
@@ -14,6 +16,7 @@ import {
   ChevronUp,
   Landmark,
   Plus,
+  Smartphone,
   Trash2,
   Users,
 } from "lucide-react";
@@ -896,6 +899,115 @@ function AgentProductMatrix({ date }: { date: string }) {
   );
 }
 
+type PendingChannel = { today: number; cumulative: number };
+const PENDING_CHANNELS: { key: "cash" | "terminal" | "click" | "transfer"; label: string; icon: typeof Banknote }[] = [
+  { key: "cash", label: "Naqd", icon: Banknote },
+  { key: "terminal", label: "Terminal", icon: Landmark },
+  { key: "click", label: "Click", icon: Smartphone },
+  { key: "transfer", label: "Перечисление", icon: ArrowLeftRight },
+];
+
+/**
+ * Har kanal (Naqd/Terminal/Click/Перечисление) bo'yicha "kassaga kelishi kerak bo'lgan"
+ * summa (savdo+qarz to'lovlaridan hisoblangan) va "haqiqatda tasdiqlangan" summa orasidagi
+ * farqni ko'rsatadi — buxgalter biror to'lovni yozib qo'yib kassaga kiritmasa yoki
+ * boshqa kanalga yozib qo'ysa ham, bu yerda darhol ko'rinadi (kutilgan tomon audit
+ * qilingan yozuvlardan hisoblanadi, uni yashirib bo'lmaydi). `today` — shu kunning
+ * o'zi, `cumulative` — davr boshidan buyon yig'ilib qolgan qoldiq (oldingi kundan
+ * avtomatik "ko'chib" keladi). Naqd — mavjud "Приход кег/пет" orqali, qolgan uch
+ * kanal — quyidagi kunlik tasdiqlash formasi orqali yopiladi.
+ */
+function PendingKassaPanel({
+  timestamp,
+  data,
+  onSaved,
+}: {
+  timestamp: number;
+  data: {
+    pendingByChannel?: Record<"cash" | "terminal" | "click" | "transfer", PendingChannel>;
+    channelConfirmed?: { terminal: number; click: number; transfer: number; note: string };
+  } | undefined;
+  onSaved: () => void;
+}) {
+  const [terminal, setTerminal] = useState("");
+  const [click, setClick] = useState("");
+  const [transfer, setTransfer] = useState("");
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    setTerminal(data?.channelConfirmed ? String(data.channelConfirmed.terminal) : "");
+    setClick(data?.channelConfirmed ? String(data.channelConfirmed.click) : "");
+    setTransfer(data?.channelConfirmed ? String(data.channelConfirmed.transfer) : "");
+    setNote(data?.channelConfirmed?.note ?? "");
+  }, [timestamp, data?.channelConfirmed]);
+
+  const upsert = trpc.kassa.channelConfirmation.upsert.useMutation({
+    onSuccess: () => { toast.success("Tasdiqlandi"); onSaved(); },
+    onError: error => toast.error(error.message),
+  });
+
+  return (
+    <div className="mt-5 rounded-2xl border border-border bg-card p-5">
+      <div className="mb-1 flex items-center gap-2"><AlertTriangle className="size-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Kutilayotgan kassa</h3></div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Savdo/qarz to'lovlarida yozilgan summa bilan kassaga haqiqatda tasdiqlangan summa orasidagi farq — kanal qanday yozilishidan qat'i nazar darhol ko'rinadi.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {PENDING_CHANNELS.map(({ key, label, icon: Icon }) => {
+          const row = data?.pendingByChannel?.[key];
+          const today = row?.today ?? 0;
+          const cumulative = row?.cumulative ?? 0;
+          const flagged = cumulative > 0;
+          return (
+            <div
+              key={key}
+              className={`rounded-xl border p-3 ${flagged ? "border-rose-200 bg-rose-50/60 dark:border-rose-400/30 dark:bg-rose-500/10" : "border-emerald-200 bg-emerald-50/40 dark:border-emerald-400/25 dark:bg-emerald-500/10"}`}
+            >
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground"><Icon className="size-3.5" />{label}</div>
+              <div className="mt-1.5 text-sm font-bold text-foreground">Bugun: {formatMoney(today)}</div>
+              <div className={`text-xs font-semibold ${flagged ? "text-rose-700 dark:text-rose-300" : "text-emerald-700 dark:text-emerald-300"}`}>
+                Jami qoldiq: {formatMoney(cumulative)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-4 grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[160px_160px_160px_1fr_auto]">
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-muted-foreground">Terminal tasdiqlangan</label>
+          <Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={terminal} onChange={event => setTerminal(sanitizeIntegerInput(event.target.value))} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-muted-foreground">Click tasdiqlangan</label>
+          <Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={click} onChange={event => setClick(sanitizeIntegerInput(event.target.value))} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-muted-foreground">Перечисление tasdiqlangan</label>
+          <Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={transfer} onChange={event => setTransfer(sanitizeIntegerInput(event.target.value))} />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-muted-foreground">Izoh</label>
+          <Input className="finance-input" placeholder="Bank hisoboti/Click panel bo'yicha" value={note} onChange={event => setNote(event.target.value)} />
+        </div>
+        <Button
+          disabled={upsert.isPending}
+          onClick={() =>
+            upsert.mutate({
+              date: timestamp,
+              terminalConfirmed: Math.round(Number(terminal || 0)),
+              clickConfirmed: Math.round(Number(click || 0)),
+              transferConfirmed: Math.round(Number(transfer || 0)),
+              note: note || undefined,
+            })
+          }
+        >
+          {upsert.isPending ? "Saqlanmoqda..." : "Tasdiqlash"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Kassani jismonan sanab, tizim hisoblagan qoldiq bilan solishtirish — kamomad/ortiqchani
  * shu yerda ko'rish uchun. `kassa.actualCash.upsert` yozadi, `daySummary` javobidagi
@@ -1022,6 +1134,12 @@ export default function Cash() {
           tone={data && data.problemAgentCount > 0 ? "rose" : "green"}
         />
       </div>
+
+      <PendingKassaPanel
+        timestamp={timestamp}
+        data={data}
+        onSaved={() => daySummary.refetch()}
+      />
 
       <ActualCashCard
         date={date}

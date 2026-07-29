@@ -5,9 +5,11 @@ import {
   agentTakingEntries,
   agents,
   cashEntries,
+  clientPayments,
   dailyProductPrices,
   kassaDailyActuals,
   products,
+  transactions,
 } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
 import { logAudit } from "../auditLog";
@@ -15,12 +17,113 @@ import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
 
+const numberSql = (template: TemplateStringsArray, ...params: unknown[]) =>
+  sql<number>(template, ...params).mapWith(Number);
+
+/** "Приход кег"/"Приход пет" — agent naqd yig'gan pulni jismonan kassaga topshirgani
+ * uchun yagona mavjud tasdiqlash yo'li. Terminal/Click/Перечисление uchun bunday
+ * "topshirish" tushunchasi yo'q (pul to'g'ridan-to'g'ri bankka/Click hisobiga tushadi),
+ * shu sababli ular kassaDailyActuals'dagi qo'lda tasdiqlangan summa bilan solishtiriladi. */
+const CASH_SUBMISSION_CATEGORIES = ["Приход кег", "Приход пет"] as const;
+
 function dayRange(timestamp: number) {
   const start = new Date(timestamp);
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
   end.setHours(23, 59, 59, 999);
   return { start, end };
+}
+
+/**
+ * Kassaga "kelishi kerak bo'lgan" summa — savdo/qarz to'lovlarida har kanal bo'yicha
+ * yozilgan miqdorlar (transactions + client_payments) — va "haqiqatda tasdiqlangan"
+ * summa (naqd uchun Приход кег/пет, boshqalar uchun kunlik qo'lda tasdiqlash) orasidagi
+ * farq. Bu buxgalter/agent naqd pulni yozib qo'yib, kassaga hech qachon kiritmasa yoki
+ * kanalni almashtirib yozsa ham darhol ko'rinadigan, chetlab o'tib bo'lmaydigan signal —
+ * chunki "kutilgan" tomon allaqachon audit qilingan transactions/client_payments
+ * yozuvlaridan hisoblanadi, xodim uni yashira olmaydi. Har kanal uchun ikkita qiymat
+ * qaytaradi: shu kunning o'zi (`today`) va davr boshidan shu kungacha yig'ilgan
+ * qoldiq (`cumulative`, oldingi kunlardan avtomatik "ko'chib" keladi).
+ */
+async function computePendingByChannel(timestamp: number) {
+  const db = await requireDb();
+  const { end } = dayRange(timestamp);
+  const { start: todayStart } = dayRange(timestamp);
+
+  const [expected] = await db
+    .select({
+      cashToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${todayStart} then ${transactions.cashPayment} else 0 end), 0)`,
+      terminalToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${todayStart} then ${transactions.terminalPayment} else 0 end), 0)`,
+      clickToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${todayStart} then ${transactions.clickPayment} else 0 end), 0)`,
+      transferToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${todayStart} then ${transactions.transferPayment} else 0 end), 0)`,
+      cashCumulative: numberSql`coalesce(sum(${transactions.cashPayment}), 0)`,
+      terminalCumulative: numberSql`coalesce(sum(${transactions.terminalPayment}), 0)`,
+      clickCumulative: numberSql`coalesce(sum(${transactions.clickPayment}), 0)`,
+      transferCumulative: numberSql`coalesce(sum(${transactions.transferPayment}), 0)`,
+    })
+    .from(transactions)
+    .where(sql`${transactions.transactionDate} <= ${end}`);
+
+  const [expectedDebt] = await db
+    .select({
+      cashToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${todayStart} then ${clientPayments.cashAmount} else 0 end), 0)`,
+      terminalToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${todayStart} then ${clientPayments.terminalAmount} else 0 end), 0)`,
+      clickToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${todayStart} then ${clientPayments.clickAmount} else 0 end), 0)`,
+      transferToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${todayStart} then ${clientPayments.transferAmount} else 0 end), 0)`,
+      cashCumulative: numberSql`coalesce(sum(${clientPayments.cashAmount}), 0)`,
+      terminalCumulative: numberSql`coalesce(sum(${clientPayments.terminalAmount}), 0)`,
+      clickCumulative: numberSql`coalesce(sum(${clientPayments.clickAmount}), 0)`,
+      transferCumulative: numberSql`coalesce(sum(${clientPayments.transferAmount}), 0)`,
+    })
+    .from(clientPayments)
+    .where(sql`${clientPayments.paymentDate} <= ${end}`);
+
+  const [actualCash] = await db
+    .select({
+      today: numberSql`coalesce(sum(case when ${cashEntries.entryDate} >= ${todayStart} then ${cashEntries.cashAmount} else 0 end), 0)`,
+      cumulative: numberSql`coalesce(sum(${cashEntries.cashAmount}), 0)`,
+    })
+    .from(cashEntries)
+    .where(
+      and(
+        eq(cashEntries.type, "income"),
+        inArray(cashEntries.category, [...CASH_SUBMISSION_CATEGORIES]),
+        sql`${cashEntries.entryDate} <= ${end}`,
+      ),
+    );
+
+  const [actualConfirmed] = await db
+    .select({
+      terminalToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${todayStart} then ${kassaDailyActuals.terminalConfirmed} else 0 end), 0)`,
+      clickToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${todayStart} then ${kassaDailyActuals.clickConfirmed} else 0 end), 0)`,
+      transferToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${todayStart} then ${kassaDailyActuals.transferConfirmed} else 0 end), 0)`,
+      terminalCumulative: numberSql`coalesce(sum(${kassaDailyActuals.terminalConfirmed}), 0)`,
+      clickCumulative: numberSql`coalesce(sum(${kassaDailyActuals.clickConfirmed}), 0)`,
+      transferCumulative: numberSql`coalesce(sum(${kassaDailyActuals.transferConfirmed}), 0)`,
+    })
+    .from(kassaDailyActuals)
+    .where(sql`${kassaDailyActuals.entryDate} <= ${end}`);
+
+  const channel = (name: "cash" | "terminal" | "click" | "transfer") => {
+    const key = name === "cash" ? "cash" : name;
+    const expectedToday = expected[`${key}Today` as keyof typeof expected] + expectedDebt[`${key}Today` as keyof typeof expectedDebt];
+    const expectedCumulative =
+      expected[`${key}Cumulative` as keyof typeof expected] + expectedDebt[`${key}Cumulative` as keyof typeof expectedDebt];
+    const actualToday = name === "cash" ? actualCash.today : actualConfirmed[`${key}Today` as keyof typeof actualConfirmed];
+    const actualCumulative =
+      name === "cash" ? actualCash.cumulative : actualConfirmed[`${key}Cumulative` as keyof typeof actualConfirmed];
+    return {
+      today: expectedToday - actualToday,
+      cumulative: expectedCumulative - actualCumulative,
+    };
+  };
+
+  return {
+    cash: channel("cash"),
+    terminal: channel("terminal"),
+    click: channel("click"),
+    transfer: channel("transfer"),
+  };
 }
 
 function toMySqlDate(d: Date): string {
@@ -113,6 +216,8 @@ export const kassaRouter = router({
     const agentComputedTotal = agentSummaries.reduce((sum, row) => sum + row.computedAmount, 0);
     const agentSubmittedTotal = agentSummaries.reduce((sum, row) => sum + row.submittedAmount, 0);
 
+    const pendingByChannel = await computePendingByChannel(input.date);
+
     return {
       jamiPrihod,
       jamiRasxod,
@@ -125,6 +230,13 @@ export const kassaRouter = router({
       agentSubmittedTotal,
       agentFarqTotal: agentComputedTotal - agentSubmittedTotal,
       problemAgentCount: agentSummaries.filter(row => row.farq !== 0).length,
+      pendingByChannel,
+      channelConfirmed: {
+        terminal: actual?.terminalConfirmed ?? 0,
+        click: actual?.clickConfirmed ?? 0,
+        transfer: actual?.transferConfirmed ?? 0,
+        note: actual?.note ?? "",
+      },
     };
   }),
 
@@ -167,6 +279,83 @@ export const kassaRouter = router({
               action: "create",
               userId: ctx.user.id,
               after: { entryDate: new Date(input.date), actualCash: input.actualCash, note: input.note ?? null },
+            });
+          }
+          return { success: true } as const;
+        });
+      }),
+  }),
+
+  /** Terminal/Click/Перечисление uchun kunlik "haqiqatda tushdi" tasdiqlashi — bank
+   * ko'chirmasi/POS hisoboti/Click panelga qarab kiritiladi, "kutilayotgan kassa"
+   * panelidagi kanal bo'yicha nomuvofiqlikni yopadi. */
+  channelConfirmation: router({
+    upsert: businessProcedure
+      .input(
+        z.object({
+          date: z.number().int(),
+          terminalConfirmed: z.number().int().min(0),
+          clickConfirmed: z.number().int().min(0),
+          transferConfirmed: z.number().int().min(0),
+          note: z.string().max(500).optional(),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        const db = await requireDb();
+        const { start, end } = dayRange(input.date);
+        const [existing] = await db
+          .select()
+          .from(kassaDailyActuals)
+          .where(and(sql`${kassaDailyActuals.entryDate} >= ${start}`, sql`${kassaDailyActuals.entryDate} <= ${end}`))
+          .limit(1);
+        const note = input.note !== undefined ? input.note : existing?.note;
+        return db.transaction(async tx => {
+          if (existing) {
+            await tx
+              .update(kassaDailyActuals)
+              .set({
+                terminalConfirmed: input.terminalConfirmed,
+                clickConfirmed: input.clickConfirmed,
+                transferConfirmed: input.transferConfirmed,
+                note,
+                updatedBy: ctx.user.id,
+              })
+              .where(eq(kassaDailyActuals.id, existing.id));
+            await logAudit(tx, {
+              tableName: "kassa_daily_actuals",
+              recordId: existing.id,
+              action: "update",
+              userId: ctx.user.id,
+              before: existing,
+              after: {
+                entryDate: new Date(input.date),
+                terminalConfirmed: input.terminalConfirmed,
+                clickConfirmed: input.clickConfirmed,
+                transferConfirmed: input.transferConfirmed,
+                note: note ?? null,
+              },
+            });
+          } else {
+            const [created] = await tx.insert(kassaDailyActuals).values({
+              entryDate: new Date(input.date),
+              terminalConfirmed: input.terminalConfirmed,
+              clickConfirmed: input.clickConfirmed,
+              transferConfirmed: input.transferConfirmed,
+              note,
+              updatedBy: ctx.user.id,
+            }).$returningId();
+            await logAudit(tx, {
+              tableName: "kassa_daily_actuals",
+              recordId: created.id,
+              action: "create",
+              userId: ctx.user.id,
+              after: {
+                entryDate: new Date(input.date),
+                terminalConfirmed: input.terminalConfirmed,
+                clickConfirmed: input.clickConfirmed,
+                transferConfirmed: input.transferConfirmed,
+                note: note ?? null,
+              },
             });
           }
           return { success: true } as const;

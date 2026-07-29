@@ -352,6 +352,13 @@ export const kassaDailyActuals = mysqlTable(
     id: int("id").autoincrement().primaryKey(),
     entryDate: timestamp("entryDate").notNull(),
     actualCash: int("actualCash").default(0).notNull(),
+    // Terminal/Click/Перечисление — bank/POS/Click orqali to'g'ridan-to'g'ri hisobga tushadigan
+    // kanallar, jismoniy kassadan o'tmaydi. Shu uchun ularning "haqiqatda tushgani" tashqi
+    // hisobot (bank ko'chirmasi, POS yopilish hisoboti, Click panel) asosida shu yerga qo'lda
+    // tasdiqlanadi — "kutilayotgan kassa" paneli buni tizim yozgan summa bilan solishtiradi.
+    terminalConfirmed: int("terminalConfirmed").default(0).notNull(),
+    clickConfirmed: int("clickConfirmed").default(0).notNull(),
+    transferConfirmed: int("transferConfirmed").default(0).notNull(),
     note: varchar("note", { length: 255 }),
     updatedBy: int("updatedBy").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
