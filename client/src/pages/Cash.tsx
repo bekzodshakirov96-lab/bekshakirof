@@ -542,8 +542,11 @@ function DailyJournalGrid({
   );
 }
 
-/** Excel'dagi Агент x Товар matritsasi: har ustun - agent, har qator - mahsulot, pastda Умумий/Касса/Разница. */
-function AgentProductMatrix({ date }: { date: string }) {
+/** Excel'dagi Агент x Товар matritsasi: har ustun - agent, har qator - mahsulot, pastda Умумий/Касса/Разница.
+ * O'z sanasini alohida boshqaradi — "Kunlik jurnal"dagi sanadan mustaqil, chunki ba'zida
+ * boshqa kundagi agent-tovar taqsimotini ko'rish kerak bo'ladi, jurnalni almashtirmasdan. */
+function AgentProductMatrix() {
+  const [date, setDate] = useState(today());
   const utils = trpc.useUtils();
   const timestamp = dateToTimestamp(date);
   const agents = trpc.agents.options.useQuery();
@@ -695,14 +698,51 @@ function AgentProductMatrix({ date }: { date: string }) {
     target?.select();
   }
 
-  if (agents.isLoading || products.isLoading) return <p className="p-4 text-xs text-muted-foreground">Yuklanmoqda...</p>;
-  if (agentList.length === 0) return <p className="p-4 text-xs text-muted-foreground">Faol agentlar topilmadi.</p>;
-  if (productList.length === 0) return <p className="p-4 text-xs text-muted-foreground">Mahsulotlar topilmadi.</p>;
+  const header = (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <div className="flex items-center gap-2"><Users className="size-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Агент x Товар</h3></div>
+        <p className="mt-1 text-xs text-muted-foreground">Tab yoki ←/→ — qo‘shni katak, Enter/↑/↓ — shu ustunda keyingi/oldingi mahsulot.</p>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Button
+          type="button" variant="outline" size="icon" className="size-8 bg-card"
+          aria-label="Oldingi kun"
+          onClick={() => setDate(prev => shiftDate(prev, -1))}
+        >
+          <ChevronLeft className="size-4" />
+        </Button>
+        <Input
+          className="finance-input h-8 w-[150px] text-center"
+          type="date" value={date}
+          onChange={event => setDate(event.target.value)}
+        />
+        <Button
+          type="button" variant="outline" size="icon" className="size-8 bg-card"
+          aria-label="Keyingi kun"
+          onClick={() => setDate(prev => shiftDate(prev, 1))}
+        >
+          <ChevronRight className="size-4" />
+        </Button>
+        <Button
+          type="button" variant="outline" size="sm" className="h-8 bg-card text-xs font-semibold"
+          onClick={() => setDate(today())}
+        >
+          Bugun
+        </Button>
+      </div>
+    </div>
+  );
+
+  if (agents.isLoading || products.isLoading) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Yuklanmoqda...</p></div>;
+  if (agentList.length === 0) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Faol agentlar topilmadi.</p></div>;
+  if (productList.length === 0) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Mahsulotlar topilmadi.</p></div>;
 
   const summaryByAgent = new Map((daySummary.data?.agentSummaries ?? []).map(row => [row.agentId, row]));
 
   return (
     <div>
+      {header}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative" ref={agentPickerRef}>
           <Button
@@ -1184,9 +1224,7 @@ export default function Cash() {
       </div>
 
       <div className="mt-5 rounded-2xl border border-border bg-card p-5">
-        <div className="mb-1 flex items-center gap-2"><Users className="size-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Агент x Товар</h3></div>
-        <p className="mb-3 text-xs text-muted-foreground">Tab yoki ←/→ — qo‘shni katak, Enter/↑/↓ — shu ustunda keyingi/oldingi mahsulot.</p>
-        <AgentProductMatrix date={date} />
+        <AgentProductMatrix />
       </div>
     </div>
   );
