@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatMoney, formatNumber, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { calculateContainerNet } from "@shared/containerPreview";
-import { BarChart3, HandCoins, PackageCheck, Search, ShoppingCart, Trash2 } from "lucide-react";
+import { BarChart3, PackageCheck, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -49,6 +49,9 @@ export default function Transactions() {
   const [clickPayment, setClickPayment] = useState("");
   const [transferPayment, setTransferPayment] = useState("");
   const [debtPayment, setDebtPayment] = useState("");
+  const [debtTerminalPayment, setDebtTerminalPayment] = useState("");
+  const [debtClickPayment, setDebtClickPayment] = useState("");
+  const [debtTransferPayment, setDebtTransferPayment] = useState("");
   const [note, setNote] = useState("");
 
   const agents = trpc.agents.options.useQuery();
@@ -101,7 +104,7 @@ export default function Transactions() {
           : saleMessage,
       );
       setCart([]);
-      setCashPayment(""); setTerminalPayment(""); setClickPayment(""); setTransferPayment(""); setDebtPayment(""); setNote("");
+      setCashPayment(""); setTerminalPayment(""); setClickPayment(""); setTransferPayment(""); setDebtPayment(""); setDebtTerminalPayment(""); setDebtClickPayment(""); setDebtTransferPayment(""); setNote("");
       await Promise.all([
         utils.transactions.list.invalidate(), utils.dashboard.overview.invalidate(),
         utils.debts.list.invalidate(), utils.debts.currentDebt.invalidate(), utils.containers.invalidate(),
@@ -113,8 +116,10 @@ export default function Transactions() {
   /** Mahsulot tanlanmagan holatda ham — mijozdan faqat eski qarz to'lovi qabul qilish uchun. */
   const createDebtOnlyPayment = trpc.debts.payments.create.useMutation({
     onSuccess: async (_result, variables) => {
-      toast.success(`Qarz to‘lovi qabul qilindi: ${formatMoney(variables.cashAmount ?? 0)}`);
-      setDebtPayment(""); setNote("");
+      const total =
+        (variables.cashAmount ?? 0) + (variables.terminalAmount ?? 0) + (variables.clickAmount ?? 0) + (variables.transferAmount ?? 0);
+      toast.success(`Qarz to‘lovi qabul qilindi: ${formatMoney(total)}`);
+      setDebtPayment(""); setDebtTerminalPayment(""); setDebtClickPayment(""); setDebtTransferPayment(""); setNote("");
       await Promise.all([
         utils.dashboard.overview.invalidate(),
         utils.debts.list.invalidate(),
@@ -188,12 +193,10 @@ export default function Transactions() {
   const canSubmit = Boolean(agentId) && Boolean(clientId) && cart.length > 0 && !hasInvalidLine && !createMultiple.isPending;
   const overpaid = Math.max(0, paid - cartTotal);
   const currentDebt = clientDebt.data?.currentDebt ?? 0;
-  /** Eski qarzga yo'naltiriladigan jami summa — qo'lda kiritilgan "Qarzni yopish" maydoni
-   * va savdo to'lovidan avtomatik aniqlangan ortiqcha (`overpaid`) birga. Shu jami joriy
-   * qarzdan katta bo'lsa, mijozning balansi manfiyga (haqdorlik/avans) o'tib ketadi —
-   * buxgalter buni aniq ko'rishi kerak, aks holda sababsiz avans hosil bo'lib qoladi. */
-  const debtPaymentTotal = Number(debtPayment || 0) + overpaid;
-  const overCredit = Math.max(0, debtPaymentTotal - currentDebt);
+  /** Savdo to'lovidan avtomatik aniqlangan ortiqcha joriy qarzdan katta bo'lsa, mijozning
+   * balansi manfiyga (haqdorlik/avans) o'tib ketadi — buxgalter buni aniq ko'rishi kerak,
+   * aks holda sababsiz avans hosil bo'lib qoladi. */
+  const overCredit = Math.max(0, overpaid - currentDebt);
 
   const emptyQuantityLines = cart.filter(line => Number(line.quantity || 0) <= 0).length;
   const invalidReturnLines = cart.filter(line => line.returnEnabled && (!line.returnContainerType || Number(line.returnQuantity || 0) <= 0)).length;
@@ -219,18 +222,25 @@ export default function Transactions() {
       terminalPayment: Math.round(Number(terminalPayment || 0)),
       clickPayment: Math.round(Number(clickPayment || 0)),
       transferPayment: Math.round(Number(transferPayment || 0)),
-      debtPaymentAmount: Math.round(Number(debtPayment || 0)),
+      // Qo'lda kiritiladigan qarz to'lovi maydoni bu oqimdan olib tashlandi — ortiqcha
+      // to'lov server tomonida avtomatik aniqlanib, eski qarzga yo'naltiriladi.
+      debtPaymentAmount: 0,
       note: note || undefined,
     });
   }
 
-  const debtOnlyCanSubmit = Boolean(agentId) && Boolean(clientId) && Number(debtPayment || 0) > 0 && !createDebtOnlyPayment.isPending;
+  const debtOnlyTotal =
+    Number(debtPayment || 0) + Number(debtTerminalPayment || 0) + Number(debtClickPayment || 0) + Number(debtTransferPayment || 0);
+  const debtOnlyCanSubmit = Boolean(agentId) && Boolean(clientId) && debtOnlyTotal > 0 && !createDebtOnlyPayment.isPending;
 
   function submitDebtOnly() {
     createDebtOnlyPayment.mutate({
       clientId: Number(clientId),
       paymentDate: new Date(`${date}T12:00:00`).getTime(),
       cashAmount: Math.round(Number(debtPayment || 0)),
+      terminalAmount: Math.round(Number(debtTerminalPayment || 0)),
+      clickAmount: Math.round(Number(debtClickPayment || 0)),
+      transferAmount: Math.round(Number(debtTransferPayment || 0)),
       note: note || undefined,
     });
   }
@@ -253,13 +263,13 @@ export default function Transactions() {
             className="finance-input w-full border px-3 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
             value={agentId}
             disabled={isAgentRole}
-            onChange={event => { setAgentId(event.target.value); setClientId(""); setDebtPayment(""); }}
+            onChange={event => { setAgentId(event.target.value); setClientId(""); setDebtPayment(""); setDebtTerminalPayment(""); setDebtClickPayment(""); setDebtTransferPayment(""); }}
           >
             <option value="">Tanlang</option>
             {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
           </select>
         </div>
-        <div className="space-y-2"><Label>Mijoz</Label><select className="finance-input w-full border px-3" value={clientId} onChange={event => { setClientId(event.target.value); setDebtPayment(""); }} disabled={!agentId}><option value="">Tanlang</option>{availableClients.map(client => <option key={client.id} value={client.id}>{client.code} — {client.name}</option>)}</select></div>
+        <div className="space-y-2"><Label>Mijoz</Label><select className="finance-input w-full border px-3" value={clientId} onChange={event => { setClientId(event.target.value); setDebtPayment(""); setDebtTerminalPayment(""); setDebtClickPayment(""); setDebtTransferPayment(""); }} disabled={!agentId}><option value="">Tanlang</option>{availableClients.map(client => <option key={client.id} value={client.id}>{client.code} — {client.name}</option>)}</select></div>
       </div>
     </SectionCard>
 
@@ -358,28 +368,30 @@ export default function Transactions() {
           <div className="space-y-2"><Label>Перечисление</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={transferPayment} onChange={event => setTransferPayment(sanitizeIntegerInput(event.target.value))} /></div>
         </div>
         {clientId && currentDebt > 0 && (
-          <div className="mt-4">
-            <DebtCloseCard currentDebt={currentDebt} value={debtPayment} onChange={setDebtPayment} overpaid={overpaid} />
-          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Mijozning joriy qarzi <span className="font-semibold text-foreground">{formatMoney(currentDebt)}</span>. Agent
+            savdo narxidan ko‘proq pul olib kelgan bo‘lsa, shu yerga (yuqoridagi to‘lov maydonlariga) kiriting —
+            ortiqcha qism qaysi kanaldan kelgan bo‘lsa, o‘sha kanal orqali eski qarzdan avtomatik yechiladi.
+          </p>
         )}
 
         <div className="mt-4 space-y-2"><Label>Izoh</Label><Input className="finance-input" value={note} onChange={event => setNote(event.target.value)} placeholder="Ixtiyoriy" /></div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4"><p className="text-xs text-cyan-700">Savat jamisi</p><p className="mt-1 text-lg font-bold text-foreground">{formatMoney(cartTotal)}</p></div>
+          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4 dark:border-cyan-800 dark:bg-cyan-950/30"><p className="text-xs text-cyan-700 dark:text-cyan-300">Savat jamisi</p><p className="mt-1 text-lg font-bold text-foreground">{formatMoney(cartTotal)}</p></div>
           <div className="rounded-2xl border border-border bg-muted p-4"><p className="text-xs text-muted-foreground">To‘lov</p><p className="mt-1 text-lg font-bold text-foreground">{formatMoney(paid)}</p></div>
-          <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4"><p className="text-xs text-amber-700">Qarzga qoladi</p><p className="mt-1 text-lg font-bold text-foreground">{formatMoney(Math.max(0, cartTotal - paid))}</p></div>
+          <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4 dark:border-amber-800 dark:bg-amber-950/30"><p className="text-xs text-amber-700 dark:text-amber-300">Qarzga qoladi</p><p className="mt-1 text-lg font-bold text-foreground">{formatMoney(Math.max(0, cartTotal - paid))}</p></div>
         </div>
 
         {overpaid > 0 && overCredit > 0 && (
           <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50/70 p-4 text-sm font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-            Diqqat: Ortiqcha {formatMoney(overpaid)}dan {formatMoney(Math.min(debtPaymentTotal, currentDebt))} eski qarzni to‘liq yopadi, qolgan{" "}
+            Diqqat: Ortiqcha {formatMoney(overpaid)}dan {formatMoney(Math.min(overpaid, currentDebt))} eski qarzni to‘liq yopadi, qolgan{" "}
             {formatMoney(overCredit)} esa mijozning joriy qarzidan oshib ketadi — bu summa mijozning HAQDORLIGI (avans to‘lovi) sifatida qayd etiladi.
           </div>
         )}
         {overpaid > 0 && overCredit === 0 && (
-          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm font-semibold text-emerald-700">
-            Ortiqcha {formatMoney(overpaid)} — savat jamisidan ko‘proq to‘langan qism mijozning eski qarzidan avtomatik yechiladi{Number(debtPayment || 0) > 0 ? " (pastdagi qarz to‘lovi ustiga qo‘shilib)" : ""}.
+          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+            Ortiqcha {formatMoney(overpaid)} — savat jamisidan ko‘proq to‘langan qism mijozning eski qarzidan avtomatik yechiladi.
           </div>
         )}
 
@@ -387,8 +399,8 @@ export default function Transactions() {
           <div className="mt-4 rounded-2xl border border-border bg-muted p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-foreground"><PackageCheck className="size-4 text-primary" />Tara sof o‘zgarishi (savat bo‘yicha)</div>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              <Badge variant="outline" className={containerTotals.keg30 > 0 ? "border-rose-200 bg-rose-50 text-rose-700" : containerTotals.keg30 < 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-card text-muted-foreground"}>KEG 30: {containerTotals.keg30 > 0 ? "+" : ""}{formatNumber(containerTotals.keg30)}</Badge>
-              <Badge variant="outline" className={containerTotals.keg50 > 0 ? "border-rose-200 bg-rose-50 text-rose-700" : containerTotals.keg50 < 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-card text-muted-foreground"}>KEG 50: {containerTotals.keg50 > 0 ? "+" : ""}{formatNumber(containerTotals.keg50)}</Badge>
+              <Badge variant="outline" className={containerTotals.keg30 > 0 ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300" : containerTotals.keg30 < 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-card text-muted-foreground"}>KEG 30: {containerTotals.keg30 > 0 ? "+" : ""}{formatNumber(containerTotals.keg30)}</Badge>
+              <Badge variant="outline" className={containerTotals.keg50 > 0 ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300" : containerTotals.keg50 < 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-card text-muted-foreground"}>KEG 50: {containerTotals.keg50 > 0 ? "+" : ""}{formatNumber(containerTotals.keg50)}</Badge>
             </div>
           </div>
         )}
@@ -411,7 +423,20 @@ export default function Transactions() {
         title="3. Qarz to‘lovi"
         description="Mahsulot tanlanmagan bo‘lsa ham, mijozdan qabul qilingan pulni to‘g‘ridan-to‘g‘ri eski qarzga yozib qo‘yishingiz mumkin."
       >
-        <DebtCloseCard currentDebt={currentDebt} value={debtPayment} onChange={setDebtPayment} overpaid={0} />
+        <p className="text-xs text-muted-foreground">
+          Mijozning joriy qarzi <span className="font-semibold text-foreground">{formatMoney(currentDebt)}</span>.
+        </p>
+        <div className="mt-3 grid gap-4 sm:grid-cols-4">
+          <div className="space-y-2"><Label>Naqd</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={debtPayment} onChange={event => setDebtPayment(sanitizeIntegerInput(event.target.value))} /></div>
+          <div className="space-y-2"><Label>Terminal</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={debtTerminalPayment} onChange={event => setDebtTerminalPayment(sanitizeIntegerInput(event.target.value))} /></div>
+          <div className="space-y-2"><Label>Click</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={debtClickPayment} onChange={event => setDebtClickPayment(sanitizeIntegerInput(event.target.value))} /></div>
+          <div className="space-y-2"><Label>Перечисление</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={debtTransferPayment} onChange={event => setDebtTransferPayment(sanitizeIntegerInput(event.target.value))} /></div>
+        </div>
+        {debtOnlyTotal > currentDebt && (
+          <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-400">
+            Kiritilgan summa joriy qarzdan katta — ortiqcha qism mijozning haqdorligi (avans) sifatida qoladi.
+          </p>
+        )}
         <div className="mt-4 space-y-2"><Label>Izoh</Label><Input className="finance-input" value={note} onChange={event => setNote(event.target.value)} placeholder="Ixtiyoriy" /></div>
         <div className="mt-6 flex justify-end">
           <Button
@@ -420,56 +445,10 @@ export default function Transactions() {
             disabled={!debtOnlyCanSubmit}
             onClick={submitDebtOnly}
           >
-            {createDebtOnlyPayment.isPending ? "Saqlanmoqda..." : `Qarz to‘lovini saqlash — ${formatMoney(Number(debtPayment || 0))}`}
+            {createDebtOnlyPayment.isPending ? "Saqlanmoqda..." : `Qarz to‘lovini saqlash — ${formatMoney(debtOnlyTotal)}`}
           </Button>
         </div>
       </SectionCard>
     )}
   </div>;
-}
-
-function DebtCloseCard({
-  currentDebt,
-  value,
-  onChange,
-  overpaid,
-}: {
-  currentDebt: number;
-  value: string;
-  onChange: (value: string) => void;
-  /** Savdo to'lovidan avtomatik aniqlangan ortiqcha — qo'lda kiritilgan summaga qo'shilib,
-   * qarzdan oshib ketish (haqdorlik) ogohlantirishiga hisobga olinadi. */
-  overpaid: number;
-}) {
-  const totalToDebt = Number(value || 0) + overpaid;
-  return (
-    <div className="rounded-2xl border-2 border-rose-300 bg-rose-50/70 p-4 dark:border-rose-800 dark:bg-rose-950/30">
-      <div className="flex items-center gap-2 text-sm font-bold text-rose-700 dark:text-rose-400">
-        <HandCoins className="size-4" />
-        Qarzni yopish (ixtiyoriy)
-      </div>
-      <p className="mt-1 text-xs text-rose-700/80 dark:text-rose-400/80">
-        Mijozning joriy qarzi <span className="font-semibold">{formatMoney(currentDebt)}</span>. Agent qo‘shimcha naqd pul
-        olib kelgan bo‘lsa, shu yerga kiriting — to‘g‘ridan-to‘g‘ri mijozning eski qarzidan kamayadi.
-      </p>
-      <div className="mt-3 max-w-xs space-y-1.5">
-        <Label className="text-rose-700 dark:text-rose-400">Qo‘shimcha naqd to‘lov</Label>
-        <Input
-          className="finance-input border-rose-300 focus-visible:ring-rose-300"
-          type="text"
-          inputMode="numeric"
-          placeholder="0"
-          value={value}
-          onChange={event => onChange(sanitizeIntegerInput(event.target.value))}
-        />
-      </div>
-      {totalToDebt > currentDebt && (
-        <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-400">
-          {overpaid > 0
-            ? "Bu maydon va savdo to‘lovidan ortiqcha qismi birgalikda joriy qarzdan katta — ortiqcha qism mijozning haqdorligi (avans) sifatida qoladi."
-            : "Kiritilgan summa joriy qarzdan katta — ortiqcha qism mijozning haqdorligi sifatida qoladi."}
-        </p>
-      )}
-    </div>
-  );
 }
