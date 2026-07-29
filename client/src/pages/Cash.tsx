@@ -43,6 +43,7 @@ type CashEntryRow = {
   type: "income" | "expense";
   category: string;
   agentId: number | null;
+  agentName: string | null;
   description: string | null;
   cashAmount: number;
   terminalAmount: number;
@@ -94,6 +95,17 @@ function DailyJournalGrid({
   const timestamp = dateToTimestamp(date);
   const agents = trpc.agents.options.useQuery();
   const agentList = agents.data ?? [];
+  /** Faolsizlantirilgan agentga tegishli eski yozuv bo'lsa ham, uning ismi tanlash
+   * katakchasida to'g'ri ko'rinishi uchun — "Агент tanlanmagan" bo'lib qolmasin
+   * (agentList faqat faol agentlarni o'z ichiga oladi). */
+  const agentOptions = useMemo(() => {
+    const known = new Set(agentList.map(agent => agent.id));
+    const extra = new Map<number, string>();
+    for (const entry of entries) {
+      if (entry.agentId && !known.has(entry.agentId) && entry.agentName) extra.set(entry.agentId, entry.agentName);
+    }
+    return [...agentList, ...Array.from(extra.entries()).map(([id, name]) => ({ id, name }))];
+  }, [agentList, entries]);
   const openingBalanceQuery = trpc.cash.openingBalance.useQuery({ date: timestamp });
   const [drafts, setDrafts] = useState<DraftRow[]>(() => Array.from({ length: DRAFT_ROWS }, emptyDraftRow));
   /** `drafts` state ko'zguси — async avtomatik-saqlash funksiyalari React render
@@ -375,7 +387,7 @@ function DailyJournalGrid({
                       onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}
                     >
                       <option value="">Агент tanlanmagan</option>
-                      {agentList.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                      {agentOptions.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                     </select>
                     {entry.agentId == null && entry.description ? (
                       <p className="truncate px-1.5 pt-0.5 text-[10px] text-muted-foreground">{entry.description}</p>
@@ -644,9 +656,23 @@ function AgentProductMatrix() {
   const agentList = agents.data ?? [];
   const productList = products.data ?? [];
 
+  /** Faolsizlantirilgan agentning shu kundagi haqiqiy yozuvlari (tovar olib ketgani,
+   * kassaga topshirgani) bo'lsa, uning ustuni butunlay ko'rinmay qolmasligi uchun —
+   * agentList faqat faol agentlarni o'z ichiga oladi, lekin daySummary.agentSummaries
+   * (Приход кег/пет va tovar olish yozuvlaridan) faollik holatidan qat'i nazar keladi. */
+  const historicalAgents = useMemo(() => {
+    const known = new Set(agentList.map(agent => agent.id));
+    return (daySummary.data?.agentSummaries ?? [])
+      .filter((row): row is typeof row & { agentId: number } => row.agentId !== null && !known.has(row.agentId))
+      .map(row => ({ id: row.agentId, name: row.agentName }));
+  }, [agentList, daySummary.data]);
+
   /** null = hammasi ko'rsatiladi (standart holat); tanlash boshlangandan keyin aniq to'plamga aylanadi. */
   const [selectedAgentIds, setSelectedAgentIds] = useState<Set<number> | null>(null);
-  const visibleAgents = selectedAgentIds === null ? agentList : agentList.filter(agent => selectedAgentIds.has(agent.id));
+  const visibleAgents = [
+    ...(selectedAgentIds === null ? agentList : agentList.filter(agent => selectedAgentIds.has(agent.id))),
+    ...historicalAgents,
+  ];
   function toggleAgentVisible(agentId: number) {
     setSelectedAgentIds(prev => {
       const base = new Set(prev === null ? agentList.map(agent => agent.id) : prev);
@@ -776,7 +802,7 @@ function AgentProductMatrix() {
   );
 
   if (agents.isLoading || products.isLoading) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Yuklanmoqda...</p></div>;
-  if (agentList.length === 0) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Faol agentlar topilmadi.</p></div>;
+  if (visibleAgents.length === 0) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Faol agentlar topilmadi.</p></div>;
   if (productList.length === 0) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Mahsulotlar topilmadi.</p></div>;
 
   const summaryByAgent = new Map((daySummary.data?.agentSummaries ?? []).map(row => [row.agentId, row]));
