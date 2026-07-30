@@ -42,7 +42,6 @@ import {
   FileText,
   Languages,
   LayoutDashboard,
-  Landmark,
   Loader2,
   LockKeyhole,
   LogOut,
@@ -185,10 +184,10 @@ function LoginScreen() {
       <div className="relative w-full max-w-md rounded-[28px] border border-white/80 bg-white/90 p-8 shadow-[0_24px_80px_rgba(19,50,77,0.16)] backdrop-blur-xl sm:p-10 dark:border-white/10 dark:bg-slate-900/85 dark:shadow-[0_24px_80px_rgba(0,0,0,0.5)]">
         <div className="mb-8 flex items-center gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-[#176f9d] to-[#1ca58f] text-white shadow-lg shadow-cyan-950/15">
-            <Landmark className="h-6 w-6" />
+            <img src="/logo.svg" className="h-7 w-7 object-contain" alt="BiznesControl" />
           </div>
           <div className="min-w-0 flex-1">
-            <p data-no-translit className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-50">NOKDAUN mchj</p>
+            <p data-no-translit className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-50">BiznesControl</p>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Moliyaviy boshqaruv</p>
           </div>
           {/* Yozuvni tanlash — kirishdan oldin ham ishlaydi, tanlov brauzerda saqlanadi */}
@@ -424,10 +423,10 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
         <SidebarHeader className="px-3 pb-3 pt-4">
           <div className="flex h-14 items-center gap-3 rounded-2xl bg-white/7 px-3 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-emerald-400 text-slate-950 shadow-lg shadow-cyan-950/30">
-              <Landmark className="h-5 w-5" />
+              <img src="/logo.svg" className="h-6 w-6 object-contain" alt="BiznesControl" />
             </div>
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <p data-no-translit className="truncate text-[15px] font-bold tracking-tight text-white">NOKDAUN mchj</p>
+              <p data-no-translit className="truncate text-[15px] font-bold tracking-tight text-white">BiznesControl</p>
               <p className="truncate text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Biznes boshqaruvi</p>
             </div>
           </div>
