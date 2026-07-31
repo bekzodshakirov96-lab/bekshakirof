@@ -11,13 +11,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
-import { ArrowDown, ArrowUp, ArrowUpDown, CircleDollarSign, HandCoins, Pencil, Percent, Plus, RotateCcw, Search, TrendingUp, UserCheck } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CircleDollarSign, HandCoins, Pencil, Percent, Plus, RotateCcw, Search, Trash2, TrendingUp, UserCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type AgentSortBy = "name" | "clientCount" | "debtorCount" | "totalSales" | "totalPaid" | "currentDebt";
 type SortOrder = "asc" | "desc";
 type AgentStatus = "all" | "active" | "inactive";
+
+const userRoleLabels: Record<string, string> = {
+  user: "Ruxsatsiz",
+  accountant: "Buxgalter",
+  agent: "Agent",
+  sklad: "Sklad xodimi",
+};
 type AgentDebtStatus = "all" | "debt" | "clear";
 
 /** Inline-editable "Komissiya %" cell — admin-only; read-only text for other roles. */
@@ -140,8 +147,10 @@ export default function Agents() {
   const [note, setNote] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [editAgent, setEditAgent] = useState<{
-    id: number; name: string; phone: string; note: string; isActive: boolean;
+    id: number; name: string; phone: string; note: string; isActive: boolean; linkedUserId: number | "";
   } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+  const usersQuery = trpc.users.list.useQuery(undefined, { enabled: user?.role === "admin" });
   const filters = useMemo(() => ({ search: search.trim() || undefined, status, debtStatus, sortBy, sortOrder }), [debtStatus, search, sortBy, sortOrder, status]);
   const agents = trpc.agents.list.useQuery({ ...filters, page, pageSize: 25 });
   const create = trpc.agents.create.useMutation({
@@ -155,6 +164,17 @@ export default function Agents() {
     onSuccess: async () => {
       toast.success("Agent yangilandi");
       setEditAgent(null);
+      await Promise.all([utils.agents.list.invalidate(), utils.agents.options.invalidate()]);
+    },
+    onError: error => toast.error(error.message),
+  });
+  const setUserRole = trpc.users.setRole.useMutation({
+    onError: error => toast.error(error.message),
+  });
+  const deleteAgent = trpc.agents.delete.useMutation({
+    onSuccess: async () => {
+      toast.success("Agent o‘chirildi");
+      setDeleteTarget(null);
       await Promise.all([utils.agents.list.invalidate(), utils.agents.options.invalidate()]);
     },
     onError: error => toast.error(error.message),
@@ -245,7 +265,10 @@ export default function Agents() {
       <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
         {agents.isLoading ? <TableLoading columns={9} /> : rows.length === 0 ? <EmptyState description="Qidiruv yoki filterlarni o‘zgartirib ko‘ring." /> : <>
           <Table className="finance-table min-w-[1120px]"><TableHeader><TableRow><SortableHead column="name">Agent</SortableHead><TableHead>Telefon</TableHead><SortableHead column="clientCount" className="text-center">Mijozlar</SortableHead><SortableHead column="debtorCount" className="text-center">Qarzdorlar</SortableHead><SortableHead column="totalSales" className="text-right">Savdo</SortableHead><SortableHead column="totalPaid" className="text-right">To‘lov</SortableHead><SortableHead column="currentDebt" className="text-right">Joriy qarz</SortableHead><TableHead className="text-right">Komissiya %</TableHead><TableHead>Holat</TableHead><TableHead className="w-10" /></TableRow></TableHeader>
-            <TableBody>{rows.map(row => <TableRow key={row.id}><TableCell><div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-cyan-50 text-xs font-bold text-cyan-700">{row.name.charAt(0)}</div><span className="font-semibold text-foreground">{row.name}</span></div></TableCell><TableCell>{row.phone || "—"}</TableCell><TableCell className="text-center font-semibold">{row.clientCount}</TableCell><TableCell className="text-center"><Badge className="rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50">{row.debtorCount}</Badge></TableCell><TableCell className="text-right font-semibold tabular-nums">{formatMoney(row.totalSales)}</TableCell><TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.totalPaid)}</TableCell><TableCell className="text-right font-bold tabular-nums text-rose-700">{formatMoney(row.currentDebt)}</TableCell><TableCell className="text-right"><CommissionPercentCell agentId={row.id} commissionPercent={Number(row.commissionPercent)} canEdit={user?.role === "admin"} /></TableCell><TableCell><Badge className={row.isActive ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-muted text-muted-foreground hover:bg-muted"}>{row.isActive ? "Faol" : "Nofaol"}</Badge></TableCell><TableCell>{user?.role === "admin" && <button type="button" aria-label="Tahrirlash" title="Tahrirlash" className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary" onClick={() => setEditAgent({ id: row.id, name: row.name, phone: row.phone ?? "", note: row.note ?? "", isActive: row.isActive })}><Pencil className="size-4" /></button>}</TableCell></TableRow>)}</TableBody>
+            <TableBody>{rows.map(row => <TableRow key={row.id}><TableCell><div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-cyan-50 text-xs font-bold text-cyan-700">{row.name.charAt(0)}</div><span className="font-semibold text-foreground">{row.name}</span></div></TableCell><TableCell>{row.phone || "—"}</TableCell><TableCell className="text-center font-semibold">{row.clientCount}</TableCell><TableCell className="text-center"><Badge className="rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50">{row.debtorCount}</Badge></TableCell><TableCell className="text-right font-semibold tabular-nums">{formatMoney(row.totalSales)}</TableCell><TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.totalPaid)}</TableCell><TableCell className="text-right font-bold tabular-nums text-rose-700">{formatMoney(row.currentDebt)}</TableCell><TableCell className="text-right"><CommissionPercentCell agentId={row.id} commissionPercent={Number(row.commissionPercent)} canEdit={user?.role === "admin"} /></TableCell><TableCell><Badge className={row.isActive ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-muted text-muted-foreground hover:bg-muted"}>{row.isActive ? "Faol" : "Nofaol"}</Badge></TableCell><TableCell>{user?.role === "admin" && <div className="flex items-center gap-1"><button type="button" aria-label="Tahrirlash" title="Tahrirlash" className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary" onClick={() => {
+                const linked = (usersQuery.data ?? []).find(candidate => candidate.role === "agent" && candidate.agentId === row.id && !candidate.isOwner);
+                setEditAgent({ id: row.id, name: row.name, phone: row.phone ?? "", note: row.note ?? "", isActive: row.isActive, linkedUserId: linked ? linked.id : "" });
+              }}><Pencil className="size-4" /></button><button type="button" aria-label="O‘chirish" title="O‘chirish" className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600" onClick={() => setDeleteTarget({ id: row.id, name: row.name })}><Trash2 className="size-4" /></button></div>}</TableCell></TableRow>)}</TableBody>
           </Table>
           <PaginationBar page={agents.data?.page ?? 1} pageCount={agents.data?.pageCount ?? 1} total={agents.data?.total ?? 0} onChange={setPage} />
         </>}
@@ -264,21 +287,78 @@ export default function Agents() {
             <label className="flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-muted-foreground">
               <input type="checkbox" checked={editAgent.isActive} onChange={event => setEditAgent({ ...editAgent, isActive: event.target.checked })} className="h-4 w-4 accent-primary" /> Faol agent
             </label>
+            <div className="space-y-2">
+              <Label>Biriktirilgan foydalanuvchi (login)</Label>
+              <select
+                className="finance-input w-full border px-3 text-sm"
+                value={editAgent.linkedUserId}
+                onChange={event => setEditAgent({ ...editAgent, linkedUserId: event.target.value ? Number(event.target.value) : "" })}
+              >
+                <option value="">Biriktirilmagan</option>
+                {(usersQuery.data ?? []).filter(candidate => !candidate.isOwner).map(candidate => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name || candidate.email}
+                    {candidate.role === "agent" && candidate.agentId && candidate.agentId !== editAgent.id
+                      ? " (boshqa agentga biriktirilgan)"
+                      : ` — ${userRoleLabels[candidate.role] ?? "Ruxsatsiz"}`}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">Tanlangan foydalanuvchiga «Agent» roli va shu agent biriktiriladi. Bo‘sh qoldirsangiz, oldingi biriktirilgan foydalanuvchi ruxsatsiz bo‘lib qoladi.</p>
+            </div>
           </div>
         )}
         <DialogFooter>
           <Button variant="outline" onClick={() => setEditAgent(null)}>Bekor qilish</Button>
           <Button
-            disabled={!editAgent || editAgent.name.trim().length < 2 || updateAgent.isPending}
-            onClick={() => editAgent && updateAgent.mutate({
-              id: editAgent.id,
-              name: editAgent.name,
-              phone: editAgent.phone || null,
-              note: editAgent.note || null,
-              isActive: editAgent.isActive,
-            })}
+            disabled={!editAgent || editAgent.name.trim().length < 2 || updateAgent.isPending || setUserRole.isPending}
+            onClick={async () => {
+              if (!editAgent) return;
+              const previousLinked = (usersQuery.data ?? []).find(candidate => candidate.role === "agent" && candidate.agentId === editAgent.id && !candidate.isOwner);
+              const previousLinkedId = previousLinked ? previousLinked.id : "";
+              try {
+                await updateAgent.mutateAsync({
+                  id: editAgent.id,
+                  name: editAgent.name,
+                  phone: editAgent.phone || null,
+                  note: editAgent.note || null,
+                  isActive: editAgent.isActive,
+                });
+                if (editAgent.linkedUserId !== previousLinkedId) {
+                  if (previousLinkedId && previousLinkedId !== editAgent.linkedUserId) {
+                    await setUserRole.mutateAsync({ userId: previousLinkedId, role: "user" });
+                  }
+                  if (editAgent.linkedUserId) {
+                    await setUserRole.mutateAsync({ userId: editAgent.linkedUserId, role: "agent", agentId: editAgent.id });
+                  }
+                  await utils.users.list.invalidate();
+                }
+              } catch {
+                // Xato mutatsiyaning o'z onError'ida allaqachon toast qilinadi.
+              }
+            }}
           >
-            {updateAgent.isPending ? "Saqlanmoqda..." : "Saqlash"}
+            {updateAgent.isPending || setUserRole.isPending ? "Saqlanmoqda..." : "Saqlash"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={Boolean(deleteTarget)} onOpenChange={openState => !openState && setDeleteTarget(null)}>
+      <DialogContent className="rounded-2xl sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Agentni o‘chirish</DialogTitle>
+          <DialogDescription>
+            <strong className="text-foreground">{deleteTarget?.name}</strong> agentini o‘chirmoqchimisiz? Uning eski savdo va kassa yozuvlari saqlanib qoladi, faqat agent nomi bilan bog‘lanmay qoladi. Bu amalni ortga qaytarib bo‘lmaydi.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDeleteTarget(null)}>Bekor qilish</Button>
+          <Button
+            className="bg-rose-600 hover:bg-rose-700"
+            disabled={deleteAgent.isPending}
+            onClick={() => deleteTarget && deleteAgent.mutate({ id: deleteTarget.id })}
+          >
+            {deleteAgent.isPending ? "O‘chirilmoqda..." : "Ha, o‘chirish"}
           </Button>
         </DialogFooter>
       </DialogContent>

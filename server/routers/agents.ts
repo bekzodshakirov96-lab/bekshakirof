@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, cashEntries, clientPayments, transactions } from "../../drizzle/schema";
+import { agents, cashEntries, clientPayments, transactions, users } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure, salesProcedure } from "../access";
 import { logAudit } from "../auditLog";
 import {
@@ -173,6 +173,36 @@ export const agentsRouter = router({
           userId: ctx.user.id,
           before: previous,
           after: updated,
+        });
+        return { success: true };
+      });
+    }),
+  /** Agent hisobini butunlay o'chiradi. Uning eski yozuvlari (savdo, kassa va h.k.
+   * agentId ustuni) saqlanib qoladi — faqat egasi null bo'lib qoladi. Agar shu
+   * agentga biriktirilgan foydalanuvchi login mavjud bo'lsa, o'chirish rad etiladi
+   * — aks holda o'sha login "osilib qoladigan" agentId bilan qoladi. */
+  delete: ownerProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await requireDb();
+      const [target] = await db.select().from(agents).where(eq(agents.id, input.id)).limit(1);
+      if (!target) throw new Error("Agent topilmadi.");
+      const [linkedUser] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.role, "agent"), eq(users.agentId, input.id)))
+        .limit(1);
+      if (linkedUser) {
+        throw new Error("Bu agentga biriktirilgan foydalanuvchi login mavjud — avval uning rolini Foydalanuvchilar bo‘limida o‘zgartiring.");
+      }
+      return db.transaction(async tx => {
+        await tx.delete(agents).where(eq(agents.id, input.id));
+        await logAudit(tx, {
+          tableName: "agents",
+          recordId: input.id,
+          action: "delete",
+          userId: ctx.user.id,
+          before: target,
         });
         return { success: true };
       });
