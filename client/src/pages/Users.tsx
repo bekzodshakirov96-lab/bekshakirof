@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
-import { Eye, EyeOff, ShieldCheck, UserPlus } from "lucide-react";
+import { Eye, EyeOff, Pencil, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -33,6 +33,8 @@ export default function Users() {
   const [form, setForm] = useState(emptyForm);
   const [showPassword, setShowPassword] = useState(false);
   const [roleDraft, setRoleDraft] = useState<Record<number, RoleValue>>({});
+  const [editUser, setEditUser] = useState<{ id: number; name: string; email: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
 
   const setRole = trpc.users.setRole.useMutation({
     onSuccess: async () => { toast.success("Foydalanuvchi roli yangilandi"); await utils.users.list.invalidate(); },
@@ -45,6 +47,14 @@ export default function Users() {
       setForm(emptyForm);
       await utils.users.list.invalidate();
     },
+    onError: error => toast.error(error.message),
+  });
+  const updateUser = trpc.users.update.useMutation({
+    onSuccess: async () => { toast.success("Foydalanuvchi ma’lumotlari yangilandi"); setEditUser(null); await utils.users.list.invalidate(); },
+    onError: error => toast.error(error.message),
+  });
+  const deleteUser = trpc.users.delete.useMutation({
+    onSuccess: async () => { toast.success("Foydalanuvchi o‘chirildi"); setDeleteTarget(null); await utils.users.list.invalidate(); },
     onError: error => toast.error(error.message),
   });
 
@@ -88,7 +98,7 @@ export default function Users() {
       <SectionCard title="Kirish huquqlari" description="Rahbar roli o‘zgartirilmaydi; buxgalter biznes ma’lumotlari bilan ishlaydi">
         <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
           {users.isLoading ? (
-            <TableLoading columns={5} />
+            <TableLoading columns={6} />
           ) : rows.length === 0 ? (
             <EmptyState title="Hali foydalanuvchi yo‘q" description="Yuqoridagi «Yangi foydalanuvchi» tugmasi orqali birinchi hisobni yarating." />
           ) : (
@@ -100,6 +110,7 @@ export default function Users() {
                   <TableHead>Oxirgi kirish</TableHead>
                   <TableHead>Joriy rol</TableHead>
                   <TableHead className="w-56">Ruxsatni o‘zgartirish</TableHead>
+                  <TableHead className="w-20">Amallar</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -166,6 +177,30 @@ export default function Users() {
                           )}
                         </div>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          aria-label="Tahrirlash"
+                          title="Tahrirlash"
+                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                          onClick={() => setEditUser({ id: row.id, name: row.name ?? "", email: row.email ?? "" })}
+                        >
+                          <Pencil className="size-4" />
+                        </button>
+                        {!row.isOwner && (
+                          <button
+                            type="button"
+                            aria-label="O‘chirish"
+                            title="O‘chirish"
+                            className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600"
+                            onClick={() => setDeleteTarget({ id: row.id, name: row.name || row.email || "Foydalanuvchi" })}
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -245,6 +280,51 @@ export default function Users() {
               onClick={() => createUser.mutate({ ...form, agentId: form.agentId === "" ? undefined : form.agentId })}
             >
               {createUser.isPending ? "Yaratilmoqda..." : "Yaratish"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editUser)} onOpenChange={openState => !openState && setEditUser(null)}>
+        <DialogContent className="rounded-2xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Foydalanuvchini tahrirlash</DialogTitle>
+            <DialogDescription>Ism va login (email)ni yangilang.</DialogDescription>
+          </DialogHeader>
+          {editUser && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2"><Label>Ism</Label><Input className="finance-input" value={editUser.name} onChange={event => setEditUser({ ...editUser, name: event.target.value })} /></div>
+              <div className="space-y-2"><Label>Email (login)</Label><Input className="finance-input" type="email" value={editUser.email} onChange={event => setEditUser({ ...editUser, email: event.target.value })} /></div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditUser(null)}>Bekor qilish</Button>
+            <Button
+              disabled={!editUser || !editUser.name.trim() || !editUser.email.trim() || updateUser.isPending}
+              onClick={() => editUser && updateUser.mutate({ id: editUser.id, name: editUser.name, email: editUser.email })}
+            >
+              {updateUser.isPending ? "Saqlanmoqda..." : "Saqlash"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={openState => !openState && setDeleteTarget(null)}>
+        <DialogContent className="rounded-2xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Foydalanuvchini o‘chirish</DialogTitle>
+            <DialogDescription>
+              <strong className="text-foreground">{deleteTarget?.name}</strong> hisobini o‘chirmoqchimisiz? U endi tizimga kira olmaydi. Bu amalni ortga qaytarib bo‘lmaydi.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Bekor qilish</Button>
+            <Button
+              className="bg-rose-600 hover:bg-rose-700"
+              disabled={deleteUser.isPending}
+              onClick={() => deleteTarget && deleteUser.mutate({ id: deleteTarget.id })}
+            >
+              {deleteUser.isPending ? "O‘chirilmoqda..." : "Ha, o‘chirish"}
             </Button>
           </DialogFooter>
         </DialogContent>

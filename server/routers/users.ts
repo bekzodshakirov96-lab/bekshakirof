@@ -72,6 +72,62 @@ export const usersRouter = router({
       });
       return { success: true, id: created.id };
     }),
+  /** Rahbar xodimning ismi va login (email)ini o'zgartiradi. Rol shu yerdan
+   * o'zgartirilmaydi — u uchun alohida setRole mutatsiyasi bor. */
+  update: ownerProcedure
+    .input(
+      z.object({
+        id: z.number().int().positive(),
+        name: z.string().trim().min(1, "Ism kiritilishi shart.").max(180),
+        email: z.string().trim().toLowerCase().email("Email noto‘g‘ri."),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const db = await requireDb();
+      const [target] = await db.select().from(users).where(eq(users.id, input.id)).limit(1);
+      if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Foydalanuvchi topilmadi." });
+      if (input.email !== target.email) {
+        const existing = await getUserByEmail(input.email);
+        if (existing && existing.id !== input.id) {
+          throw new TRPCError({ code: "CONFLICT", message: "Bu email allaqachon ro‘yxatdan o‘tgan." });
+        }
+      }
+      return db.transaction(async tx => {
+        await tx.update(users).set({ name: input.name, email: input.email }).where(eq(users.id, input.id));
+        await logAudit(tx, {
+          tableName: "users",
+          recordId: input.id,
+          action: "update",
+          userId: ctx.user.id,
+          before: { name: target.name, email: target.email },
+          after: { name: input.name, email: input.email },
+        });
+        return { success: true };
+      });
+    }),
+  /** Rahbar xodim hisobini butunlay o'chiradi. Uning eski yozuvlari (savdo,
+   * kassa va h.k. createdBy ustuni) saqlanib qoladi — faqat egasi null bo'lib qoladi. */
+  delete: ownerProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await requireDb();
+      const [target] = await db.select().from(users).where(eq(users.id, input.id)).limit(1);
+      if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Foydalanuvchi topilmadi." });
+      if (target.id === OWNER_USER_ID) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Tizim egasini o‘chirib bo‘lmaydi." });
+      }
+      return db.transaction(async tx => {
+        await tx.delete(users).where(eq(users.id, input.id));
+        await logAudit(tx, {
+          tableName: "users",
+          recordId: input.id,
+          action: "delete",
+          userId: ctx.user.id,
+          before: { name: target.name, email: target.email, role: target.role, agentId: target.agentId },
+        });
+        return { success: true };
+      });
+    }),
   setRole: ownerProcedure
     .input(
       z
