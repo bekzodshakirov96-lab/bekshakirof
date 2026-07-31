@@ -33,6 +33,7 @@ export type ParsedClient = {
   agentName: string | null;
   phone: string | null;
   address: string | null;
+  clientType: "keg" | "savdo" | null;
   openingDebt: number;
 };
 
@@ -149,6 +150,13 @@ function keyPart(value: CellValue): string {
   return text(value).toLocaleLowerCase("uz-Latn");
 }
 
+function clientTypeValue(value: CellValue): "keg" | "savdo" | null {
+  const normalized = keyPart(value);
+  if (normalized === "keg") return "keg";
+  if (normalized === "savdo" || normalized === "sotuv") return "savdo";
+  return null;
+}
+
 function hashKey(prefix: string, parts: CellValue[]): string {
   const hash = createHash("sha256")
     .update(parts.map(keyPart).join("|"))
@@ -218,6 +226,7 @@ export function parseDistributionWorkbook(buffer: Buffer | Uint8Array): ParsedWo
       agentName: nullableText(row[3]),
       phone: nullableText(row[4]),
       address: nullableText(row[5]),
+      clientType: clientTypeValue(row[7]),
       openingDebt: money(row[6]),
     });
   }
@@ -415,6 +424,7 @@ export async function importDistributionWorkbook(options: {
             agentId: item.agentName ? agentMap.get(keyPart(item.agentName)) ?? null : null,
             phone: item.phone,
             address: item.address,
+            clientType: item.clientType,
             openingDebt: item.openingDebt,
           })
           .onDuplicateKeyUpdate({
@@ -423,6 +433,7 @@ export async function importDistributionWorkbook(options: {
               agentId: item.agentName ? agentMap.get(keyPart(item.agentName)) ?? null : null,
               phone: item.phone,
               address: item.address,
+              clientType: item.clientType,
               openingDebt: item.openingDebt,
               isActive: true,
             },

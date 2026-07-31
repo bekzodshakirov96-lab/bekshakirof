@@ -99,6 +99,13 @@
       "when": 1785361616245,
       "tag": "0013_fluffy_siren",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1785515387510,
+      "tag": "0014_hard_jackpot",
+      "breakpoints": true
     }
   ]
 }

@@ -74,6 +74,10 @@ export const clients = mysqlTable(
     agentId: int("agentId").references(() => agents.id, { onDelete: "set null" }),
     phone: varchar("phone", { length: 255 }),
     address: varchar("address", { length: 255 }),
+    /** Mijoz qaysi savdo kanaliga tegishli: "keg" — tara/KEG mijozi (FastKeg sahifasi),
+     * "savdo" — oddiy tovar mijozi (Yangi savdo formasi). Bitta mijoz faqat bitta
+     * turga tegishli bo'ladi. null — hali tasniflanmagan eski mijoz. */
+    clientType: mysqlEnum("clientType", ["keg", "savdo"]),
     openingDebt: int("openingDebt").default(0).notNull(),
     isActive: boolean("isActive").default(true).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),

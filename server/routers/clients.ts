@@ -12,32 +12,36 @@ import {
 import { router } from "../_core/trpc";
 import { requireDb } from "../db";
 
+const clientTypeSchema = z.enum(["keg", "savdo"]);
+
 export const clientsRouter = router({
-  options: clientsViewProcedure.query(async ({ ctx }) => {
-    const db = await requireDb();
-    // Agent rolidagi foydalanuvchiga faqat o'ziga biriktirilgan mijozlar ko'rsatiladi
-    // — aks holda mijoz tanlash ro'yxatida boshqa agentlarning mijozlari ham chiqardi.
-    const where =
-      ctx.user.role === "agent"
-        ? and(eq(clients.isActive, true), eq(clients.agentId, ctx.user.agentId ?? -1))
-        : eq(clients.isActive, true);
-    return db
-      .select({
-        id: clients.id,
-        code: clients.code,
-        name: clients.name,
-        agentId: clients.agentId,
-      })
-      .from(clients)
-      .where(where)
-      .orderBy(asc(clients.name));
-  }),
+  options: clientsViewProcedure
+    .input(z.object({ type: clientTypeSchema.optional() }).default({}))
+    .query(async ({ input, ctx }) => {
+      const db = await requireDb();
+      // Agent rolidagi foydalanuvchiga faqat o'ziga biriktirilgan mijozlar ko'rsatiladi
+      // — aks holda mijoz tanlash ro'yxatida boshqa agentlarning mijozlari ham chiqardi.
+      const conditions = [eq(clients.isActive, true)];
+      if (ctx.user.role === "agent") conditions.push(eq(clients.agentId, ctx.user.agentId ?? -1));
+      if (input.type) conditions.push(eq(clients.clientType, input.type));
+      return db
+        .select({
+          id: clients.id,
+          code: clients.code,
+          name: clients.name,
+          agentId: clients.agentId,
+        })
+        .from(clients)
+        .where(and(...conditions))
+        .orderBy(asc(clients.name));
+    }),
   list: clientsViewProcedure
     .input(
       z
         .object({
           search: z.string().max(120).optional(),
           agentId: z.number().int().positive().optional(),
+          type: clientTypeSchema.optional(),
           debtOnly: z.boolean().default(false),
           page: z.number().int().positive().default(1),
           pageSize: z.number().int().min(10).max(100).default(25),
@@ -59,6 +63,7 @@ export const clientsRouter = router({
           return (
             matchesSearch &&
             (!effectiveAgentId || row.agentId === effectiveAgentId) &&
+            (!input.type || row.clientType === input.type) &&
             (!input.debtOnly || row.currentDebt > 0)
           );
         })
@@ -73,6 +78,7 @@ export const clientsRouter = router({
         agentId: z.number().int().positive().optional(),
         phone: z.string().trim().max(64).optional(),
         address: z.string().trim().max(1_000).optional(),
+        clientType: clientTypeSchema.optional(),
         openingDebt: z.number().int().min(0).max(9_000_000_000_000).default(0),
       }),
     )
@@ -89,6 +95,7 @@ export const clientsRouter = router({
           agentId,
           phone: input.phone,
           address: input.address,
+          clientType: input.clientType,
           openingDebt: input.openingDebt,
         })
         .$returningId();
@@ -103,6 +110,7 @@ export const clientsRouter = router({
         agentId: z.number().int().positive().nullable().optional(),
         phone: z.string().trim().max(64).nullable().optional(),
         address: z.string().trim().max(1_000).nullable().optional(),
+        clientType: clientTypeSchema.nullable().optional(),
         openingDebt: z.number().int().min(0).max(9_000_000_000_000),
         isActive: z.boolean(),
       }),
@@ -120,6 +128,7 @@ export const clientsRouter = router({
             agentId: input.agentId ?? null,
             phone: input.phone ?? null,
             address: input.address ?? null,
+            clientType: input.clientType ?? null,
             openingDebt: input.openingDebt,
             isActive: input.isActive,
           })

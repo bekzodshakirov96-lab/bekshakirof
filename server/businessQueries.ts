@@ -17,6 +17,7 @@ export async function getClientFinancialRows() {
       isActive: clients.isActive,
       agentId: clients.agentId,
       agentName: agents.name,
+      clientType: clients.clientType,
       openingDebt: clients.openingDebt,
       totalSales: numberSql`coalesce(sum(${transactions.totalAmount}), 0)`,
       cashPaid: numberSql`coalesce(sum(${transactions.cashPayment}), 0)`,
@@ -43,6 +44,7 @@ export async function getClientFinancialRows() {
       clients.isActive,
       clients.agentId,
       agents.name,
+      clients.clientType,
       clients.openingDebt,
     );
 }

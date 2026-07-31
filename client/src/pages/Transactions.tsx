@@ -55,7 +55,7 @@ export default function Transactions() {
   const [note, setNote] = useState("");
 
   const agents = trpc.agents.options.useQuery();
-  const clients = trpc.clients.options.useQuery();
+  const clients = trpc.clients.options.useQuery({ type: "savdo" });
   const products = trpc.products.list.useQuery({});
   const clientDebt = trpc.debts.currentDebt.useQuery(
     { clientId: Number(clientId) },
