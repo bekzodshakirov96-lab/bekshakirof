@@ -33,7 +33,7 @@ export type ParsedClient = {
   agentName: string | null;
   phone: string | null;
   address: string | null;
-  clientType: "keg" | "savdo" | null;
+  clientType: "keg" | "savdo" | "both" | null;
   openingDebt: number;
 };
 
@@ -150,10 +150,11 @@ function keyPart(value: CellValue): string {
   return text(value).toLocaleLowerCase("uz-Latn");
 }
 
-function clientTypeValue(value: CellValue): "keg" | "savdo" | null {
+function clientTypeValue(value: CellValue): "keg" | "savdo" | "both" | null {
   const normalized = keyPart(value);
   if (normalized === "keg") return "keg";
   if (normalized === "savdo" || normalized === "sotuv") return "savdo";
+  if (normalized === "both" || normalized === "ikkalasi" || normalized === "barchasi") return "both";
   return null;
 }
 

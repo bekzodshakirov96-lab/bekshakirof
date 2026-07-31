@@ -103,7 +103,7 @@ async function loadAgentClientRows(db: FastKegDatabase, agentId: number) {
     })
     .from(clients)
     .leftJoin(transactions, eq(transactions.clientId, clients.id))
-    .where(and(eq(clients.agentId, agentId), eq(clients.isActive, true), eq(clients.clientType, "keg")))
+    .where(and(eq(clients.agentId, agentId), eq(clients.isActive, true), inArray(clients.clientType, ["keg", "both"])))
     .groupBy(clients.id, clients.code, clients.name, clients.phone, clients.openingDebt)
     .orderBy(asc(clients.name));
 

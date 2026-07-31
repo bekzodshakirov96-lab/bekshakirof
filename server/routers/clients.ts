@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { clients } from "../../drizzle/schema";
 import { clientsViewProcedure, ownerProcedure } from "../access";
 import { logAudit } from "../auditLog";
@@ -12,18 +12,23 @@ import {
 import { router } from "../_core/trpc";
 import { requireDb } from "../db";
 
-const clientTypeSchema = z.enum(["keg", "savdo"]);
+/** Filtr sifatida faqat "keg" yoki "savdo" tanlanadi — "both" turidagi mijozlar
+ * ikkalasida ham chiqishi kerak, shuning uchun alohida filtr qiymati emas. */
+const clientTypeFilterSchema = z.enum(["keg", "savdo"]);
+/** Mijoz yozuvining o'zida esa "both" ham bo'lishi mumkin — ikkala kanaldan ham xarid qiladi. */
+const clientTypeSchema = z.enum(["keg", "savdo", "both"]);
 
 export const clientsRouter = router({
   options: clientsViewProcedure
-    .input(z.object({ type: clientTypeSchema.optional() }).default({}))
+    .input(z.object({ type: clientTypeFilterSchema.optional() }).default({}))
     .query(async ({ input, ctx }) => {
       const db = await requireDb();
       // Agent rolidagi foydalanuvchiga faqat o'ziga biriktirilgan mijozlar ko'rsatiladi
       // — aks holda mijoz tanlash ro'yxatida boshqa agentlarning mijozlari ham chiqardi.
       const conditions = [eq(clients.isActive, true)];
       if (ctx.user.role === "agent") conditions.push(eq(clients.agentId, ctx.user.agentId ?? -1));
-      if (input.type) conditions.push(eq(clients.clientType, input.type));
+      // "both" turidagi mijoz har ikkala filtrga ham mos keladi.
+      if (input.type) conditions.push(inArray(clients.clientType, [input.type, "both"]));
       return db
         .select({
           id: clients.id,
@@ -41,7 +46,7 @@ export const clientsRouter = router({
         .object({
           search: z.string().max(120).optional(),
           agentId: z.number().int().positive().optional(),
-          type: clientTypeSchema.optional(),
+          type: clientTypeFilterSchema.optional(),
           debtOnly: z.boolean().default(false),
           page: z.number().int().positive().default(1),
           pageSize: z.number().int().min(10).max(100).default(25),
@@ -63,7 +68,7 @@ export const clientsRouter = router({
           return (
             matchesSearch &&
             (!effectiveAgentId || row.agentId === effectiveAgentId) &&
-            (!input.type || row.clientType === input.type) &&
+            (!input.type || row.clientType === input.type || row.clientType === "both") &&
             (!input.debtOnly || row.currentDebt > 0)
           );
         })

@@ -1,0 +1,1 @@
+ALTER TABLE `clients` MODIFY COLUMN `clientType` enum('keg','savdo','both');
