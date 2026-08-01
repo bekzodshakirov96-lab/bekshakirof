@@ -11,7 +11,7 @@ import {
   products,
   transactions,
 } from "../../drizzle/schema";
-import { businessProcedure } from "../access";
+import { businessProcedure, skladProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
@@ -382,7 +382,8 @@ export const kassaRouter = router({
   }),
 
   agentTaking: router({
-    list: businessProcedure
+    /** Sklad xodimi ham o'z kiritgan yozuvlarini ko'rish/tuzatish uchun shu prosedurani ishlatadi. */
+    list: skladProcedure
       .input(z.object({ date: z.number().int(), agentId: z.number().int().positive() }))
       .query(async ({ input }) => {
         const db = await requireDb();
@@ -409,7 +410,10 @@ export const kassaRouter = router({
         .where(and(sql`${agentTakingEntries.entryDate} >= ${start}`, sql`${agentTakingEntries.entryDate} <= ${end}`))
         .orderBy(agentTakingEntries.id);
     }),
-    addProduct: businessProcedure
+    /** Omborchi tovarni agentga topshirgan payti shu yerga yozadi — sklad qoldig'iga
+     * (stockMovements) tegmaydi, faqat "Agent x Tovar" moliyaviy hisobiga tushadi.
+     * Haqiqiy sklad qoldig'i faqat Tezkor KEG/Yangi savdo orqali savdo bo'lganda kamayadi. */
+    addProduct: skladProcedure
       .input(
         z.object({
           date: z.number().int(),
@@ -452,7 +456,7 @@ export const kassaRouter = router({
           .$returningId();
         return { id: created.id, amount } as const;
       }),
-    updateQuantity: businessProcedure
+    updateQuantity: skladProcedure
       .input(z.object({ id: z.number().int().positive(), quantity: z.number().positive().max(1_000_000) }))
       .mutation(async ({ input }) => {
         const db = await requireDb();
@@ -466,7 +470,7 @@ export const kassaRouter = router({
           .where(eq(agentTakingEntries.id, input.id));
         return { success: true, amount } as const;
       }),
-    remove: businessProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
+    remove: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
       const db = await requireDb();
       const [row] = await db
         .select({ entryDate: agentTakingEntries.entryDate })
