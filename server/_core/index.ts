@@ -44,6 +44,22 @@ async function startServer() {
   const server = createServer(app);
   // Reverse proxy ortida ishlaganda haqiqiy mijoz IP'sini olish uchun (rate-limit shunga tayanadi).
   app.set("trust proxy", 1);
+  // Mobil ilovani (Expo web) mahalliy kompyuterdan production API'ga qarshi sinash
+  // uchun: faqat localhost/127.0.0.1'dan keladigan so'rovlarga CORS ruxsati beriladi
+  // (istalgan portda) — haqiqiy tashqi saytlar bu orqali productionga so'rov yuborib,
+  // javobni o'qiy olmaydi. Haqiqiy qurilmadagi mobil ilova (native RN fetch) CORS'ga
+  // umuman bog'liq emas, shuning uchun bu faqat brauzer orqali sinash uchun kerak.
+  const localOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && localOriginPattern.test(origin)) {
+      res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    }
+    if (req.method === "OPTIONS") { res.sendStatus(204); return; }
+    next();
+  });
   // Standart xavfsizlik header'lari. Vite dev serveri inline skript/HMR ishlatgani uchun
   // CSP faqat production'da yoqiladi.
   app.use(

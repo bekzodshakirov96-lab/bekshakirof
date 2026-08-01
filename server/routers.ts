@@ -79,7 +79,9 @@ export const appRouter = router({
         const token = await signSession(user.id, user.tokenVersion, { expiresInMs: SESSION_TTL_MS });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: SESSION_TTL_MS });
-        return { success: true, user: toSafeUser(user) } as const;
+        // `token` mobil ilova (React Native) uchun — u cookie sifatida saqlay olmaydi,
+        // shuning uchun Authorization: Bearer headeri orqali o'zi biriktirib yuboradi.
+        return { success: true, user: toSafeUser(user), token } as const;
       }),
     login: publicProcedure
       .input(
@@ -101,7 +103,7 @@ export const appRouter = router({
         const token = await signSession(user.id, user.tokenVersion, { expiresInMs: SESSION_TTL_MS });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: SESSION_TTL_MS });
-        return { success: true, user: toSafeUser(user) } as const;
+        return { success: true, user: toSafeUser(user), token } as const;
       }),
     /** Interfeys alifbosini (lotin/kirill) saqlaydi — tanlov foydalanuvchi hisobiga
      * bog'lanadi, shuning uchun boshqa qurilmada kirganda ham o'sha holatda qoladi. */
