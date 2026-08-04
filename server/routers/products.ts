@@ -1,8 +1,9 @@
-import { asc, eq, like, or, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agentTakingEntries, products, transactions } from "../../drizzle/schema";
 import { ownerProcedure, productsViewProcedure, skladProcedure } from "../access";
 import { logAudit } from "../auditLog";
+import { normalizeSearch, normalizeSearchable } from "../businessQueries";
 import { requireDb } from "../db";
 import { router } from "../_core/trpc";
 
@@ -11,16 +12,15 @@ export const productsRouter = router({
     .input(z.object({ search: z.string().max(120).optional() }).default({}))
     .query(async ({ input }) => {
       const db = await requireDb();
-      const search = input.search?.trim();
-      return db
-        .select()
-        .from(products)
-        .where(
-          search
-            ? or(like(products.name, `%${search}%`), like(products.code, `%${search}%`))
-            : undefined,
-        )
-        .orderBy(asc(products.sortOrder), asc(products.name));
+      const rows = await db.select().from(products).orderBy(asc(products.sortOrder), asc(products.name));
+      const search = normalizeSearch(input.search);
+      if (!search) return rows;
+      // Qidiruv SQL LIKE emas, xotirada bajariladi: shunda lotin/kirill farqidan
+      // qat'iy nazar topiladi (normalizeSearch izohiga qarang). Mahsulotlar soni
+      // o'nlab bo'lgani uchun bu tezlikka sezilarli ta'sir qilmaydi.
+      return rows.filter(
+        row => normalizeSearchable(row.name).includes(search) || normalizeSearchable(row.code).includes(search),
+      );
     }),
   /** Bitta mahsulotni ro'yxatda bir pog'ona yuqoriga/pastga suradi — qo'shni
    * mahsulot bilan sortOrder qiymatlarini almashtiradi. */

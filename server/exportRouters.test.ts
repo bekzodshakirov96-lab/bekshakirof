@@ -5,6 +5,10 @@ const state = vi.hoisted(() => ({
   agentRows: [] as Array<Record<string, unknown>>,
   financialRows: [] as Array<Record<string, unknown>>,
   transactionRows: [] as Array<Record<string, unknown>>,
+  /** buildSearchCondition o'qiydigan mijoz/agent nomlari. */
+  searchLookupRows: [] as Array<Record<string, unknown>>,
+  /** buildSearchCondition o'qiydigan jurnaldagi mahsulot nomlari. */
+  productNameRows: [] as Array<Record<string, unknown>>,
 }));
 
 function createSelectChain(sourceRows: Array<Record<string, unknown>>, countMode = false) {
@@ -30,8 +34,12 @@ vi.mock("./db", () => ({
     select: (selection?: Record<string, unknown>) => {
       if (!selection) return createSelectChain(state.agentRows);
       if (Object.prototype.hasOwnProperty.call(selection, "total")) return createSelectChain(state.transactionRows, true);
+      // Qidiruv sharti mijoz/agent nomlarini alohida o'qiydi (buildSearchCondition).
+      if (Object.prototype.hasOwnProperty.call(selection, "name")) return createSelectChain(state.searchLookupRows);
       return createSelectChain(state.transactionRows);
     },
+    // Savdo jurnali qidiruvi jurnaldagi mahsulot nomlarini shu orqali oladi.
+    selectDistinct: () => createSelectChain(state.productNameRows),
   }),
 }));
 

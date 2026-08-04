@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, count, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, cashEntries, clientPayments, clients, products, transactions } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure, requireOwnAgent, salesProcedure } from "../access";
@@ -10,11 +10,74 @@ import {
 } from "../containerAccounting";
 import { summarizeNetProfit, summarizeOperatingExpenses, summarizeProfit } from "../costing";
 import { fetchAverageCosts } from "../costingQueries";
+import { normalizeSearch, normalizeSearchable } from "../businessQueries";
 import { requireDb } from "../db";
 import { reconcileTransactionStock } from "../stockAccounting";
 
 function toMySqlDate(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
+/**
+ * Savdo jurnali qidiruvi uchun SQL sharti.
+ *
+ * SQL `LIKE` ishlatilmaydi, chunki u lotin/kirill farqini bilmaydi: interfeys
+ * kirill rejimida bo'lganda foydalanuvchi ekranda ko'rgan nomni tersa, bazadagi
+ * lotin yozuvi bilan mos kelmasdi (baza tarixan aralash yozilgan).
+ *
+ * Buning o'rniga qidiruv avval kichik jadvallar (mijoz, agent va jurnaldagi
+ * mahsulot nomlari — o'nlab/yuzlab qator) ustida xotirada bajariladi, so'ng
+ * topilgan id/nomlar bo'yicha `IN (...)` sharti quriladi. Shu tariqa
+ * transactions jadvalining o'zi to'liq o'qilmaydi va SQL sahifalash saqlanadi.
+ */
+export type SearchMatches = { clientIds: number[]; agentIds: number[]; productNames: string[] };
+
+/**
+ * Qidiruv so'ziga mos keluvchi mijoz/agent id'lari va mahsulot nomlarini ajratadi.
+ * Sof funksiya — bazaga bog'liq emas, shuning uchun alohida sinaladi.
+ */
+export function findSearchMatches(
+  rows: {
+    clients: Array<{ id: number | null; name: string | null }>;
+    agents: Array<{ id: number | null; name: string | null }>;
+    productNames: Array<string | null>;
+  },
+  search: string,
+): SearchMatches {
+  const hit = (value: string | null) => normalizeSearchable(value).includes(search);
+  return {
+    clientIds: rows.clients.filter(row => hit(row.name)).flatMap(row => (row.id == null ? [] : [row.id])),
+    agentIds: rows.agents.filter(row => hit(row.name)).flatMap(row => (row.id == null ? [] : [row.id])),
+    productNames: rows.productNames.flatMap(name => (name != null && hit(name) ? [name] : [])),
+  };
+}
+
+export async function buildSearchCondition(db: Awaited<ReturnType<typeof requireDb>>, rawSearch?: string) {
+  const search = normalizeSearch(rawSearch);
+  if (!search) return undefined;
+
+  const [clientRows, agentRows, productNameRows] = await Promise.all([
+    db.select({ id: clients.id, name: clients.name }).from(clients),
+    db.select({ id: agents.id, name: agents.name }).from(agents),
+    db.selectDistinct({ productName: transactions.productName }).from(transactions),
+  ]);
+
+  const matched = findSearchMatches(
+    { clients: clientRows, agents: agentRows, productNames: productNameRows.map(row => row.productName) },
+    search,
+  );
+
+  const conditions = [
+    matched.clientIds.length ? inArray(transactions.clientId, matched.clientIds) : undefined,
+    matched.agentIds.length ? inArray(transactions.agentId, matched.agentIds) : undefined,
+    matched.productNames.length ? inArray(transactions.productName, matched.productNames) : undefined,
+  ].filter(Boolean);
+
+  // Hech narsa topilmasa `undefined` qaytarib bo'lmaydi — u "filtrsiz" degani
+  // bo'lib, qidiruvga javob bermagan holda butun jurnalni qaytarib yuborardi.
+  // Shuning uchun hech qachon rost bo'lmaydigan shart qaytariladi.
+  if (conditions.length === 0) return sql`1 = 0`;
+  return or(...conditions);
 }
 import { router } from "../_core/trpc";
 import { assertExportRowLimit, MAX_EXPORT_ROWS } from "../reportExport";
@@ -52,13 +115,7 @@ export const transactionsRouter = router({
       input.productId ? eq(transactions.productId, input.productId) : undefined,
       input.from ? sql`${transactions.transactionDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
       input.to ? sql`${transactions.transactionDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
-      input.search?.trim()
-        ? or(
-            like(transactions.productName, `%${input.search.trim()}%`),
-            like(clients.name, `%${input.search.trim()}%`),
-            like(agents.name, `%${input.search.trim()}%`),
-          )
-        : undefined,
+      await buildSearchCondition(db, input.search),
     ].filter(Boolean);
     const where = conditions.length ? and(...conditions) : undefined;
     const rows = await db
@@ -115,13 +172,7 @@ export const transactionsRouter = router({
       input.productId ? eq(transactions.productId, input.productId) : undefined,
       input.from ? sql`${transactions.transactionDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
       input.to ? sql`${transactions.transactionDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
-      input.search?.trim()
-        ? or(
-            like(transactions.productName, `%${input.search.trim()}%`),
-            like(clients.name, `%${input.search.trim()}%`),
-            like(agents.name, `%${input.search.trim()}%`),
-          )
-        : undefined,
+      await buildSearchCondition(db, input.search),
     ].filter(Boolean);
     const where = conditions.length ? and(...conditions) : undefined;
     const sortColumn = {
@@ -196,13 +247,7 @@ export const transactionsRouter = router({
       input.productId ? eq(transactions.productId, input.productId) : undefined,
       input.from ? sql`${transactions.transactionDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
       input.to ? sql`${transactions.transactionDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
-      input.search?.trim()
-        ? or(
-            like(transactions.productName, `%${input.search.trim()}%`),
-            like(clients.name, `%${input.search.trim()}%`),
-            like(agents.name, `%${input.search.trim()}%`),
-          )
-        : undefined,
+      await buildSearchCondition(db, input.search),
     ].filter(Boolean);
     const where = conditions.length ? and(...conditions) : undefined;
     const sortColumn = {
