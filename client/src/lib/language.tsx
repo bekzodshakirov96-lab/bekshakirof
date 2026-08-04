@@ -1,5 +1,5 @@
 import { getStoredLanguage, LANGUAGE_STORAGE_KEY as STORAGE_KEY, type Language } from "@/lib/languageStorage";
-import { toCyrillic } from "@/lib/translit";
+import { toCyrillic } from "@shared/translit";
 import { trpc } from "@/lib/trpc";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 

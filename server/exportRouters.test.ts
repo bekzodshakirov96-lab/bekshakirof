@@ -39,6 +39,7 @@ vi.mock("./businessQueries", () => ({
   getClientFinancialRows: async () => state.financialRows,
   enrichClientFinancialRows: (rows: Array<Record<string, unknown>>) => rows,
   normalizeSearch: (value?: string) => value?.trim().toLocaleLowerCase("uz-Latn") ?? "",
+  normalizeSearchable: (value?: string | null) => (value ?? "").toLocaleLowerCase("uz-Latn"),
   paginate: (rows: Array<Record<string, unknown>>, page: number, pageSize: number) => ({
     items: rows.slice((page - 1) * pageSize, page * pageSize),
     total: rows.length,

@@ -1,4 +1,4 @@
-import { toCyrillic } from "@/lib/translit";
+import { toCyrillic } from "@shared/translit";
 
 export type Language = "latin" | "cyrillic";
 

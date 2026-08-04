@@ -8,6 +8,7 @@ import {
   enrichClientFinancialRows,
   getClientFinancialRows,
   normalizeSearch,
+  normalizeSearchable,
   paginate,
 } from "../businessQueries";
 import { requireDb } from "../db";
@@ -69,9 +70,7 @@ async function loadAgentRows(input: AgentFilterInput) {
     })
     .filter(row => {
       const matchesSearch =
-        !search ||
-        row.name.toLocaleLowerCase("uz-Latn").includes(search) ||
-        (row.phone ?? "").toLocaleLowerCase("uz-Latn").includes(search);
+        !search || normalizeSearchable(row.name).includes(search) || normalizeSearchable(row.phone).includes(search);
       const matchesStatus =
         input.status === "all" ||
         (input.status === "active" && row.isActive) ||

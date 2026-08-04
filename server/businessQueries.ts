@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { agents, clientPayments, clients, transactions } from "../drizzle/schema";
+import { toCyrillic } from "../shared/translit";
 import { requireDb } from "./db";
 
 const numberSql = (template: TemplateStringsArray, ...params: unknown[]) =>
@@ -101,6 +102,24 @@ export function paginate<T>(items: T[], page: number, pageSize: number) {
   };
 }
 
+/**
+ * Qidiruv matnini solishtirishga tayyorlaydi.
+ *
+ * Ikkala tomon ham (qidiruv so'zi va bazadagi qiymat) kirillga o'giriladi:
+ * `toCyrillic` idempotent bo'lgani uchun kirill matn o'zgarishsiz qoladi, lotin
+ * esa kirillga aylanadi — natijada ikkalasi bir alifboda solishtiriladi.
+ *
+ * Bu ikkita real muammoni yechadi:
+ * 1. Interfeys kirill rejimida bo'lganda foydalanuvchi ekranda ko'rgan nomni
+ *    (kirill) tersa, bazadagi lotin yozuvi bilan mos kelmay qolardi.
+ * 2. Baza tarixan aralash yozilgan ("Sardor Raxim" va "Сардор Рахим" birga) —
+ *    endi qaysi alifboda qidirilishidan qat'iy nazar ikkalasi ham topiladi.
+ */
 export function normalizeSearch(value?: string) {
-  return (value ?? "").trim().toLocaleLowerCase("uz-Latn");
+  return toCyrillic((value ?? "").trim()).toLocaleLowerCase("uz-Latn");
+}
+
+/** Bazadan kelgan matnni `normalizeSearch` bilan bir xil ko'rinishga keltiradi. */
+export function normalizeSearchable(value?: string | null) {
+  return toCyrillic(value ?? "").toLocaleLowerCase("uz-Latn");
 }

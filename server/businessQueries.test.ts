@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { enrichClientFinancialRows, normalizeSearch, paginate } from "./businessQueries";
+import { enrichClientFinancialRows, normalizeSearch, normalizeSearchable, paginate } from "./businessQueries";
 
 /** Test uchun bitta mijoz qatori — kerakli maydonlarni ustidan yozish mumkin. */
 function clientRow(overrides: Record<string, unknown> = {}) {
@@ -82,7 +82,30 @@ describe("moliyaviy hisob-kitoblar", () => {
   });
 
   it("qidiruv matnini bo‘shliqlardan tozalab kichik harfga o‘tkazadi", () => {
-    expect(normalizeSearch("  Akmal SAVDO  ")).toBe("akmal savdo");
+    expect(normalizeSearch("  Akmal SAVDO  ")).toBe("акмал савдо");
+  });
+
+  // Interfeys kirill rejimida bo'lganda foydalanuvchi ekranda ko'rgan nomni teradi,
+  // bazada esa lotin yozuvi turgan bo'lishi mumkin (va aksincha — baza tarixan
+  // aralash yozilgan). Ikkala tomon ham kirillga keltirilgani uchun ikkalasi topiladi.
+  it("kirill qidiruv lotin yozuvidagi ma'lumotni topadi", () => {
+    const search = normalizeSearch("Сардор Рахим");
+    expect(normalizeSearchable("Sardor Raxim").includes(search)).toBe(true);
+  });
+
+  it("lotin qidiruv kirill yozuvidagi ma'lumotni topadi", () => {
+    const search = normalizeSearch("Sardor");
+    expect(normalizeSearchable("Сардор Рахим").includes(search)).toBe(true);
+  });
+
+  it("mos kelmaydigan nomni topmaydi", () => {
+    const search = normalizeSearch("Akmal");
+    expect(normalizeSearchable("Сардор Рахим").includes(search)).toBe(false);
+  });
+
+  it("bo‘sh yoki yo‘q qiymatda xato bermaydi", () => {
+    expect(normalizeSearchable(null)).toBe("");
+    expect(normalizeSearchable(undefined)).toBe("");
   });
 });
 

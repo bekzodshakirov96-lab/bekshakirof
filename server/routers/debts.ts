@@ -9,6 +9,7 @@ import {
   getClientCurrentDebt,
   getClientFinancialRows,
   normalizeSearch,
+  normalizeSearchable,
   paginate,
 } from "../businessQueries";
 import { normalizeContainerType } from "../containerAccounting";
@@ -71,9 +72,9 @@ async function loadDebtRows(input: DebtFilterInput) {
     .filter(row => {
       const matchesSearch =
         !search ||
-        row.code.toLocaleLowerCase("uz-Latn").includes(search) ||
-        row.name.toLocaleLowerCase("uz-Latn").includes(search) ||
-        (row.agentName ?? "").toLocaleLowerCase("uz-Latn").includes(search);
+        normalizeSearchable(row.code).includes(search) ||
+        normalizeSearchable(row.name).includes(search) ||
+        normalizeSearchable(row.agentName).includes(search);
       const matchesAgent = !input.agentId || row.agentId === input.agentId;
       const matchesStatus =
         input.status === "all" ||

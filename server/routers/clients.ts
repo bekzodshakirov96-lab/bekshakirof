@@ -7,6 +7,7 @@ import {
   enrichClientFinancialRows,
   getClientFinancialRows,
   normalizeSearch,
+  normalizeSearchable,
   paginate,
 } from "../businessQueries";
 import { router } from "../_core/trpc";
@@ -62,9 +63,9 @@ export const clientsRouter = router({
         .filter(row => {
           const matchesSearch =
             !search ||
-            row.code.toLocaleLowerCase("uz-Latn").includes(search) ||
-            row.name.toLocaleLowerCase("uz-Latn").includes(search) ||
-            (row.phone ?? "").toLocaleLowerCase("uz-Latn").includes(search);
+            normalizeSearchable(row.code).includes(search) ||
+            normalizeSearchable(row.name).includes(search) ||
+            normalizeSearchable(row.phone).includes(search);
           return (
             matchesSearch &&
             (!effectiveAgentId || row.agentId === effectiveAgentId) &&
