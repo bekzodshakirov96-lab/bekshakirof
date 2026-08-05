@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatMoney, formatNumber, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { calculateContainerNet } from "@shared/containerPreview";
+import { normalizeSearch, normalizeSearchable } from "@shared/translit";
 import { BarChart3, PackageCheck, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -40,6 +41,7 @@ export default function Transactions() {
   const [date, setDate] = useState(today());
   const [agentId, setAgentId] = useState(() => (isAgentRole && user?.agentId ? String(user.agentId) : ""));
   const [clientId, setClientId] = useState("");
+  const [clientSearch, setClientSearch] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -87,12 +89,28 @@ export default function Transactions() {
     [clients.data, agentId],
   );
 
+  /**
+   * Mijozlar soni yuzlab bo'lgani uchun ro'yxat qidiruv bo'yicha toraytiriladi.
+   * Tanlangan mijoz qidiruvga mos kelmasa ham ro'yxatda qoldiriladi — aks holda
+   * `<select>` qiymati ro'yxatda yo'q bo'lib, maydon bo'sh ko'rinardi (lekin
+   * savdo o'sha mijozga yozilaverardi).
+   */
+  const visibleClients = useMemo(() => {
+    const needle = normalizeSearch(clientSearch);
+    if (!needle) return availableClients;
+    return availableClients.filter(
+      client =>
+        String(client.id) === clientId ||
+        normalizeSearchable(`${client.code} ${client.name}`).includes(needle),
+    );
+  }, [availableClients, clientSearch, clientId]);
+
   const cartProductIds = useMemo(() => new Set(cart.map(line => line.productId)), [cart]);
   const sellableProducts = useMemo(() => (products.data ?? []).filter(product => !product.containerType), [products.data]);
   const filteredProducts = useMemo(() => {
-    const needle = productSearch.trim().toLocaleLowerCase("uz-Latn");
+    const needle = normalizeSearch(productSearch);
     if (!needle) return sellableProducts;
-    return sellableProducts.filter(product => `${product.code} ${product.name}`.toLocaleLowerCase("uz-Latn").includes(needle));
+    return sellableProducts.filter(product => normalizeSearchable(`${product.code} ${product.name}`).includes(needle));
   }, [sellableProducts, productSearch]);
 
   const createMultiple = trpc.transactions.createMultiple.useMutation({
@@ -269,7 +287,30 @@ export default function Transactions() {
             {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
           </select>
         </div>
-        <div className="space-y-2"><Label>Mijoz</Label><select className="finance-input w-full border px-3" value={clientId} onChange={event => { setClientId(event.target.value); setDebtPayment(""); setDebtTerminalPayment(""); setDebtClickPayment(""); setDebtTransferPayment(""); }} disabled={!agentId}><option value="">Tanlang</option>{availableClients.map(client => <option key={client.id} value={client.id}>{client.code} — {client.name}</option>)}</select></div>
+        <div className="space-y-2">
+          <Label htmlFor="client-search">Mijoz</Label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="client-search"
+              className="finance-input pl-9"
+              placeholder="Mijoz qidirish (kod yoki nom)..."
+              value={clientSearch}
+              onChange={event => setClientSearch(event.target.value)}
+              disabled={!agentId}
+            />
+          </div>
+          <select
+            className="finance-input w-full border px-3"
+            value={clientId}
+            onChange={event => { setClientId(event.target.value); setDebtPayment(""); setDebtTerminalPayment(""); setDebtClickPayment(""); setDebtTransferPayment(""); }}
+            disabled={!agentId}
+            size={clientSearch.trim() ? Math.min(8, Math.max(2, visibleClients.length + 1)) : undefined}
+          >
+            <option value="">{visibleClients.length === 0 ? "Mijoz topilmadi" : "Tanlang"}</option>
+            {visibleClients.map(client => <option key={client.id} value={client.id}>{client.code} — {client.name}</option>)}
+          </select>
+        </div>
       </div>
     </SectionCard>
 

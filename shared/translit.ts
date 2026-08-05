@@ -121,3 +121,29 @@ export function toCyrillic(text: string): string {
   if (!text || !/[a-zA-Z]/.test(text)) return text;
   return text.replace(/\S+/g, token => (isSkippableToken(token) ? token : translitWord(token)));
 }
+
+/**
+ * Qidiruv matnini solishtirishga tayyorlaydi.
+ *
+ * Ikkala tomon ham (qidiruv so'zi va solishtirilayotgan qiymat) kirillga
+ * o'giriladi: `toCyrillic` idempotent bo'lgani uchun kirill matn o'zgarishsiz
+ * qoladi, lotin esa kirillga aylanadi — natijada ikkalasi bir alifboda
+ * solishtiriladi.
+ *
+ * Bu ikkita real muammoni yechadi:
+ * 1. Interfeys kirill rejimida bo'lganda foydalanuvchi ekranda ko'rgan nomni
+ *    (kirill) tersa, bazadagi lotin yozuvi bilan mos kelmay qolardi.
+ * 2. Baza tarixan aralash yozilgan ("Sardor Raxim" va "Сардор Рахим" birga) —
+ *    endi qaysi alifboda qidirilishidan qat'iy nazar ikkalasi ham topiladi.
+ *
+ * Server ham, brauzerdagi interfeys ham aynan shu funksiyalarni ishlatadi —
+ * shunda qidiruv natijalari ikki joyda bir xil bo'ladi.
+ */
+export function normalizeSearch(value?: string) {
+  return toCyrillic((value ?? "").trim()).toLocaleLowerCase("uz-Latn");
+}
+
+/** Solishtiriladigan qiymatni `normalizeSearch` bilan bir xil ko'rinishga keltiradi. */
+export function normalizeSearchable(value?: string | null) {
+  return toCyrillic(value ?? "").toLocaleLowerCase("uz-Latn");
+}
