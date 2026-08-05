@@ -459,13 +459,24 @@ export default function Transactions() {
       </SectionCard>
     )}
 
-    {cart.length === 0 && agentId && clientId && currentDebt > 0 && (
+    {cart.length === 0 && agentId && clientId && (
       <SectionCard
         title="3. Qarz to‘lovi"
         description="Mahsulot tanlanmagan bo‘lsa ham, mijozdan qabul qilingan pulni to‘g‘ridan-to‘g‘ri eski qarzga yozib qo‘yishingiz mumkin."
       >
         <p className="text-xs text-muted-foreground">
-          Mijozning joriy qarzi <span className="font-semibold text-foreground">{formatMoney(currentDebt)}</span>.
+          {currentDebt > 0 ? (
+            <>
+              Mijozning joriy qarzi <span className="font-semibold text-foreground">{formatMoney(currentDebt)}</span>.
+            </>
+          ) : currentDebt < 0 ? (
+            <>
+              Mijozda qarz yo‘q — hozir <span className="font-semibold text-foreground">{formatMoney(-currentDebt)}</span> haqdor
+              (avans). Kiritilgan summa avansga qo‘shiladi.
+            </>
+          ) : (
+            <>Mijozda qarz yo‘q — kiritilgan summa avans sifatida qoladi.</>
+          )}
         </p>
         <div className="mt-3 grid gap-4 sm:grid-cols-4">
           <div className="space-y-2"><Label>Naqd</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={debtPayment} onChange={event => setDebtPayment(sanitizeIntegerInput(event.target.value))} /></div>
@@ -473,7 +484,9 @@ export default function Transactions() {
           <div className="space-y-2"><Label>Click</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={debtClickPayment} onChange={event => setDebtClickPayment(sanitizeIntegerInput(event.target.value))} /></div>
           <div className="space-y-2"><Label>Перечисление</Label><Input className="finance-input" type="text" inputMode="numeric" placeholder="0" value={debtTransferPayment} onChange={event => setDebtTransferPayment(sanitizeIntegerInput(event.target.value))} /></div>
         </div>
-        {debtOnlyTotal > currentDebt && (
+        {/* Qarz yo'q holatida bu ogohlantirish o'rinsiz — yuqoridagi izoh allaqachon
+            summa avans bo'lib qolishini aytadi. */}
+        {currentDebt > 0 && debtOnlyTotal > currentDebt && (
           <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-400">
             Kiritilgan summa joriy qarzdan katta — ortiqcha qism mijozning haqdorligi (avans) sifatida qoladi.
           </p>
