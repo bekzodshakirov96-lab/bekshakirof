@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, gte, like, lte, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, cashEntries } from "../../drizzle/schema";
+import { agents, cashEntries, employees } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { requireDb } from "../db";
@@ -42,6 +42,8 @@ export const cashRouter = router({
         category: cashEntries.category,
         agentId: cashEntries.agentId,
         agentName: agents.name,
+        employeeId: cashEntries.employeeId,
+        employeeName: employees.name,
         description: cashEntries.description,
         cashAmount: cashEntries.cashAmount,
         terminalAmount: cashEntries.terminalAmount,
@@ -50,6 +52,7 @@ export const cashRouter = router({
       })
       .from(cashEntries)
       .leftJoin(agents, eq(cashEntries.agentId, agents.id))
+      .leftJoin(employees, eq(cashEntries.employeeId, employees.id))
       .where(and(gte(cashEntries.entryDate, dayStart), lte(cashEntries.entryDate, dayEnd)))
       .orderBy(desc(cashEntries.id));
     return rows;
@@ -122,6 +125,8 @@ export const cashRouter = router({
           type: cashEntries.type,
           category: cashEntries.category,
           agentName: agents.name,
+          employeeId: cashEntries.employeeId,
+          employeeName: employees.name,
           description: cashEntries.description,
           cashAmount: cashEntries.cashAmount,
           terminalAmount: cashEntries.terminalAmount,
@@ -131,6 +136,7 @@ export const cashRouter = router({
         })
         .from(cashEntries)
         .leftJoin(agents, eq(cashEntries.agentId, agents.id))
+      .leftJoin(employees, eq(cashEntries.employeeId, employees.id))
         .where(where)
         .orderBy(desc(cashEntries.entryDate), desc(cashEntries.id))
         .limit(input.pageSize)
@@ -173,6 +179,8 @@ export const cashRouter = router({
           type: cashEntries.type,
           category: cashEntries.category,
           agentName: agents.name,
+          employeeId: cashEntries.employeeId,
+          employeeName: employees.name,
           description: cashEntries.description,
           cashAmount: cashEntries.cashAmount,
           terminalAmount: cashEntries.terminalAmount,
@@ -181,6 +189,7 @@ export const cashRouter = router({
         })
         .from(cashEntries)
         .leftJoin(agents, eq(cashEntries.agentId, agents.id))
+      .leftJoin(employees, eq(cashEntries.employeeId, employees.id))
         .where(where)
         .orderBy(desc(cashEntries.entryDate), desc(cashEntries.id));
       const summary = rows.reduce(
@@ -201,6 +210,7 @@ export const cashRouter = router({
           type: z.enum(["income", "expense"]),
           category: z.string().trim().min(2).max(160),
           agentId: z.number().int().positive().optional(),
+          employeeId: z.number().int().positive().optional(),
           description: z.string().max(1_000).optional(),
           cashAmount: z.number().int().min(0).default(0),
           terminalAmount: z.number().int().min(0).default(0),
@@ -223,6 +233,7 @@ export const cashRouter = router({
             type: input.type,
             category: input.category,
             agentId: input.agentId ?? null,
+            employeeId: input.employeeId ?? null,
             description: input.description,
             cashAmount: input.cashAmount,
             terminalAmount: input.terminalAmount,
@@ -242,6 +253,7 @@ export const cashRouter = router({
             type: input.type,
             category: input.category,
             agentId: input.agentId ?? null,
+            employeeId: input.employeeId ?? null,
             description: input.description ?? null,
             cashAmount: input.cashAmount,
             terminalAmount: input.terminalAmount,
@@ -261,6 +273,9 @@ export const cashRouter = router({
           type: z.enum(["income", "expense"]),
           category: z.string().trim().min(2).max(160),
           agentId: z.number().int().positive().nullable().optional(),
+          /** Yuborilmasa (undefined) mavjud qiymat saqlanadi, `null` esa uni tozalaydi —
+           * shunda qisman yangilash xodim bog'lanishini bexosdan o'chirib yubormaydi. */
+          employeeId: z.number().int().positive().nullable().optional(),
           description: z.string().max(1_000).nullable().optional(),
           cashAmount: z.number().int().min(0),
           terminalAmount: z.number().int().min(0),
@@ -286,6 +301,7 @@ export const cashRouter = router({
             type: input.type,
             category: input.category,
             agentId: input.agentId ?? null,
+            ...(input.employeeId !== undefined ? { employeeId: input.employeeId } : {}),
             description: input.description ?? null,
             cashAmount: input.cashAmount,
             terminalAmount: input.terminalAmount,

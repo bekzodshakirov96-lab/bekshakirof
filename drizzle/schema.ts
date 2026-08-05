@@ -65,6 +65,30 @@ export const agents = mysqlTable(
   table => [uniqueIndex("agents_name_unique").on(table.name)],
 );
 
+/**
+ * Oylik oladigan xodimlar (gruzchik, dostavchik, supervayzer, omborchi, buxgalter va h.k.).
+ *
+ * `agents` jadvalidan alohida: agentlar oylik emas, sotuvdan foiz oladi va ularga
+ * mijozlar biriktiriladi. Bu yerdagi xodimlarda esa mijoz ham, foiz ham yo'q —
+ * ularga kassadan belgilangan oylik beriladi. Tizimga kirish (login) ham talab
+ * qilinmaydi, shuning uchun `users` bilan ham bog'lanmagan.
+ */
+export const employees = mysqlTable(
+  "employees",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    name: varchar("name", { length: 255 }).notNull(),
+    /** Lavozim — erkin matn, chunki yangi lavozimlar qo'shilib turadi. */
+    position: varchar("position", { length: 255 }),
+    phone: varchar("phone", { length: 255 }),
+    note: varchar("note", { length: 255 }),
+    isActive: boolean("isActive").default(true).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [uniqueIndex("employees_name_unique").on(table.name)],
+);
+
 export const clients = mysqlTable(
   "clients",
   {
@@ -163,6 +187,9 @@ export const cashEntries = mysqlTable(
     type: mysqlEnum("type", ["income", "expense"]).notNull(),
     category: varchar("category", { length: 255 }).notNull(),
     agentId: int("agentId").references(() => agents.id, { onDelete: "set null" }),
+    /** "Ойлик" rasxodi qaysi xodimga berilgani. Agentlarga to'lov `agentId` orqali
+     * yoziladi (ular foiz oladi), oylik oladigan boshqa xodimlar esa shu yerda. */
+    employeeId: int("employeeId").references(() => employees.id, { onDelete: "set null" }),
     description: varchar("description", { length: 255 }),
     cashAmount: int("cashAmount").default(0).notNull(),
     terminalAmount: int("terminalAmount").default(0).notNull(),
@@ -181,6 +208,7 @@ export const cashEntries = mysqlTable(
     uniqueIndex("cash_entries_source_key_unique").on(table.sourceKey),
     index("cash_entries_date_idx").on(table.entryDate),
     index("cash_entries_agent_idx").on(table.agentId),
+    index("cash_entries_employee_idx").on(table.employeeId),
   ],
 );
 

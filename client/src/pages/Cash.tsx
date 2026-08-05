@@ -44,12 +44,28 @@ type CashEntryRow = {
   category: string;
   agentId: number | null;
   agentName: string | null;
+  employeeId: number | null;
+  employeeName: string | null;
   description: string | null;
   cashAmount: number;
   terminalAmount: number;
   clickAmount: number;
   transferAmount: number;
 };
+
+/**
+ * "Ойлик" qatorida pul agentga ham, oylik oladigan xodimga ham berilishi mumkin.
+ * Ikkalasi bitta tanlovda ko'rsatilgani uchun qiymatlar prefiks bilan farqlanadi:
+ * `a:12` — agent, `e:3` — xodim.
+ */
+type Payee = { agentId: number | null; employeeId: number | null };
+const payeeToValue = (payee: Payee) =>
+  payee.employeeId != null ? `e:${payee.employeeId}` : payee.agentId != null ? `a:${payee.agentId}` : "";
+function payeeFromValue(value: string): Payee {
+  if (value.startsWith("e:")) return { agentId: null, employeeId: Number(value.slice(2)) };
+  if (value.startsWith("a:")) return { agentId: Number(value.slice(2)), employeeId: null };
+  return { agentId: null, employeeId: null };
+}
 
 type DraftRow = {
   agentId: string; reason: string; terminal: string; click: string; transfer: string;
@@ -106,6 +122,20 @@ function DailyJournalGrid({
     }
     return [...agentList, ...Array.from(extra.entries()).map(([id, name]) => ({ id, name }))];
   }, [agentList, entries]);
+  const employees = trpc.employees.options.useQuery();
+  const employeeList = employees.data ?? [];
+  /** Agentlardagi kabi — nofaol qilingan xodimning eski yozuvi ham nomi bilan ko'rinsin. */
+  const employeeOptions = useMemo(() => {
+    const known = new Set(employeeList.map(employee => employee.id));
+    const extra = new Map<number, string>();
+    for (const entry of entries) {
+      if (entry.employeeId && !known.has(entry.employeeId) && entry.employeeName) extra.set(entry.employeeId, entry.employeeName);
+    }
+    return [
+      ...employeeList.map(({ id, name, position }) => ({ id, name: position ? `${name} — ${position}` : name })),
+      ...Array.from(extra.entries()).map(([id, name]) => ({ id, name })),
+    ];
+  }, [employeeList, entries]);
   const openingBalanceQuery = trpc.cash.openingBalance.useQuery({ date: timestamp });
   const [drafts, setDrafts] = useState<DraftRow[]>(() => Array.from({ length: DRAFT_ROWS }, emptyDraftRow));
   /** `drafts` state ko'zguси — async avtomatik-saqlash funksiyalari React render
@@ -157,10 +187,10 @@ function DailyJournalGrid({
   const transferTotal = useMemo(() => entries.reduce((sum, entry) => sum + entry.transferAmount, 0), [entries]);
 
   function commitExistingAgent(entry: CashEntryRow, value: string) {
-    const agentId = value ? Number(value) : null;
-    if (agentId === entry.agentId) return;
+    const { agentId, employeeId } = payeeFromValue(value);
+    if (agentId === entry.agentId && employeeId === entry.employeeId) return;
     update.mutate({
-      id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId,
+      id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId, employeeId,
       description: entry.description ?? undefined,
       cashAmount: entry.cashAmount, terminalAmount: entry.terminalAmount, clickAmount: entry.clickAmount, transferAmount: entry.transferAmount,
     });
@@ -245,9 +275,11 @@ function DailyJournalGrid({
           }
           continue;
         }
+        const draftPayee = payeeFromValue(draft.agentId);
         const payload = {
           entryDate: timestamp, type, category,
-          agentId: draft.agentId ? Number(draft.agentId) : undefined,
+          agentId: draftPayee.agentId ?? undefined,
+          employeeId: draftPayee.employeeId ?? undefined,
           description: type === "expense" ? draft.reason.trim() || undefined : undefined,
           cashAmount: amount,
           terminalAmount: terminalVal,
@@ -379,17 +411,26 @@ function DailyJournalGrid({
                 <td className="px-1.5 py-1">
                   <div>
                     <select
-                      key={`agent-${entry.id}-${entry.agentId ?? ""}`}
+                      key={`agent-${entry.id}-${entry.agentId ?? ""}-${entry.employeeId ?? ""}`}
                       data-journal-cell={`${rowIndex}-0`}
-                      defaultValue={entry.agentId != null ? String(entry.agentId) : ""}
+                      defaultValue={payeeToValue(entry)}
                       className={selectInputClass}
                       onChange={event => commitExistingAgent(entry, event.target.value)}
                       onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}
                     >
                       <option value="">Агент tanlanmagan</option>
-                      {agentOptions.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                      <optgroup label="Агентлар">
+                        {agentOptions.map(agent => <option key={`a-${agent.id}`} value={`a:${agent.id}`}>{agent.name}</option>)}
+                      </optgroup>
+                      {/* Oylik oladigan xodimlar — "Ойлик" rasxodi kimga berilganini
+                          shu yerda belgilanadi (agentlar foiz oladi, ular yuqorida). */}
+                      {employeeOptions.length > 0 && (
+                        <optgroup label="Ходимлар">
+                          {employeeOptions.map(employee => <option key={`e-${employee.id}`} value={`e:${employee.id}`}>{employee.name}</option>)}
+                        </optgroup>
+                      )}
                     </select>
-                    {entry.agentId == null && entry.description ? (
+                    {entry.agentId == null && entry.employeeId == null && entry.description ? (
                       <p className="truncate px-1.5 pt-0.5 text-[10px] text-muted-foreground">{entry.description}</p>
                     ) : null}
                   </div>
@@ -497,7 +538,18 @@ function DailyJournalGrid({
                   onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}
                 >
                   <option value="">Агент tanlang</option>
-                  {agentList.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                  <optgroup label="Агентлар">
+                    {agentList.map(agent => <option key={`a-${agent.id}`} value={`a:${agent.id}`}>{agent.name}</option>)}
+                  </optgroup>
+                  {employeeList.length > 0 && (
+                    <optgroup label="Ходимлар">
+                      {employeeList.map(employee => (
+                        <option key={`e-${employee.id}`} value={`e:${employee.id}`}>
+                          {employee.position ? `${employee.name} — ${employee.position}` : employee.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </td>
               {JOURNAL_COLUMNS.map((name, colOffset) => (

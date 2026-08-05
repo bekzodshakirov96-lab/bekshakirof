@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label";
 import {
   BarChart3,
   Beer,
+  BriefcaseBusiness,
   Boxes,
   Building2,
   ChevronDown,
@@ -109,6 +110,7 @@ const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
     label: "Hamkorlar",
     items: [
       { icon: UsersRound, label: "Agentlar", path: "/agentlar" },
+      { icon: BriefcaseBusiness, label: "Xodimlar", path: "/xodimlar", roles: ["admin", "accountant"] },
       { icon: Building2, label: "Mijozlar", path: "/mijozlar", roles: ["admin", "accountant", "agent"] },
       { icon: FileText, label: "Akt sverka", path: "/akt-sverka", roles: ["admin", "accountant", "agent"] },
     ],
