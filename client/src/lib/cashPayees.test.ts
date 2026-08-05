@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildEmployeeOptions } from "./cashPayees";
 
 const employees = [
-  { id: 1, name: "Olim", position: "Гручик" },
-  { id: 2, name: "Karim", position: null },
+  { id: 1, name: "Olim" },
+  { id: 2, name: "Karim" },
 ];
 
 describe("buildEmployeeOptions", () => {
@@ -22,9 +22,9 @@ describe("buildEmployeeOptions", () => {
     expect(result.map(option => option.id)).toEqual([1]);
   });
 
-  it("ochiq bo'lganda barcha xodimni lavozimi bilan ko'rsatadi", () => {
+  it("ochiq bo'lganda barcha xodimni faqat ismi bilan ko'rsatadi (lavozimsiz)", () => {
     expect(buildEmployeeOptions(employees, [], true)).toEqual([
-      { id: 1, name: "Olim — Гручик" },
+      { id: 1, name: "Olim" },
       { id: 2, name: "Karim" },
     ]);
   });

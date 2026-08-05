@@ -1,12 +1,15 @@
 /** Kassa kunlik jurnalidagi "kimga berildi" tanlovi uchun yordamchi mantiq. */
 
 export type EmployeeOption = { id: number; name: string };
-export type EmployeeSource = { id: number; name: string; position?: string | null };
+export type EmployeeSource = { id: number; name: string };
 /** Jurnaldagi yozuvdan faqat xodim biriktirmasi uchun kerak bo'lgan maydonlar. */
 export type EmployeeUsage = { employeeId: number | null; employeeName: string | null };
 
 /**
  * Tanlash ro'yxatiga tushadigan xodimlarni tayyorlaydi.
+ *
+ * Jurnal katagi tor, shuning uchun faqat ism ko'rsatiladi — lavozim bu yerda
+ * kerak emas, u Xodimlar bo'limida ko'rinadi.
  *
  * Xodimlarga oylik har kuni berilmaydi, shuning uchun ro'yxat sukut bo'yicha
  * yopiq (`showAll = false`) — kundalik ishda faqat agentlar ko'rinadi.
@@ -32,7 +35,7 @@ export function buildEmployeeOptions(
 
   const known = new Set(employees.map(employee => employee.id));
   return [
-    ...employees.map(({ id, name, position }) => ({ id, name: position ? `${name} — ${position}` : name })),
+    ...employees.map(({ id, name }) => ({ id, name })),
     ...Array.from(used.entries())
       .filter(([id]) => !known.has(id))
       .map(([id, name]) => ({ id, name })),
