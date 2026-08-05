@@ -74,18 +74,27 @@ function AgentCommissionSection() {
   const payCommission = trpc.agents.payCommission.useMutation({
     onSuccess: async () => {
       toast.success("Komissiya Kassa'ga Ойлик xarajati sifatida yozildi");
-      await utils.dashboard.overview.invalidate();
+      // Hisobotni ham yangilash shart: to'lov "olingan" summaga qo'shilib, qoldiqni
+      // nolga tushiradi. Aks holda eski qoldiq ekranda qolib, qayta bosilsa ikki
+      // marta to'lanib ketardi.
+      await Promise.all([
+        utils.agents.commissionReport.invalidate(),
+        utils.cash.invalidate(),
+        utils.dashboard.overview.invalidate(),
+      ]);
     },
     onError: error => toast.error(error.message),
   });
 
   const rows = report.data ?? [];
   const totalCommission = rows.reduce((sum, row) => sum + row.commissionAmount, 0);
+  const totalTaken = rows.reduce((sum, row) => sum + row.takenAmount, 0);
+  const totalRemaining = rows.reduce((sum, row) => sum + row.remainingAmount, 0);
 
   return (
     <SectionCard
       title="Agent oyligi (komissiya)"
-      description="Faqat mijozdan qaytib kelgan (to'langan) summadan hisoblanadi — qarzda qolgan qism kiritilmaydi."
+      description="Faqat mijozdan qaytib kelgan (to'langan) summadan hisoblanadi — qarzda qolgan qism kiritilmaydi. Davr ichida kassadan olingan avans hisoblangan komissiyadan ayiriladi."
       className="mt-5"
       action={
         <div className="flex items-center gap-2">
@@ -96,23 +105,31 @@ function AgentCommissionSection() {
       }
     >
       <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
-        {report.isLoading ? <TableLoading columns={5} /> : rows.length === 0 ? <EmptyState description="Faol agentlar topilmadi." /> : (
+        {report.isLoading ? <TableLoading columns={7} /> : rows.length === 0 ? <EmptyState description="Faol agentlar topilmadi." /> : (
           <Table className="finance-table">
-            <TableHeader><TableRow><TableHead>Agent</TableHead><TableHead className="text-right">Komissiya %</TableHead><TableHead className="text-right">Yig'ilgan summa</TableHead><TableHead className="text-right">Hisoblangan komissiya</TableHead><TableHead className="text-right">Amal</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Agent</TableHead><TableHead className="text-right">Komissiya %</TableHead><TableHead className="text-right">Yig'ilgan summa</TableHead><TableHead className="text-right">Hisoblangan komissiya</TableHead><TableHead className="text-right">Olingan avans</TableHead><TableHead className="text-right">To'lanadigan qoldiq</TableHead><TableHead className="text-right">Amal</TableHead></TableRow></TableHeader>
             <TableBody>
               {rows.map(row => (
                 <TableRow key={row.agentId}>
                   <TableCell className="font-semibold text-foreground">{row.agentName}</TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">{row.commissionPercent}%</TableCell>
                   <TableCell className="text-right tabular-nums text-emerald-700">{formatMoney(row.collectedAmount)}</TableCell>
-                  <TableCell className="text-right font-bold tabular-nums text-foreground">{formatMoney(row.commissionAmount)}</TableCell>
+                  <TableCell className="text-right tabular-nums text-foreground">{formatMoney(row.commissionAmount)}</TableCell>
+                  <TableCell className="text-right tabular-nums text-amber-700 dark:text-amber-400">
+                    {row.takenAmount > 0 ? `− ${formatMoney(row.takenAmount)}` : "—"}
+                  </TableCell>
+                  <TableCell
+                    className={`text-right font-bold tabular-nums ${row.remainingAmount < 0 ? "text-rose-700 dark:text-rose-400" : "text-foreground"}`}
+                  >
+                    {formatMoney(row.remainingAmount)}
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-8 rounded-lg text-xs"
-                      disabled={row.commissionAmount <= 0 || payCommission.isPending}
-                      onClick={() => payCommission.mutate({ agentId: row.agentId, amount: row.commissionAmount, periodLabel })}
+                      disabled={row.remainingAmount <= 0 || payCommission.isPending}
+                      onClick={() => payCommission.mutate({ agentId: row.agentId, amount: row.remainingAmount, periodLabel })}
                     >
                       To'lash
                     </Button>
@@ -122,6 +139,10 @@ function AgentCommissionSection() {
               <TableRow className="bg-muted/60 font-bold">
                 <TableCell colSpan={3}>Jami</TableCell>
                 <TableCell className="text-right tabular-nums text-foreground">{formatMoney(totalCommission)}</TableCell>
+                <TableCell className="text-right tabular-nums text-amber-700 dark:text-amber-400">
+                  {totalTaken > 0 ? `− ${formatMoney(totalTaken)}` : "—"}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-foreground">{formatMoney(totalRemaining)}</TableCell>
                 <TableCell />
               </TableRow>
             </TableBody>

@@ -19,6 +19,13 @@ function toMySqlDate(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
+/**
+ * Kassadagi "Ойлик" toifasi. Agentga oy davomida berilgan avans ham, oy oxirida
+ * to'langan komissiya ham shu toifada yoziladi — shuning uchun komissiya hisobida
+ * "allaqachon olingan" summa aynan shu yerdan olinadi.
+ */
+const SALARY_CATEGORY = "Ойлик";
+
 const agentFilterFields = {
   search: z.string().max(120).optional(),
   status: z.enum(["all", "active", "inactive"]).default("all"),
@@ -249,8 +256,28 @@ export const agentsRouter = router({
         input.from ? sql`${clientPayments.paymentDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
         input.to ? sql`${clientPayments.paymentDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
       ].filter(Boolean);
+      const salaryPeriodConditions = [
+        eq(cashEntries.type, "expense"),
+        eq(cashEntries.category, SALARY_CATEGORY),
+        input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
+        input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+      ].filter(Boolean);
 
       const agentRows = await db.select().from(agents).orderBy(asc(agents.name));
+
+      /** Agent davr ichida kassadan olib bo'lgan pul (avans va to'langan komissiya). */
+      const takenRows = await db
+        .select({
+          agentId: cashEntries.agentId,
+          takenAmount:
+            sql<number>`coalesce(sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} + ${cashEntries.transferAmount}), 0)`.mapWith(
+              Number,
+            ),
+        })
+        .from(cashEntries)
+        .where(and(...salaryPeriodConditions))
+        .groupBy(cashEntries.agentId);
+      const takenByAgent = new Map(takenRows.map(row => [row.agentId, row.takenAmount]));
       const collectedRows = await db
         .select({
           agentId: transactions.agentId,
@@ -285,7 +312,19 @@ export const agentsRouter = router({
           const collectedAmount = saleCollectedAmount + debtCollectedAmount;
           const commissionPercent = Number(agent.commissionPercent);
           const commissionAmount = Math.round((collectedAmount * commissionPercent) / 100);
-          return { agentId: agent.id, agentName: agent.name, commissionPercent, collectedAmount, commissionAmount };
+          // Oy davomida olingan avans (va allaqachon to'langan komissiya) ayiriladi —
+          // aks holda oy oxirida to'liq komissiya qayta to'lanib, ikki marta berilardi.
+          const takenAmount = takenByAgent.get(agent.id) ?? 0;
+          return {
+            agentId: agent.id,
+            agentName: agent.name,
+            commissionPercent,
+            collectedAmount,
+            commissionAmount,
+            takenAmount,
+            /** Manfiy bo'lishi mumkin: agent hisoblangan komissiyadan ko'p avans olgan. */
+            remainingAmount: commissionAmount - takenAmount,
+          };
         });
     }),
   /** Records a computed commission payout as an "Ойлик" (salary) expense in the Kassa cash journal. */
