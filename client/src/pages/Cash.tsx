@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
+import { buildEmployeeOptions } from "@/lib/cashPayees";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import {
@@ -37,6 +38,19 @@ const CATEGORY_TYPE: Record<string, "income" | "expense"> = Object.fromEntries([
 ]);
 const JOURNAL_COLUMNS = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
 const DRAFT_ROWS = 4;
+
+/**
+ * Kunlik jurnalda xodimlar ro'yxati ochiqmi — brauzerda eslab qolinadi.
+ *
+ * Xodimlarga oylik har kuni berilmaydi, shuning uchun ular sukut bo'yicha
+ * yashirin: tanlash ro'yxatida faqat agentlar turadi va kundalik ish
+ * chalg'imaydi. Kerak bo'lganda "Ходимлар" tugmasi bilan ochiladi.
+ */
+const SHOW_EMPLOYEES_KEY = "nokdaun.cash.showEmployees";
+function readShowEmployees(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(SHOW_EMPLOYEES_KEY) === "1";
+}
 
 type CashEntryRow = {
   id: number;
@@ -101,10 +115,13 @@ const emptyCellClassLeft = "block px-1.5 py-1.5 text-left text-muted-foreground/
 function DailyJournalGrid({
   entries,
   date,
+  showEmployees,
   onChanged,
 }: {
   entries: CashEntryRow[];
   date: string;
+  /** Xodimlar tanlash ro'yxatida ko'rinsinmi (sukut bo'yicha yo'q). */
+  showEmployees: boolean;
   onChanged: () => void;
 }) {
   const utils = trpc.useUtils();
@@ -124,18 +141,10 @@ function DailyJournalGrid({
   }, [agentList, entries]);
   const employees = trpc.employees.options.useQuery();
   const employeeList = employees.data ?? [];
-  /** Agentlardagi kabi — nofaol qilingan xodimning eski yozuvi ham nomi bilan ko'rinsin. */
-  const employeeOptions = useMemo(() => {
-    const known = new Set(employeeList.map(employee => employee.id));
-    const extra = new Map<number, string>();
-    for (const entry of entries) {
-      if (entry.employeeId && !known.has(entry.employeeId) && entry.employeeName) extra.set(entry.employeeId, entry.employeeName);
-    }
-    return [
-      ...employeeList.map(({ id, name, position }) => ({ id, name: position ? `${name} — ${position}` : name })),
-      ...Array.from(extra.entries()).map(([id, name]) => ({ id, name })),
-    ];
-  }, [employeeList, entries]);
+  const employeeOptions = useMemo(
+    () => buildEmployeeOptions(employeeList, entries, showEmployees),
+    [employeeList, entries, showEmployees],
+  );
   const openingBalanceQuery = trpc.cash.openingBalance.useQuery({ date: timestamp });
   const [drafts, setDrafts] = useState<DraftRow[]>(() => Array.from({ length: DRAFT_ROWS }, emptyDraftRow));
   /** `drafts` state ko'zguси — async avtomatik-saqlash funksiyalari React render
@@ -541,12 +550,10 @@ function DailyJournalGrid({
                   <optgroup label="Агентлар">
                     {agentList.map(agent => <option key={`a-${agent.id}`} value={`a:${agent.id}`}>{agent.name}</option>)}
                   </optgroup>
-                  {employeeList.length > 0 && (
+                  {employeeOptions.length > 0 && (
                     <optgroup label="Ходимлар">
-                      {employeeList.map(employee => (
-                        <option key={`e-${employee.id}`} value={`e:${employee.id}`}>
-                          {employee.position ? `${employee.name} — ${employee.position}` : employee.name}
-                        </option>
+                      {employeeOptions.map(employee => (
+                        <option key={`e-${employee.id}`} value={`e:${employee.id}`}>{employee.name}</option>
                       ))}
                     </optgroup>
                   )}
@@ -1258,6 +1265,14 @@ function ActualCashCard({
 
 export default function Cash() {
   const [date, setDate] = useState(today());
+  const [showEmployees, setShowEmployees] = useState(readShowEmployees);
+  function toggleShowEmployees() {
+    setShowEmployees(prev => {
+      const next = !prev;
+      window.localStorage.setItem(SHOW_EMPLOYEES_KEY, next ? "1" : "0");
+      return next;
+    });
+  }
   const timestamp = dateToTimestamp(date);
   const daySummary = trpc.kassa.daySummary.useQuery({ date: timestamp });
   const prihodEntries = trpc.cash.byDate.useQuery({ date: timestamp });
@@ -1335,9 +1350,24 @@ export default function Cash() {
             >
               Bugun
             </Button>
+            <Button
+              type="button" variant="outline" size="sm"
+              className={`h-8 text-xs font-semibold ${showEmployees ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15" : "bg-card"}`}
+              aria-pressed={showEmployees}
+              title={showEmployees ? "Ходимларни рўйхатдан яшириш" : "Ходимларни рўйхатда кўрсатиш"}
+              onClick={toggleShowEmployees}
+            >
+              <Users className="mr-1.5 size-3.5" />
+              Ходимлар
+            </Button>
           </div>
         </div>
-        <DailyJournalGrid entries={allEntries} date={date} onChanged={() => prihodEntries.refetch()} />
+        <DailyJournalGrid
+          entries={allEntries}
+          date={date}
+          showEmployees={showEmployees}
+          onChanged={() => prihodEntries.refetch()}
+        />
       </div>
 
       <div className="mt-5 rounded-2xl border border-border bg-card p-5">
