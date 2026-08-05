@@ -58,11 +58,33 @@ export const agents = mysqlTable(
     note: varchar("note", { length: 255 }),
     /** Percent (0-100) of the amount actually collected from clients (not the debt portion) paid to the agent as commission. */
     commissionPercent: decimal("commissionPercent", { precision: 5, scale: 2 }).default("0").notNull(),
+    /** Lavozim — faqat nom (masalan "Dala agenti", "Supervayzer"), ruxsatga ta'sir qilmaydi. */
+    positionId: int("positionId").references(() => positions.id, { onDelete: "set null" }),
     isActive: boolean("isActive").default(true).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
-  table => [uniqueIndex("agents_name_unique").on(table.name)],
+  table => [uniqueIndex("agents_name_unique").on(table.name), index("agents_position_idx").on(table.positionId)],
+);
+
+/**
+ * Lavozimlar ma'lumotnomasi (gruzchik, dostavchik, supervayzer, omborchi, buxgalter...).
+ *
+ * Alohida jadval sifatida saqlanadi — shunda lavozim nomi bir joyda o'zgartirilsa,
+ * unga bog'langan barcha xodim va agentda avtomatik yangilanadi. Bu foydalanuvchi
+ * rollari (`users.role`) bilan aralashtirilmasin: rol — ruxsatlarni belgilaydi,
+ * lavozim esa faqat nom (hech qanday ruxsatga ta'sir qilmaydi).
+ */
+export const positions = mysqlTable(
+  "positions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    name: varchar("name", { length: 255 }).notNull(),
+    isActive: boolean("isActive").default(true).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [uniqueIndex("positions_name_unique").on(table.name)],
 );
 
 /**
@@ -78,15 +100,14 @@ export const employees = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     name: varchar("name", { length: 255 }).notNull(),
-    /** Lavozim — erkin matn, chunki yangi lavozimlar qo'shilib turadi. */
-    position: varchar("position", { length: 255 }),
+    positionId: int("positionId").references(() => positions.id, { onDelete: "set null" }),
     phone: varchar("phone", { length: 255 }),
     note: varchar("note", { length: 255 }),
     isActive: boolean("isActive").default(true).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
-  table => [uniqueIndex("employees_name_unique").on(table.name)],
+  table => [uniqueIndex("employees_name_unique").on(table.name), index("employees_position_idx").on(table.positionId)],
 );
 
 export const clients = mysqlTable(

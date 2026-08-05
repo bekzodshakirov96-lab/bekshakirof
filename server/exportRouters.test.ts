@@ -32,10 +32,14 @@ function createSelectChain(sourceRows: Array<Record<string, unknown>>, countMode
 vi.mock("./db", () => ({
   requireDb: async () => ({
     select: (selection?: Record<string, unknown>) => {
+      const has = (key: string) => selection != null && Object.prototype.hasOwnProperty.call(selection, key);
       if (!selection) return createSelectChain(state.agentRows);
-      if (Object.prototype.hasOwnProperty.call(selection, "total")) return createSelectChain(state.transactionRows, true);
-      // Qidiruv sharti mijoz/agent nomlarini alohida o'qiydi (buildSearchCondition).
-      if (Object.prototype.hasOwnProperty.call(selection, "name")) return createSelectChain(state.searchLookupRows);
+      if (has("total")) return createSelectChain(state.transactionRows, true);
+      // Agentlar ro'yxati — faqat shu tanlovda `commissionPercent` bo'ladi.
+      if (has("commissionPercent")) return createSelectChain(state.agentRows);
+      // Qidiruv sharti mijoz/agent nomlarini {id, name} ko'rinishida o'qiydi
+      // (buildSearchCondition) — shuning uchun aynan ikkita maydon bilan farqlanadi.
+      if (has("name") && Object.keys(selection).length === 2) return createSelectChain(state.searchLookupRows);
       return createSelectChain(state.transactionRows);
     },
     // Savdo jurnali qidiruvi jurnaldagi mahsulot nomlarini shu orqali oladi.

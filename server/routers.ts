@@ -15,6 +15,7 @@ import { containersRouter } from "./routers/containers";
 import { dashboardRouter } from "./routers/dashboard";
 import { debtsRouter } from "./routers/debts";
 import { employeesRouter } from "./routers/employees";
+import { positionsRouter } from "./routers/positions";
 import { factoryRouter } from "./routers/factory";
 import { importsRouter } from "./routers/imports";
 import { kassaRouter } from "./routers/kassa";
@@ -133,6 +134,7 @@ export const appRouter = router({
   debts: debtsRouter,
   agents: agentsRouter,
   employees: employeesRouter,
+  positions: positionsRouter,
   clients: clientsRouter,
   products: productsRouter,
   transactions: transactionsRouter,

@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { EmptyState, MetricCard, PageHeader, QueryError, SectionCard, TableLoading } from "@/components/finance-ui";
+import { PositionManagerDialog, PositionSelect } from "@/components/PositionManager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,11 +16,7 @@ import { toast } from "sonner";
 
 type EmployeeStatus = "all" | "active" | "inactive";
 
-/** Ko'p uchraydigan lavozimlar — tanlashni tezlashtirish uchun taklif sifatida
- * ko'rsatiladi, lekin maydon erkin matn (yangi lavozim ham yozish mumkin). */
-const POSITION_SUGGESTIONS = ["Gruzchik", "Dostavchik", "Supervayzer", "Omborchi", "Buxgalter", "Haydovchi"];
-
-const emptyForm = { name: "", position: "", phone: "", note: "" };
+const emptyForm = { name: "", positionId: null as number | null, phone: "", note: "" };
 
 export default function Employees() {
   const { user } = useAuth();
@@ -31,10 +28,11 @@ export default function Employees() {
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState<
-    { id: number; name: string; position: string; phone: string; note: string; isActive: boolean } | null
+    { id: number; name: string; positionId: number | null; phone: string; note: string; isActive: boolean } | null
   >(null);
   const [deleting, setDeleting] = useState<{ id: number; name: string } | null>(null);
   const [historyFor, setHistoryFor] = useState<{ id: number; name: string } | null>(null);
+  const [positionsOpen, setPositionsOpen] = useState(false);
 
   const employees = trpc.employees.list.useQuery({ search: search || undefined, status });
   const payments = trpc.employees.payments.useQuery(
@@ -69,9 +67,14 @@ export default function Employees() {
         description="Oylik oladigan xodimlar va ularga kassadan to‘langan oyliklar hisobi."
         action={
           canManage ? (
-            <Button onClick={() => { setForm(emptyForm); setCreateOpen(true); }}>
-              <Plus className="mr-2 size-4" /> Yangi xodim
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setPositionsOpen(true)}>
+                <BriefcaseBusiness className="mr-2 size-4" /> Lavozimlar
+              </Button>
+              <Button onClick={() => { setForm(emptyForm); setCreateOpen(true); }}>
+                <Plus className="mr-2 size-4" /> Yangi xodim
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -145,7 +148,7 @@ export default function Employees() {
                             setEditing({
                               id: row.id,
                               name: row.name,
-                              position: row.position ?? "",
+                              positionId: row.positionId,
                               phone: row.phone ?? "",
                               note: row.note ?? "",
                               isActive: row.isActive,
@@ -178,8 +181,7 @@ export default function Employees() {
             <div className="space-y-2"><Label>Ism-familiya</Label><Input className="finance-input" value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></div>
             <div className="space-y-2">
               <Label>Lavozim</Label>
-              <Input className="finance-input" list="employee-positions" placeholder="Masalan: Gruzchik" value={form.position} onChange={event => setForm({ ...form, position: event.target.value })} />
-              <datalist id="employee-positions">{POSITION_SUGGESTIONS.map(item => <option key={item} value={item} />)}</datalist>
+              <PositionSelect value={form.positionId} onChange={positionId => setForm({ ...form, positionId })} />
             </div>
             <div className="space-y-2"><Label>Telefon</Label><Input className="finance-input" value={form.phone} onChange={event => setForm({ ...form, phone: event.target.value })} /></div>
             <div className="space-y-2"><Label>Izoh</Label><Textarea className="finance-input" value={form.note} onChange={event => setForm({ ...form, note: event.target.value })} /></div>
@@ -188,7 +190,7 @@ export default function Employees() {
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Bekor qilish</Button>
             <Button
               disabled={form.name.trim().length < 2 || create.isPending}
-              onClick={() => create.mutate({ name: form.name, position: form.position || undefined, phone: form.phone || undefined, note: form.note || undefined })}
+              onClick={() => create.mutate({ name: form.name, positionId: form.positionId, phone: form.phone || undefined, note: form.note || undefined })}
             >
               {create.isPending ? "Saqlanmoqda..." : "Qo‘shish"}
             </Button>
@@ -208,7 +210,7 @@ export default function Employees() {
               <div className="space-y-2"><Label>Ism-familiya</Label><Input className="finance-input" value={editing.name} onChange={event => setEditing({ ...editing, name: event.target.value })} /></div>
               <div className="space-y-2">
                 <Label>Lavozim</Label>
-                <Input className="finance-input" list="employee-positions" value={editing.position} onChange={event => setEditing({ ...editing, position: event.target.value })} />
+                <PositionSelect value={editing.positionId} onChange={positionId => setEditing({ ...editing, positionId })} />
               </div>
               <div className="space-y-2"><Label>Telefon</Label><Input className="finance-input" value={editing.phone} onChange={event => setEditing({ ...editing, phone: event.target.value })} /></div>
               <div className="space-y-2"><Label>Izoh</Label><Textarea className="finance-input" value={editing.note} onChange={event => setEditing({ ...editing, note: event.target.value })} /></div>
@@ -225,7 +227,7 @@ export default function Employees() {
             <Button variant="outline" onClick={() => setEditing(null)}>Bekor qilish</Button>
             <Button
               disabled={!editing || editing.name.trim().length < 2 || update.isPending}
-              onClick={() => editing && update.mutate({ id: editing.id, name: editing.name, position: editing.position || null, phone: editing.phone || null, note: editing.note || null, isActive: editing.isActive })}
+              onClick={() => editing && update.mutate({ id: editing.id, name: editing.name, positionId: editing.positionId, phone: editing.phone || null, note: editing.note || null, isActive: editing.isActive })}
             >
               {update.isPending ? "Saqlanmoqda..." : "Saqlash"}
             </Button>
@@ -251,6 +253,8 @@ export default function Employees() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PositionManagerDialog open={positionsOpen} onOpenChange={setPositionsOpen} />
 
       {/* To'lovlar tarixi */}
       <Dialog open={historyFor != null} onOpenChange={open => !open && setHistoryFor(null)}>

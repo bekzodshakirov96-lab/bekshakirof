@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, cashEntries, clientPayments, transactions, users } from "../../drizzle/schema";
+import { agents, cashEntries, clientPayments, positions, transactions, users } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure, productsViewProcedure } from "../access";
 import { logAudit } from "../auditLog";
 import {
@@ -60,7 +60,20 @@ type AgentFilterInput = z.infer<typeof agentFilterSchema>;
 
 async function loadAgentRows(input: AgentFilterInput) {
   const db = await requireDb();
-  const agentRows = await db.select().from(agents).orderBy(asc(agents.name));
+  const agentRows = await db
+    .select({
+      id: agents.id,
+      name: agents.name,
+      phone: agents.phone,
+      note: agents.note,
+      commissionPercent: agents.commissionPercent,
+      positionId: agents.positionId,
+      position: positions.name,
+      isActive: agents.isActive,
+    })
+    .from(agents)
+    .leftJoin(positions, eq(agents.positionId, positions.id))
+    .orderBy(asc(agents.name));
   const financialRows = enrichClientFinancialRows(await getClientFinancialRows());
   const search = normalizeSearch(input.search);
   return agentRows
@@ -135,13 +148,14 @@ export const agentsRouter = router({
         name: z.string().trim().min(2).max(180),
         phone: z.string().trim().max(64).optional(),
         note: z.string().trim().max(1_000).optional(),
+        positionId: z.number().int().positive().nullable().optional(),
       }),
     )
     .mutation(async ({ input }) => {
       const db = await requireDb();
       const [created] = await db
         .insert(agents)
-        .values({ name: input.name, phone: input.phone, note: input.note })
+        .values({ name: input.name, phone: input.phone, note: input.note, positionId: input.positionId ?? null })
         .$returningId();
       return { id: created.id };
     }),
@@ -154,6 +168,7 @@ export const agentsRouter = router({
         note: z.string().trim().max(1_000).nullable().optional(),
         isActive: z.boolean(),
         commissionPercent: z.number().min(0).max(100).optional(),
+        positionId: z.number().int().positive().nullable().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -169,6 +184,8 @@ export const agentsRouter = router({
             note: input.note ?? null,
             isActive: input.isActive,
             ...(input.commissionPercent !== undefined ? { commissionPercent: input.commissionPercent.toFixed(2) } : {}),
+            // Yuborilmasa mavjud lavozim saqlanadi (`null` esa uni tozalaydi).
+            ...(input.positionId !== undefined ? { positionId: input.positionId } : {}),
           })
           .where(eq(agents.id, input.id));
         const [updated] = await tx.select().from(agents).where(eq(agents.id, input.id)).limit(1);

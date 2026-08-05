@@ -1,6 +1,6 @@
 import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import { z } from "zod";
-import { cashEntries, employees } from "../../drizzle/schema";
+import { cashEntries, employees, positions } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure } from "../access";
 import { logAudit } from "../auditLog";
 import { normalizeSearch, normalizeSearchable } from "../businessQueries";
@@ -59,8 +59,9 @@ export const employeesRouter = router({
   options: businessProcedure.query(async () => {
     const db = await requireDb();
     const rows = await db
-      .select({ id: employees.id, name: employees.name, position: employees.position, isActive: employees.isActive })
+      .select({ id: employees.id, name: employees.name, position: positions.name, isActive: employees.isActive })
       .from(employees)
+      .leftJoin(positions, eq(employees.positionId, positions.id))
       .orderBy(asc(employees.name));
     return rows.filter(row => row.isActive).map(({ id, name, position }) => ({ id, name, position }));
   }),
@@ -77,7 +78,19 @@ export const employeesRouter = router({
     .query(async ({ input }) => {
       const db = await requireDb();
       const [rows, totals] = await Promise.all([
-        db.select().from(employees).orderBy(asc(employees.name)),
+        db
+          .select({
+            id: employees.id,
+            name: employees.name,
+            positionId: employees.positionId,
+            position: positions.name,
+            phone: employees.phone,
+            note: employees.note,
+            isActive: employees.isActive,
+          })
+          .from(employees)
+          .leftJoin(positions, eq(employees.positionId, positions.id))
+          .orderBy(asc(employees.name)),
         loadSalaryTotals(db, input),
       ]);
       const search = normalizeSearch(input.search);
@@ -141,7 +154,7 @@ export const employeesRouter = router({
     .input(
       z.object({
         name: z.string().trim().min(2).max(180),
-        position: z.string().trim().max(180).optional(),
+        positionId: z.number().int().positive().nullable().optional(),
         phone: z.string().trim().max(64).optional(),
         note: z.string().trim().max(1_000).optional(),
       }),
@@ -153,7 +166,7 @@ export const employeesRouter = router({
           .insert(employees)
           .values({
             name: input.name,
-            position: input.position || null,
+            positionId: input.positionId ?? null,
             phone: input.phone || null,
             note: input.note || null,
           })
@@ -174,7 +187,7 @@ export const employeesRouter = router({
       z.object({
         id: z.number().int().positive(),
         name: z.string().trim().min(2).max(180),
-        position: z.string().trim().max(180).nullable().optional(),
+        positionId: z.number().int().positive().nullable().optional(),
         phone: z.string().trim().max(64).nullable().optional(),
         note: z.string().trim().max(1_000).nullable().optional(),
         isActive: z.boolean(),
@@ -189,7 +202,7 @@ export const employeesRouter = router({
           .update(employees)
           .set({
             name: input.name,
-            position: input.position ?? null,
+            positionId: input.positionId ?? null,
             phone: input.phone ?? null,
             note: input.note ?? null,
             isActive: input.isActive,
