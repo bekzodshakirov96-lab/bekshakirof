@@ -94,6 +94,21 @@ export default function SalesReport() {
     onError: error => toast.error(error.message),
   });
 
+  const batchSiblings = trpc.transactions.batchSiblings.useQuery(
+    { id: editTarget?.id ?? 0 },
+    { enabled: Boolean(editTarget) },
+  );
+  const siblingsWithPayment = (batchSiblings.data ?? []).filter(
+    row => row.cashPayment + row.terminalPayment + row.clickPayment + row.transferPayment > 0,
+  );
+  const currentEditHasPayment = Boolean(
+    editTarget &&
+      Number(editTarget.cashPayment || 0) + Number(editTarget.terminalPayment || 0) +
+        Number(editTarget.clickPayment || 0) + Number(editTarget.transferPayment || 0) > 0,
+  );
+  /** To'lov paydo bo'ladigan xavfli holat: shu qatorda to'lov yo'q, lekin partiyaning boshqa qatorida bor — to'lovni bu yerga ham yozib qo'yish uni ikki marta hisoblaydi. */
+  const lockPaymentFields = siblingsWithPayment.length > 0 && !currentEditHasPayment;
+
   const updateTransaction = trpc.transactions.update.useMutation({
     onSuccess: async () => {
       toast.success("Operatsiya yangilandi.");
@@ -343,15 +358,26 @@ export default function SalesReport() {
               <Label>Mahsulot</Label>
               <select className="finance-input w-full border px-3" value={editTarget.productId} onChange={event => setEditTarget({ ...editTarget, productId: event.target.value })}>
                 <option value="">Tanlang</option>
-                {(products.data ?? []).filter(product => !product.containerType).map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
+                {(products.data ?? []).map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
               </select>
             </div>
             <div className="space-y-2"><Label>Miqdor</Label><Input className="finance-input" type="text" inputMode="decimal" value={editTarget.quantity} onChange={event => setEditTarget({ ...editTarget, quantity: sanitizeDecimalInput(event.target.value) })} /></div>
             <div className="space-y-2"><Label>Narx</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.salePrice} onChange={event => setEditTarget({ ...editTarget, salePrice: sanitizeIntegerInput(event.target.value) })} /></div>
-            <div className="space-y-2"><Label>Naqd to‘lov</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.cashPayment} onChange={event => setEditTarget({ ...editTarget, cashPayment: sanitizeIntegerInput(event.target.value) })} /></div>
-            <div className="space-y-2"><Label>Terminal</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.terminalPayment} onChange={event => setEditTarget({ ...editTarget, terminalPayment: sanitizeIntegerInput(event.target.value) })} /></div>
-            <div className="space-y-2"><Label>Click</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.clickPayment} onChange={event => setEditTarget({ ...editTarget, clickPayment: sanitizeIntegerInput(event.target.value) })} /></div>
-            <div className="space-y-2"><Label>Перечисление</Label><Input className="finance-input" type="text" inputMode="numeric" value={editTarget.transferPayment} onChange={event => setEditTarget({ ...editTarget, transferPayment: sanitizeIntegerInput(event.target.value) })} /></div>
+
+            {siblingsWithPayment.length > 0 && (
+              <div className="space-y-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 sm:col-span-2">
+                <p className="font-semibold">Bu operatsiya Tezkor KEG savdosi partiyasining bir qismi.</p>
+                <p className="mt-0.5">
+                  To‘lov shu partiyaning boshqa qatorida yozilgan: {siblingsWithPayment.map(row => `${row.productName} — ${formatMoney(row.cashPayment + row.terminalPayment + row.clickPayment + row.transferPayment)}`).join("; ")}.
+                  {lockPaymentFields ? " Shuning uchun bu yerga to‘lov yozmang — aks holda mijoz qarzi ikki marta kamayadi." : " Bu qatorda ham to‘lov mavjud — ikkalasi qo‘shilib hisoblanishini tekshiring."}
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-2"><Label>Naqd to‘lov</Label><Input disabled={lockPaymentFields} className="finance-input disabled:cursor-not-allowed disabled:opacity-60" type="text" inputMode="numeric" value={editTarget.cashPayment} onChange={event => setEditTarget({ ...editTarget, cashPayment: sanitizeIntegerInput(event.target.value) })} /></div>
+            <div className="space-y-2"><Label>Terminal</Label><Input disabled={lockPaymentFields} className="finance-input disabled:cursor-not-allowed disabled:opacity-60" type="text" inputMode="numeric" value={editTarget.terminalPayment} onChange={event => setEditTarget({ ...editTarget, terminalPayment: sanitizeIntegerInput(event.target.value) })} /></div>
+            <div className="space-y-2"><Label>Click</Label><Input disabled={lockPaymentFields} className="finance-input disabled:cursor-not-allowed disabled:opacity-60" type="text" inputMode="numeric" value={editTarget.clickPayment} onChange={event => setEditTarget({ ...editTarget, clickPayment: sanitizeIntegerInput(event.target.value) })} /></div>
+            <div className="space-y-2"><Label>Перечисление</Label><Input disabled={lockPaymentFields} className="finance-input disabled:cursor-not-allowed disabled:opacity-60" type="text" inputMode="numeric" value={editTarget.transferPayment} onChange={event => setEditTarget({ ...editTarget, transferPayment: sanitizeIntegerInput(event.target.value) })} /></div>
             <div className="space-y-2 sm:col-span-2"><Label>Izoh</Label><Input className="finance-input" value={editTarget.note} onChange={event => setEditTarget({ ...editTarget, note: event.target.value })} placeholder="Ixtiyoriy" /></div>
             <div className="space-y-2 sm:col-span-2">
               <label className="flex items-center gap-2 text-xs text-muted-foreground">

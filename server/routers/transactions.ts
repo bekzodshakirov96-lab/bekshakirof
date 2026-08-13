@@ -239,6 +239,37 @@ export const transactionsRouter = router({
       pageCount: Math.max(1, Math.ceil(totalRow.total / input.pageSize)),
     };
   }),
+  /**
+   * Tezkor KEG savdosida bitta mijoz qatorida KEG 30 va KEG 50 birga kiritilsa,
+   * ular `transactions`da 2 alohida yozuv bo'ladi, lekin to'lov faqat birinchisiga
+   * yoziladi (ikkinchisi 0). Tahrirlash oynasi shu "opa-uka" yozuvlarni ko'rsatib,
+   * bugalter ikkalasiga ham to'lov yozib qo'yib qarzni ikki marta kamaytirib
+   * qo'ymasligi uchun ogohlantiradi.
+   */
+  batchSiblings: businessProcedure.input(z.object({ id: z.number().int().positive() })).query(async ({ input }) => {
+    const db = await requireDb();
+    const [current] = await db.select().from(transactions).where(eq(transactions.id, input.id)).limit(1);
+    if (!current || !current.note?.startsWith("Tezkor KEG savdosi • ")) return [];
+    const siblings = await db
+      .select({
+        id: transactions.id,
+        productName: transactions.productName,
+        cashPayment: transactions.cashPayment,
+        terminalPayment: transactions.terminalPayment,
+        clickPayment: transactions.clickPayment,
+        transferPayment: transactions.transferPayment,
+        totalAmount: transactions.totalAmount,
+      })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.clientId, current.clientId ?? -1),
+          eq(transactions.note, current.note),
+          sql`${transactions.id} != ${input.id}`,
+        ),
+      );
+    return siblings;
+  }),
   exportData: businessProcedure.input(listSchema).query(async ({ input }) => {
     const db = await requireDb();
     const conditions = [
@@ -653,7 +684,6 @@ export const transactionsRouter = router({
       return db.transaction(async tx => {
         const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).limit(1);
         if (!product) throw new Error("Mahsulot topilmadi.");
-        if (product.containerType) throw new Error("KEG/tara mahsulotlarini Savdo jurnalida sotib bo‘lmaydi — Tezkor KEG savdosi bo‘limidan foydalaning.");
         const totalAmount = Math.round(input.quantity * input.salePrice);
         const transactionDate = new Date(input.transactionDate);
         // Tahrirlashda mahsulot almashtirilgan bo'lishi mumkin — tannarx qaytadan olinadi.
