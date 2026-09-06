@@ -1,6 +1,6 @@
 import { ExportMenu } from "@/components/ExportMenu";
 import { FactoryStatementDialog } from "@/components/FactoryStatementDialog";
-import { EmptyState, PageHeader, SectionCard, TableLoading } from "@/components/finance-ui";
+import { EmptyState, PageHeader, TableLoading } from "@/components/finance-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,17 +9,37 @@ import { formatDate, formatMoney, formatNumber, localDateInputValue } from "@/li
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
 import { AlertTriangle, Banknote, FileText, Factory as FactoryIcon, PackageCheck, RotateCcw, Send, ShoppingCart, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 type FactoryOperationType = "tara_sent" | "filled_received" | "brak_returned" | "brak_replaced";
 
 const factoryOperationMeta: Record<FactoryOperationType, { label: string; icon: typeof Send; badgeClass: string }> = {
-  tara_sent: { label: "Bo'sh tara yuborildi", icon: Send, badgeClass: "rounded-lg bg-muted text-muted-foreground hover:bg-muted" },
-  filled_received: { label: "To'la keg qabul qilindi", icon: PackageCheck, badgeClass: "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" },
-  brak_returned: { label: "Brak qaytarildi", icon: AlertTriangle, badgeClass: "rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50" },
-  brak_replaced: { label: "Brak o'rniga keg keldi", icon: RotateCcw, badgeClass: "rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-50" },
+  tara_sent: { label: "Bo'sh tara yuborildi", icon: Send, badgeClass: "rounded-md bg-primary/10 text-primary hover:bg-primary/10" },
+  filled_received: { label: "To'la keg qabul qilindi", icon: PackageCheck, badgeClass: "rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-300" },
+  brak_returned: { label: "Brak qaytarildi", icon: AlertTriangle, badgeClass: "rounded-md bg-rose-50 text-rose-700 hover:bg-rose-50 dark:bg-rose-500/15 dark:text-rose-300" },
+  brak_replaced: { label: "Brak o'rniga keg keldi", icon: RotateCcw, badgeClass: "rounded-md bg-muted text-muted-foreground hover:bg-muted" },
 };
+
+function FactorySection({ title, description, action, children }: {
+  title: string;
+  description?: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          {description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
 
 /** Zavod bilan tara/KEG almashinuvi: bo'sh tara yuborish, to'la keg qabul qilish, brak qaytarish
  * va brak evaziga yangi keg qabul qilish. Kirim/chiqim turlari Sklad qoldig'iga avtomatik ta'sir qiladi. */
@@ -98,47 +118,48 @@ export default function Factory() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1500px]">
+    <div className="mx-auto w-full max-w-[1600px] space-y-4 text-sm">
       <PageHeader
         eyebrow="Ombor"
         title="Zavod hisob-kitobi"
-        description="Bo'sh tara yuborish, to'la keg qabul qilish va brak (yaroqsiz) KEG almashinuvini zavod bilan kuzating."
-        action={<Button variant="outline" className="gap-2 bg-card" onClick={() => setStatementOpen(true)}><FileText className="size-4" />Akt sverka</Button>}
+        description="Tara almashinuvi, KEG qoldiqlari va zavod bilan hisob-kitob."
+        action={<Button variant="outline" className="h-9 gap-2 rounded-lg bg-card" onClick={() => setStatementOpen(true)}><FileText className="size-4" />Akt sverka</Button>}
       />
 
-      <SectionCard title="Joriy balanslar" description="Har bir KEG turi bo'yicha ombordagi, zavoddagi va brak evaziga kutilayotgan tara.">
+      <FactorySection title="Joriy tara qoldiqlari" action={<span className="text-xs text-muted-foreground">O'lchov birligi: dona</span>}>
         {balances.isLoading ? (
-          <TableLoading columns={3} />
+          <TableLoading columns={4} rows={2} />
         ) : balanceRows.length === 0 ? (
           <EmptyState description="KEG turidagi mahsulot topilmadi." />
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {balanceRows.map(row => (
-              <div key={row.productId} className="rounded-2xl border border-border bg-muted/60 p-4">
-                <p className="flex items-center gap-2 text-sm font-bold text-foreground"><FactoryIcon className="size-4 text-muted-foreground" />{row.productName}</p>
-                <div className="mt-3 grid grid-cols-3 gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Omborda (bo'sh tara)</p>
-                    <p className="mt-1 text-lg font-bold tabular-nums text-foreground">{formatNumber(row.warehouseTara, 0)} dona</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Zavodda (to'lmagan tara)</p>
-                    <p className={`mt-1 text-lg font-bold tabular-nums ${row.taraPending > 0 ? "text-amber-600" : "text-foreground"}`}>{formatNumber(row.taraPending, 0)} dona</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Brak evaziga kutilmoqda</p>
-                    <p className={`mt-1 text-lg font-bold tabular-nums ${row.brakPending > 0 ? "text-rose-600" : "text-foreground"}`}>{formatNumber(row.brakPending, 0)} dona</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <Table className="finance-table min-w-[650px] [&_td]:px-4 [&_th]:px-4">
+            <TableHeader>
+              <TableRow>
+                <TableHead>KEG turi</TableHead>
+                <TableHead className="text-right">Omborda · bo'sh tara</TableHead>
+                <TableHead className="text-right">Zavodda · to'lmagan tara</TableHead>
+                <TableHead className="text-right">Brak evaziga kutilmoqda</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {balanceRows.map(row => (
+                <TableRow key={row.productId}>
+                  <TableCell className="font-semibold text-foreground">
+                    <span className="flex items-center gap-2.5"><FactoryIcon className="size-4 text-primary" />{row.productName}</span>
+                  </TableCell>
+                  <TableCell className="text-right font-semibold tabular-nums text-foreground">{formatNumber(row.warehouseTara, 0)}</TableCell>
+                  <TableCell className={`text-right font-semibold tabular-nums ${row.taraPending > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>{formatNumber(row.taraPending, 0)}</TableCell>
+                  <TableCell className={`text-right font-semibold tabular-nums ${row.brakPending > 0 ? "text-rose-600 dark:text-rose-400" : "text-foreground"}`}>{formatNumber(row.brakPending, 0)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
-      </SectionCard>
+      </FactorySection>
 
-      <SectionCard title="Yangi operatsiya" description="Tara/keg harakatini qayd eting." className="mt-5">
-        <div className="grid gap-3">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <FactorySection title="Yangi operatsiya" description="Harakat turini tanlab, miqdorni kiriting.">
+        <div className="grid gap-3 p-4">
+          <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-muted/50 p-1 xl:grid-cols-4" role="group" aria-label="Tara operatsiyasi turi">
             {(Object.keys(factoryOperationMeta) as FactoryOperationType[]).map(type => {
               const meta = factoryOperationMeta[type];
               const Icon = meta.icon;
@@ -146,42 +167,54 @@ export default function Factory() {
                 <button
                   key={type}
                   type="button"
+                  aria-pressed={operationType === type}
                   onClick={() => setOperationType(type)}
-                  className={`flex h-16 flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition-colors ${operationType === type ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+                  className={`flex min-h-10 items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${operationType === type ? "bg-card text-primary shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-card/70 hover:text-foreground"}`}
                 >
-                  <Icon className="size-4" />
+                  <Icon className="size-4 shrink-0" />
                   {meta.label}
                 </button>
               );
             })}
           </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <select className={`finance-input border px-3 text-foreground ${!productId ? "border-rose-300" : ""}`} value={productId} onChange={event => setProductId(event.target.value)}>
-              <option value="">KEG turini tanlang</option>
-              {balanceRows.map(row => <option key={row.productId} value={row.productId}>{row.productName}</option>)}
-            </select>
-            <Input className={`finance-input ${Number(quantity) <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`} type="text" inputMode="numeric" placeholder="Miqdor (dona)" value={quantity} onChange={event => setQuantity(event.target.value.replace(/[^0-9]/g, ""))} />
-            <Input className="finance-input" type="date" value={date} onChange={event => setDate(event.target.value)} />
-            <Button disabled={!canSubmit} onClick={submit}>{record.isPending ? "Saqlanmoqda..." : "Qo'shish"}</Button>
+          <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[1.2fr_0.8fr_1fr_1.5fr_auto]">
+            <label className="grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground">
+              KEG turi
+              <select className={`finance-input w-full border px-3 text-foreground ${!productId ? "border-rose-300" : ""}`} value={productId} onChange={event => setProductId(event.target.value)}>
+                <option value="">KEG turini tanlang</option>
+                {balanceRows.map(row => <option key={row.productId} value={row.productId}>{row.productName}</option>)}
+              </select>
+            </label>
+            <label className="grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground">
+              Miqdor, dona
+              <Input className={`finance-input text-foreground ${Number(quantity) <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`} type="text" inputMode="numeric" placeholder="0" value={quantity} onChange={event => setQuantity(event.target.value.replace(/[^0-9]/g, ""))} />
+            </label>
+            <label className="grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground">
+              Sana
+              <Input className="finance-input text-foreground" type="date" value={date} onChange={event => setDate(event.target.value)} />
+            </label>
+            <label className="grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground">
+              Izoh
+              <Input className="finance-input text-foreground" placeholder="Ixtiyoriy" value={note} onChange={event => setNote(event.target.value)} />
+            </label>
+            <Button className="h-10 rounded-lg px-5 sm:col-span-2 xl:col-span-1" disabled={!canSubmit} onClick={submit}>{record.isPending ? "Saqlanmoqda..." : "Qo'shish"}</Button>
           </div>
           {!canSubmit && !record.isPending && blockingReasons.length > 0 && (
-            <ul className="text-right text-xs font-medium text-rose-600">
+            <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-rose-600 dark:text-rose-400">
               {blockingReasons.map(item => <li key={item}>{item}</li>)}
             </ul>
           )}
-          <Input className="finance-input" placeholder="Izoh (ixtiyoriy)" value={note} onChange={event => setNote(event.target.value)} />
         </div>
-      </SectionCard>
+      </FactorySection>
 
-      <SectionCard
+      <FactorySection
         title="Zavod operatsiyalari tarixi"
         description="So'nggi 20 ta yozuv"
-        className="mt-5"
         action={<ExportMenu onExcel={() => exportHistory("xlsx")} onPdf={() => exportHistory("pdf")} isLoading={isExportingHistory} disabled={operations.isLoading} />}
       >
-        <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
-          {operations.isLoading ? <TableLoading columns={5} /> : operationRows.length === 0 ? <EmptyState description="Hali zavod operatsiyasi yo'q." /> : (
-            <Table className="finance-table min-w-[760px]">
+        <div>
+          {operations.isLoading ? <TableLoading columns={6} rows={4} /> : operationRows.length === 0 ? <EmptyState description="Hali zavod operatsiyasi yo'q." /> : (
+            <Table className="finance-table min-w-[850px] [&_td]:px-4 [&_th]:px-4">
               <TableHeader><TableRow><TableHead>Sana</TableHead><TableHead>Turi</TableHead><TableHead>KEG</TableHead><TableHead className="text-right">Miqdor</TableHead><TableHead>Izoh</TableHead><TableHead /></TableRow></TableHeader>
               <TableBody>
                 {operationRows.map(row => {
@@ -192,12 +225,12 @@ export default function Factory() {
                       <TableCell><Badge className={meta.badgeClass}>{meta.label}</Badge></TableCell>
                       <TableCell className="font-semibold text-foreground">{row.productName ?? "—"}</TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">{formatNumber(row.quantity, 0)} dona</TableCell>
-                      <TableCell className="max-w-56 truncate text-muted-foreground">{row.note ?? "—"}</TableCell>
+                      <TableCell className="max-w-64 truncate text-muted-foreground" title={row.note ?? undefined}>{row.note ?? "—"}</TableCell>
                       <TableCell className="text-right">
                         <button
                           type="button"
                           aria-label="O'chirish"
-                          className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                          className="ml-auto flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                           onClick={() => deleteOperation.mutate({ id: row.id })}
                         >
                           <Trash2 className="size-4" />
@@ -210,7 +243,7 @@ export default function Factory() {
             </Table>
           )}
         </div>
-      </SectionCard>
+      </FactorySection>
 
       <BottleLedger />
 
@@ -301,48 +334,47 @@ function BottleLedger() {
   const stats = summary.data;
 
   return (
-    <SectionCard
+    <FactorySection
       title="Butilka harakati"
-      description="Yig'ilgan bo'sh butilkalarni zavodga sotish va zavoddan olingan pul hisobi."
-      className="mt-5"
+      description="Bo'sh butilkalar xaridi, zavodga sotuv va to'lovlar."
     >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <div className="rounded-2xl border border-border bg-muted/60 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Qo'lda qolgan butilka</p>
-          <p className="mt-1 text-lg font-bold tabular-nums text-foreground">{formatNumber(stats?.onHand ?? 0, 0)} dona</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
+      <div className="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3 2xl:grid-cols-6">
+        <div className="min-w-0 bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Qo'lda qolgan butilka</p>
+          <p className="mt-1.5 break-words text-lg font-semibold tabular-nums text-foreground">{formatNumber(stats?.onHand ?? 0, 0)} <span className="text-xs font-normal text-muted-foreground">dona</span></p>
+          <p className="mt-1 text-xs text-muted-foreground">
             Olingan {formatNumber(stats?.purchasedQuantity ?? 0, 0)} − yuborilgan {formatNumber(stats?.sentQuantity ?? 0, 0)}
           </p>
         </div>
-        <div className="rounded-2xl border border-border bg-muted/60 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sotib olishga xarajat</p>
-          <p className="mt-1 text-lg font-bold tabular-nums text-rose-600 dark:text-rose-400">{formatMoney(stats?.purchasedAmount ?? 0)}</p>
+        <div className="min-w-0 bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Sotib olishga xarajat</p>
+          <p className="mt-1.5 break-words text-lg font-semibold tabular-nums text-rose-600 dark:text-rose-400">{formatMoney(stats?.purchasedAmount ?? 0)}</p>
         </div>
-        <div className="rounded-2xl border border-border bg-muted/60 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sotuv summasi</p>
-          <p className="mt-1 text-lg font-bold tabular-nums text-foreground">{formatMoney(stats?.sentAmount ?? 0)}</p>
+        <div className="min-w-0 bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Sotuv summasi</p>
+          <p className="mt-1.5 break-words text-lg font-semibold tabular-nums text-foreground">{formatMoney(stats?.sentAmount ?? 0)}</p>
         </div>
-        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sof foyda</p>
-          <p className={`mt-1 text-lg font-bold tabular-nums ${(stats?.profit ?? 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+        <div className="min-w-0 bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Sof foyda</p>
+          <p className={`mt-1.5 break-words text-lg font-semibold tabular-nums ${(stats?.profit ?? 0) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
             {formatMoney(stats?.profit ?? 0)}
           </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">Sotuv − xarajat</p>
+          <p className="mt-1 text-xs text-muted-foreground">Sotuv − xarajat</p>
         </div>
-        <div className="rounded-2xl border border-border bg-muted/60 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Zavod to'lagan</p>
-          <p className="mt-1 text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatMoney(stats?.paidAmount ?? 0)}</p>
+        <div className="min-w-0 bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Zavod to'lagan</p>
+          <p className="mt-1.5 break-words text-lg font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{formatMoney(stats?.paidAmount ?? 0)}</p>
         </div>
-        <div className="rounded-2xl border border-border bg-muted/60 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Zavod qarzi</p>
-          <p className={`mt-1 text-lg font-bold tabular-nums ${(stats?.outstanding ?? 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
+        <div className="min-w-0 bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">Zavod qarzi</p>
+          <p className={`mt-1.5 break-words text-lg font-semibold tabular-nums ${(stats?.outstanding ?? 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
             {formatMoney(stats?.outstanding ?? 0)}
           </p>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:max-w-2xl">
+      <div className="grid gap-3 p-4">
+        <div className="grid grid-cols-1 gap-1 rounded-xl border border-border bg-muted/50 p-1 sm:grid-cols-3 xl:max-w-3xl" role="group" aria-label="Butilka harakati turi">
           {(Object.keys(bottleTypeMeta) as BottleEntryType[]).map(type => {
             const meta = bottleTypeMeta[type];
             const Icon = meta.icon;
@@ -350,65 +382,84 @@ function BottleLedger() {
               <button
                 key={type}
                 type="button"
+                aria-pressed={entryType === type}
                 onClick={() => setEntryType(type)}
-                className={`flex h-14 flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition-colors ${entryType === type ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+                className={`flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${entryType === type ? "bg-card text-primary shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-card/70 hover:text-foreground"}`}
               >
-                <Icon className="size-4" />
+                <Icon className="size-4 shrink-0" />
                 {meta.label}
               </button>
             );
           })}
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.5fr_auto]">
           {isPayment ? (
-            <Input
-              className={`finance-input md:col-span-2 ${amountValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
-              type="text" inputMode="numeric" placeholder="Olingan summa (so'm)"
-              value={amount} onChange={event => setAmount(event.target.value.replace(/[^0-9]/g, ""))}
-            />
+            <label className="grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground sm:col-span-2">
+              Olingan summa, so'm
+              <Input
+                className={`finance-input text-foreground ${amountValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
+                type="text" inputMode="numeric" placeholder="0"
+                value={amount} onChange={event => setAmount(event.target.value.replace(/[^0-9]/g, ""))}
+              />
+            </label>
           ) : (
             <>
-              <Input
-                className={`finance-input ${quantityValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
-                type="text" inputMode="numeric" placeholder="Butilka soni (dona)"
-                value={quantity} onChange={event => setQuantity(event.target.value.replace(/[^0-9]/g, ""))}
-              />
-              <Input
-                className={`finance-input ${priceValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
-                type="text" inputMode="numeric"
-                placeholder={entryType === "purchase" ? "Olingan narx (1 dona)" : "Sotish narxi (1 dona)"}
-                value={entryType === "purchase" ? purchasePrice : salePrice}
-                onChange={event => {
-                  const next = event.target.value.replace(/[^0-9]/g, "");
-                  if (entryType === "purchase") setPurchasePrice(next);
-                  else setSalePrice(next);
-                }}
-              />
+              <label className="grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground">
+                Butilka soni, dona
+                <Input
+                  className={`finance-input text-foreground ${quantityValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
+                  type="text" inputMode="numeric" placeholder="0"
+                  value={quantity} onChange={event => setQuantity(event.target.value.replace(/[^0-9]/g, ""))}
+                />
+              </label>
+              <label className="grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground">
+                {entryType === "purchase" ? "Olingan narx, 1 dona" : "Sotish narxi, 1 dona"}
+                <Input
+                  className={`finance-input text-foreground ${priceValue <= 0 ? "border-rose-300 focus-visible:ring-rose-200" : ""}`}
+                  type="text" inputMode="numeric" placeholder="0"
+                  value={entryType === "purchase" ? purchasePrice : salePrice}
+                  onChange={event => {
+                    const next = event.target.value.replace(/[^0-9]/g, "");
+                    if (entryType === "purchase") setPurchasePrice(next);
+                    else setSalePrice(next);
+                  }}
+                />
+              </label>
             </>
           )}
-          <Input className="finance-input" type="date" value={date} onChange={event => setDate(event.target.value)} />
-          <Button disabled={!canSubmit} onClick={submit}>{create.isPending ? "Saqlanmoqda..." : "Qo'shish"}</Button>
+          <label className="grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground">
+            Sana
+            <Input className="finance-input text-foreground" type="date" value={date} onChange={event => setDate(event.target.value)} />
+          </label>
+          <label className="grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground">
+            Izoh
+            <Input className="finance-input text-foreground" placeholder="Ixtiyoriy" value={note} onChange={event => setNote(event.target.value)} />
+          </label>
+          <Button className="h-10 rounded-lg px-5 sm:col-span-2 xl:col-span-1" disabled={!canSubmit} onClick={submit}>{create.isPending ? "Saqlanmoqda..." : "Qo'shish"}</Button>
         </div>
 
         {!isPayment && computedTotal > 0 ? (
-          <p className="text-right text-xs font-semibold text-muted-foreground">
-            Hisoblangan summa: <span className="text-foreground">{formatMoney(computedTotal)}</span>
+          <p className="text-xs text-muted-foreground">
+            Hisoblangan summa: <span className="font-semibold tabular-nums text-foreground">{formatMoney(computedTotal)}</span>
           </p>
         ) : null}
         {!canSubmit && !create.isPending && blockingReasons.length > 0 && (
-          <ul className="text-right text-xs font-medium text-rose-600">
+          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-rose-600 dark:text-rose-400">
             {blockingReasons.map(item => <li key={item}>{item}</li>)}
           </ul>
         )}
-        <Input className="finance-input" placeholder="Izoh (ixtiyoriy)" value={note} onChange={event => setNote(event.target.value)} />
       </div>
 
-      <div className="-mx-5 -mb-5 mt-5 overflow-hidden rounded-b-2xl border-t border-border">
-        {list.isLoading ? <TableLoading columns={6} /> : rows.length === 0 ? (
+      <div className="border-t border-border">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+          <h4 className="text-sm font-semibold text-foreground">Butilka harakatlari tarixi</h4>
+          <span className="text-xs text-muted-foreground">So'nggi 100 ta yozuv</span>
+        </div>
+        {list.isLoading ? <TableLoading columns={8} rows={4} /> : rows.length === 0 ? (
           <EmptyState description="Hali butilka harakati yo'q. Yuqoridagi forma orqali qo'shing." />
         ) : (
-          <Table className="finance-table min-w-[820px]">
+          <Table className="finance-table min-w-[1000px] [&_td]:px-4 [&_th]:px-4">
             <TableHeader>
               <TableRow>
                 <TableHead>Sana</TableHead>
@@ -425,9 +476,9 @@ function BottleLedger() {
               {rows.map(row => {
                 const hasQuantity = row.movementType !== "payment";
                 const badge = {
-                  purchase: { label: "Sotib olindi", className: "rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50 dark:bg-rose-500/15 dark:text-rose-300" },
-                  sent: { label: "Zavodga yuborildi", className: "rounded-lg bg-muted text-muted-foreground hover:bg-muted" },
-                  payment: { label: "Pul olindi", className: "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-300" },
+                  purchase: { label: "Sotib olindi", className: "rounded-md bg-rose-50 text-rose-700 hover:bg-rose-50 dark:bg-rose-500/15 dark:text-rose-300" },
+                  sent: { label: "Zavodga yuborildi", className: "rounded-md bg-primary/10 text-primary hover:bg-primary/10" },
+                  payment: { label: "Pul olindi", className: "rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-300" },
                 }[row.movementType];
                 /** Xarajat qizil (−), sotuv va tushum yashil/qora (+). */
                 const amountClass =
@@ -443,13 +494,13 @@ function BottleLedger() {
                     <TableCell className={`text-right font-semibold tabular-nums ${amountClass}`}>
                       {row.movementType === "purchase" ? "−" : row.movementType === "payment" ? "−" : "+"}{formatMoney(row.amount)}
                     </TableCell>
-                    <TableCell className="text-right font-bold tabular-nums">{formatMoney(row.balanceAfter)}</TableCell>
-                    <TableCell className="max-w-56 truncate text-muted-foreground">{row.note ?? "—"}</TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">{formatMoney(row.balanceAfter)}</TableCell>
+                    <TableCell className="max-w-64 truncate text-muted-foreground" title={row.note ?? undefined}>{row.note ?? "—"}</TableCell>
                     <TableCell className="text-right">
                       <button
                         type="button"
                         aria-label="O'chirish"
-                        className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                        className="ml-auto flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                         onClick={() => remove.mutate({ id: row.id })}
                       >
                         <Trash2 className="size-4" />
@@ -462,6 +513,6 @@ function BottleLedger() {
           </Table>
         )}
       </div>
-    </SectionCard>
+    </FactorySection>
   );
 }
