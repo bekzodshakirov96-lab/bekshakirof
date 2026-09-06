@@ -184,21 +184,7 @@ export async function reconcileTransactionContainers(
     });
   }
 
-  if (returnedType && returnedQuantity > 0) {
-    const currentBalance = await getClientContainerBalance(
-      tx,
-      input.clientId,
-      returnedType,
-      input.transactionId,
-    );
-    const available = currentBalance + (issuedType === returnedType ? issuedQuantity : 0);
-    if (returnedQuantity > available) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: `${containerLabel(returnedType)} qaytarish miqdori mavjud ${Math.max(0, available)} dona qoldiqdan oshmasligi kerak.`,
-      });
-    }
-  }
+  // Qaytgan tara berilganidan ko‘p bo‘lishi mumkin; qoldiq ishorasi saqlanadi.
 
   await tx
     .delete(containerMovements)

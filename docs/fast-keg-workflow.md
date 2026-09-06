@@ -35,4 +35,4 @@ Faylda `Tara qaytdi 30` va `Tara qaytdi 50` uchun alohida matnli sarlavha yo‘q
 | Yakuniy tara qoldig‘i | `oldingi qoldiq + berilgan − qaytgan` (har tur bo‘yicha alohida) |
 | Yakuniy qarz | `oldingi qarz + savdo summasi − kassa` |
 
-Ortiqcha tara qaytarish bloklanadi. KEG 30 qaytishi KEG 30 qoldig‘idan, KEG 50 qaytishi esa KEG 50 qoldig‘idan ayriladi; turlar o‘zaro aralashtirilmaydi.
+Qaytgan tara berilganidan ko‘p bo‘lsa, yakuniy qoldiq manfiy bo‘lishi mumkin (masalan, 1 dona berilib, 3 dona qaytsa, qoldiq −2 dona). KEG 30 qaytishi KEG 30 qoldig‘idan, KEG 50 qaytishi esa KEG 50 qoldig‘idan ayriladi; turlar o‘zaro aralashtirilmaydi. Harakat miqdorlari musbat butun sonlarda kiritiladi; ortiqcha to‘lov cheklovi saqlanadi.

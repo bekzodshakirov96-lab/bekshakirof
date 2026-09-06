@@ -261,8 +261,6 @@ export default function FastKeg() {
   const netKeg50Total = computedRows.reduce((total, row) => total + row.netKeg50, 0);
   const invalidRows = activeComputedRows.filter(
     row =>
-      row.endingKeg30Balance < 0 ||
-      row.endingKeg50Balance < 0 ||
       row.endingDebt < 0 ||
       ((row.quantities.keg30 > 0 || row.quantities.returned30 > 0) && !keg30Product) ||
       ((row.quantities.keg50 > 0 || row.quantities.returned50 > 0) && !keg50Product) ||
@@ -272,8 +270,6 @@ export default function FastKeg() {
 
   function validationReason(row: (typeof computedRows)[number]) {
     const reasons: string[] = [];
-    if (row.endingKeg30Balance < 0) reasons.push("KEG 30 qaytishi mavjud qoldiqdan oshgan");
-    if (row.endingKeg50Balance < 0) reasons.push("KEG 50 qaytishi mavjud qoldiqdan oshgan");
     if (row.endingDebt < 0) reasons.push("kassa qarz va yangi savdo yig‘indisidan oshgan");
     if ((row.quantities.keg30 > 0 || row.quantities.returned30 > 0) && !keg30Product) reasons.push("KEG 30 mahsulot sozlamasi topilmagan");
     if ((row.quantities.keg50 > 0 || row.quantities.returned50 > 0) && !keg50Product) reasons.push("KEG 50 mahsulot sozlamasi topilmagan");
@@ -337,7 +333,7 @@ export default function FastKeg() {
     if (!agentId) return toast.error("Avval agentni tanlang.");
     if (activeComputedRows.length === 0) return toast.error("Kamida bitta mijoz qatoriga qiymat kiriting.");
     if (invalidRows.length > 0) {
-      const detail = "Qizil qatorlarda ortiqcha tara qaytarish, manfiy qarz yoki narxi topilmagan KEG bor.";
+      const detail = "Qizil qatorlarda manfiy qarz yoki sozlamasi/narxi topilmagan KEG bor.";
       setSaveFeedback({
         kind: "error",
         title: "Jadvaldagi xatolarni tuzating",
@@ -546,7 +542,7 @@ export default function FastKeg() {
                     const missingPrice =
                       (row.quantities.keg30 > 0 && Number(keg30Product?.price ?? 0) <= 0) ||
                       (row.quantities.keg50 > 0 && Number(keg50Product?.price ?? 0) <= 0);
-                    const invalid = row.endingKeg30Balance < 0 || row.endingKeg50Balance < 0 || row.endingDebt < 0 || missingProduct || missingPrice;
+                    const invalid = row.endingDebt < 0 || missingProduct || missingPrice;
                     return <TableRow key={row.client.id} className={invalid ? "bg-rose-50/50" : hasValue(row.input) ? "bg-emerald-50/20" : ""}><TableCell className="sticky left-0 z-10 bg-inherit text-center text-xs font-bold text-muted-foreground">{rowIndex + 1}</TableCell><TableCell className="sticky left-12 z-10 bg-inherit"><p className="max-w-[190px] truncate text-xs font-bold text-foreground">{row.client.name}</p><p className="mt-0.5 text-[10px] text-muted-foreground">{row.client.code}</p>{missingProduct ? <p className="mt-1 text-[10px] font-semibold text-rose-600">KEG mahsuloti topilmadi</p> : missingPrice ? <p className="mt-1 text-[10px] font-semibold text-rose-600">KEG narxi topilmadi</p> : null}</TableCell><TableCell className="text-right text-xs font-semibold text-rose-600">{formatMoney(row.client.currentDebt)}</TableCell>{entryFields.map((field, columnIndex) => <TableCell key={field.key} className="p-2"><Input data-fast-keg-cell={`${rowIndex}-${columnIndex}`} aria-label={`${row.client.name}: ${field.label}`} inputMode="numeric" value={row.input[field.key]} onChange={event => updateEntry(row.client.id, field.key, event.target.value)} onKeyDown={event => handleInputKeyDown(event, rowIndex, columnIndex)} onFocus={event => event.currentTarget.select()} placeholder="0" className={`h-9 rounded-lg border-transparent text-center text-sm font-bold tabular-nums ${field.tone}`} /></TableCell>)}<TableCell className="text-right text-xs font-bold text-foreground">{formatMoney(row.saleAmount)}</TableCell><TableCell className={`text-right text-xs font-bold ${row.endingKeg30Balance < 0 ? "text-rose-600" : "text-amber-700"}`}>{row.endingKeg30Balance}</TableCell><TableCell className={`text-right text-xs font-bold ${row.endingKeg50Balance < 0 ? "text-rose-600" : "text-cyan-700"}`}>{row.endingKeg50Balance}</TableCell><TableCell className={`text-right text-xs font-bold ${row.endingDebt < 0 ? "text-rose-600" : "text-foreground"}`}>{formatMoney(row.endingDebt)}</TableCell><TableCell><Button variant="ghost" size="icon" onClick={() => clearEntry(row.client.id)} title="Qatorni tozalash" className="h-8 w-8 rounded-lg text-muted-foreground hover:text-rose-600"><X className="h-4 w-4" /></Button></TableCell></TableRow>;
                   })}</TableBody>
                 </Table>
