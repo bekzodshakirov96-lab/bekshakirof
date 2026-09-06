@@ -43,69 +43,72 @@
 }
 
 :root {
-  --primary: oklch(0.53 0.13 231);
-  --primary-foreground: oklch(0.99 0 0);
-  --sidebar-primary: oklch(0.8 0.13 191);
-  --sidebar-primary-foreground: oklch(0.18 0.03 235);
-  --chart-1: oklch(0.58 0.14 230);
+  color-scheme: light;
+  --primary: #285bd4;
+  --primary-foreground: #ffffff;
+  --sidebar-primary: #a7c2ff;
+  --sidebar-primary-foreground: #142747;
+  --chart-1: #3c6ce0;
   --chart-2: oklch(0.68 0.14 173);
   --chart-3: oklch(0.72 0.13 80);
   --chart-4: oklch(0.62 0.17 310);
   --chart-5: oklch(0.61 0.2 25);
-  --radius: 0.85rem;
-  --background: oklch(0.972 0.006 231);
-  --foreground: oklch(0.22 0.025 239);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.22 0.025 239);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.22 0.025 239);
-  --secondary: oklch(0.955 0.012 229);
-  --secondary-foreground: oklch(0.3 0.035 235);
-  --muted: oklch(0.958 0.008 231);
-  --muted-foreground: oklch(0.53 0.027 240);
-  --accent: oklch(0.94 0.018 224);
-  --accent-foreground: oklch(0.25 0.04 235);
+  --radius: 0.75rem;
+  --background: #f4f6fa;
+  --foreground: #1b2940;
+  --card: #ffffff;
+  --card-foreground: #1b2940;
+  --popover: #ffffff;
+  --popover-foreground: #1b2940;
+  --secondary: #edf1f7;
+  --secondary-foreground: #34445d;
+  --muted: #f0f3f8;
+  --muted-foreground: #64738a;
+  --accent: #eaf0fd;
+  --accent-foreground: #244daf;
   --destructive: oklch(0.58 0.22 27);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.9 0.012 231);
-  --input: oklch(0.9 0.012 231);
-  --ring: oklch(0.57 0.13 231);
-  --sidebar: oklch(0.19 0.038 239);
-  --sidebar-foreground: oklch(0.9 0.015 227);
-  --sidebar-accent: oklch(0.27 0.045 235);
-  --sidebar-accent-foreground: oklch(0.98 0.005 220);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.73 0.13 190);
+  --border: #dfe5ee;
+  --input: #ced7e4;
+  --ring: #597fdf;
+  --sidebar: #17263e;
+  --sidebar-foreground: #d9e2f1;
+  --sidebar-accent: #2c3e5b;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #ffffff14;
+  --sidebar-ring: #a7c2ff;
 }
 
 .dark {
-  --primary: oklch(0.72 0.13 200);
-  --primary-foreground: oklch(0.18 0.03 235);
-  --background: oklch(0.16 0.025 239);
-  --foreground: oklch(0.94 0.01 230);
-  --card: oklch(0.2 0.027 239);
-  --card-foreground: oklch(0.94 0.01 230);
-  --popover: oklch(0.2 0.027 239);
-  --popover-foreground: oklch(0.94 0.01 230);
-  --secondary: oklch(0.25 0.025 239);
-  --secondary-foreground: oklch(0.9 0.01 230);
-  --muted: oklch(0.25 0.025 239);
-  --muted-foreground: oklch(0.7 0.02 230);
-  --accent: oklch(0.28 0.035 235);
-  --accent-foreground: oklch(0.96 0.01 225);
+  color-scheme: dark;
+  --primary: #a1bdff;
+  --primary-foreground: #14274b;
+  --chart-1: #91b1ff;
+  --background: #101722;
+  --foreground: #e7edf6;
+  --card: #182230;
+  --card-foreground: #e7edf6;
+  --popover: #1e2a3b;
+  --popover-foreground: #e7edf6;
+  --secondary: #253246;
+  --secondary-foreground: #dce5f2;
+  --muted: #202d40;
+  --muted-foreground: #a4b2c7;
+  --accent: #263955;
+  --accent-foreground: #c5d6ff;
   --destructive: oklch(0.65 0.2 25);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.7 0.13 195);
-  --sidebar: oklch(0.14 0.028 240);
-  --sidebar-foreground: oklch(0.9 0.015 227);
-  --sidebar-primary: oklch(0.74 0.13 191);
-  --sidebar-primary-foreground: oklch(0.18 0.03 235);
-  --sidebar-accent: oklch(0.25 0.038 237);
-  --sidebar-accent-foreground: oklch(0.97 0.01 225);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.73 0.13 190);
+  --border: #2d3a4f;
+  --input: #40516a;
+  --ring: #91b1ff;
+  --sidebar: #0c1421;
+  --sidebar-foreground: #d9e2f1;
+  --sidebar-primary: #a7c2ff;
+  --sidebar-primary-foreground: #142747;
+  --sidebar-accent: #24344c;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #ffffff14;
+  --sidebar-ring: #a7c2ff;
 }
 
 @layer base {
@@ -114,7 +117,7 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: "Plus Jakarta Sans", "Inter", sans-serif;
+    font-family: "Inter", "Plus Jakarta Sans", system-ui, sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
   button:not(:disabled),
@@ -152,16 +155,20 @@
 
 @layer utilities {
   .finance-table th {
-    @apply h-11 bg-muted/60 text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground;
+    @apply h-10 bg-muted/60 text-xs font-medium normal-case tracking-normal text-muted-foreground;
   }
   .finance-table td {
-    @apply h-13 text-[13px] text-foreground/85;
+    @apply h-11 text-sm text-foreground/90;
   }
   .finance-table tr {
     @apply border-border;
   }
   .finance-input {
-    @apply h-10 rounded-xl border-border bg-card text-sm shadow-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/50;
+    @apply h-10 rounded-lg border-input bg-card text-sm shadow-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30;
+  }
+  .finance-table .text-right,
+  .finance-table .text-end {
+    font-variant-numeric: tabular-nums;
   }
   div.overflow-hidden:has(> [data-slot="table-container"]) {
     overflow-x: auto !important;
@@ -171,26 +178,10 @@
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  button { transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), filter 160ms cubic-bezier(0.23, 1, 0.32, 1); }
-  button:active { transform: scale(0.97); }
-
-  .login-blob {
-    animation: loginBlobFloat 20s ease-in-out infinite;
+@media (pointer: coarse) {
+  [data-slot="input"],
+  [data-slot="select-trigger"] {
+    min-height: 44px;
+    font-size: 16px;
   }
-  .login-blob-2 {
-    animation-duration: 26s;
-    animation-delay: -8s;
-  }
-  .login-blob-3 {
-    animation-duration: 17s;
-    animation-delay: -3s;
-  }
-}
-
-@keyframes loginBlobFloat {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  25% { transform: translate(4%, 6%) scale(1.08); }
-  50% { transform: translate(-3%, 4%) scale(0.94); }
-  75% { transform: translate(-5%, -5%) scale(1.05); }
 }
