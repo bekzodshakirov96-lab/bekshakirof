@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateIssuedContainerQuantity,
+  getClientContainerBalance,
   normalizeContainerType,
   pairContainerCandidates,
   reconcileTransactionContainers,
@@ -73,14 +74,16 @@ describe("containerAccounting", () => {
     expect(result.unmatchedMovements).toHaveLength(0);
   });
 
-  function createTransactionDouble(balance = 0) {
+  function createTransactionDouble(balance = 0, type: "keg_30" | "keg_50" = "keg_30") {
     const inserted: Array<Record<string, unknown>> = [];
     let deleteCount = 0;
     const tx = {
       select: () => ({
         from: () => ({
-          where: async () =>
-            balance === 0 ? [] : [{ containerType: "keg_30", movementType: "issued", quantity: balance }],
+          where: async () => [
+            ...(balance === 0 ? [] : [{ containerType: type, movementType: balance > 0 ? "issued" : "returned", quantity: Math.abs(balance) }]),
+            ...inserted,
+          ],
         }),
       }),
       delete: () => ({
@@ -141,17 +144,37 @@ describe("containerAccounting", () => {
     expect(testDouble.inserted[0]).toMatchObject({ movementType: "issued", quantity: 2, transactionId: 77 });
   });
 
-  it("mijoz qoldig‘idan ortiq tara qaytarishni yozuvlarni o‘zgartirishdan oldin bloklaydi", async () => {
-    const testDouble = createTransactionDouble(1);
-    await expect(reconcileTransactionContainers(testDouble.tx, {
+  it.each(["keg_30", "keg_50"] as const)("%s mijoz qoldig‘idan ortiq qaytsa manfiy qoldiqni saqlaydi", async type => {
+    const testDouble = createTransactionDouble(1, type);
+    await reconcileTransactionContainers(testDouble.tx, {
       ...baseInput,
       productContainerType: null,
-      productQuantity: 1,
-      returnContainerType: "keg_30",
+      productQuantity: 0,
+      returnContainerType: type,
       returnQuantity: 2,
-    })).rejects.toThrow("mavjud 1 dona qoldiqdan oshmasligi kerak");
+    });
+    expect(testDouble.getDeleteCount()).toBe(1);
+    expect(testDouble.inserted).toHaveLength(1);
+    expect(testDouble.inserted[0]).toMatchObject({ movementType: "returned", quantity: 2 });
+    expect(await getClientContainerBalance(testDouble.tx, 9, type)).toBe(-1);
+  });
+
+  it("qaytishni tahrirlashda manfiy qoldiqni qayta hisoblab, yozuvni takrorlamaydi", async () => {
+    const testDouble = createTransactionDouble(-1);
+    const input = { ...baseInput, productContainerType: null, productQuantity: 0, returnContainerType: "keg_30" as const };
+    await reconcileTransactionContainers(testDouble.tx, { ...input, returnQuantity: 3 });
+    expect(await getClientContainerBalance(testDouble.tx, 9, "keg_30")).toBe(-4);
+    await reconcileTransactionContainers(testDouble.tx, { ...input, returnQuantity: 1 });
+    expect(testDouble.inserted).toHaveLength(1);
+    expect(await getClientContainerBalance(testDouble.tx, 9, "keg_30")).toBe(-2);
+  });
+
+  it("qaytgan tara turi berilmasa yozuv yaratmaydi", async () => {
+    const testDouble = createTransactionDouble();
+    await expect(reconcileTransactionContainers(testDouble.tx, {
+      ...baseInput, productContainerType: null, productQuantity: 0, returnQuantity: 2,
+    })).rejects.toThrow("Qaytgan tara turi va miqdorini birga kiriting.");
     expect(testDouble.getDeleteCount()).toBe(0);
-    expect(testDouble.inserted).toHaveLength(0);
   });
 
   it("oddiy mahsulot sotilganda avtomatik tara yozuvi yaratmaydi", async () => {

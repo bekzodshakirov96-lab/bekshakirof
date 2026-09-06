@@ -237,18 +237,46 @@ describe("fastKeg.saveBatch", () => {
     ]);
   });
 
-  it("mavjud qoldiqdan ortiq tara qaytarishni yozuv yaratishdan oldin bloklaydi", async () => {
-    state.productRows = [productRow(30, "keg_30", 100)];
+  it.each([
+    [1, 2, -1],
+    [0, 2, -2],
+    [-1, 1, -2],
+  ])("tara qoldig‘i %i bo‘lib %i dona qaytganda %i qoldiq bilan saqlaydi", async (balance, returned, expected) => {
+    state.productRows = [productRow(30, "keg_30", 100), productRow(50, "keg_50", 150)];
     state.financialRows = [clientRow(13)];
-    state.balanceRows = [{ clientId: 13, containerType: "KEG 30", balance: 1 }];
+    state.balanceRows = [
+      { clientId: 13, containerType: "KEG 30", balance },
+      { clientId: 13, containerType: "keg_50", balance },
+    ];
     const caller = fastKegRouter.createCaller(createContext());
 
-    await expect(
-      caller.saveBatch(batchInput([inputRow(13, { returned30: 2 })])),
-    ).rejects.toThrow("Mijoz 13: KEG 30 qaytishi");
+    const result = await caller.saveBatch(batchInput([inputRow(13, { returned30: returned, returned50: returned })]));
+    expect(result.rows[0]).toMatchObject({ endingKeg30Balance: expected, endingKeg50Balance: expected, endingDebt: 1_000 });
+    expect(state.insertedTransactions).toHaveLength(2);
+    expect(state.reconcileCalls.map(row => row.returnQuantity)).toEqual([returned, returned]);
+    expect(state.rollbackCount).toBe(0);
+  });
+
+  it("tara qoldig‘i manfiy mijozdan kassa to‘lovini qabul qiladi", async () => {
+    state.financialRows = [clientRow(13)];
+    state.balanceRows = [{ clientId: 13, containerType: "KEG 30", balance: -2 }];
+    const caller = fastKegRouter.createCaller(createContext());
+    const result = await caller.saveBatch(batchInput([inputRow(13, { cash: 100 })]));
+    expect(result.rows[0]).toMatchObject({ endingDebt: 900, endingKeg30Balance: -2 });
+  });
+
+  it("tara manfiy bo‘lishiga ruxsat berilsa ham ortiqcha to‘lovni rad etadi", async () => {
+    state.financialRows = [clientRow(13)];
+    const caller = fastKegRouter.createCaller(createContext());
+    await expect(caller.saveBatch(batchInput([inputRow(13, { cash: 1_001 })])))
+      .rejects.toThrow("kassa summasi mavjud qarz va yangi savdo");
     expect(state.insertedTransactions).toHaveLength(0);
-    expect(state.reconcileCalls).toHaveLength(0);
-    expect(state.rollbackCount).toBe(1);
+  });
+
+  it.each([-1, 1.5])("qaytish harakatiga noto‘g‘ri %s miqdor kiritishni rad etadi", async quantity => {
+    const caller = fastKegRouter.createCaller(createContext());
+    await expect(caller.saveBatch(batchInput([inputRow(13, { returned30: quantity })]))).rejects.toThrow();
+    expect(state.insertedTransactions).toHaveLength(0);
   });
 
   it("avval saqlangan idempotency kalitini dublikat yozuvsiz qaytaradi", async () => {
