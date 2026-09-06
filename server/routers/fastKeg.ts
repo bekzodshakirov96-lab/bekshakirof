@@ -289,8 +289,8 @@ export const fastKegRouter = router({
       // Shu mijozlar qatoriga qulf qo'yamiz — bir xil mijoz uchun ikkita saveBatch
       // chaqiruvi deyarli bir vaqtda kelsa (tarmoq qayta urinishi, ikki qurilma va h.k.),
       // ikkinchisi shu yerda birinchisi commit bo'lguncha kutadi, keyin qarz/tara
-      // qoldig'ini YANGILANGAN holatda o'qiydi. Aks holda ikkalasi ham eski balansni
-      // "yetarli" deb hisoblab, umumiy qoldiq manfiy bo'lib qolishi mumkin edi (lost update).
+      // qoldig'ini YANGILANGAN holatda o'qiydi. Bu to‘lov cheklovi va qaytariladigan
+      // tara qoldiqlari ketma-ket hisoblanishini ta’minlaydi.
       await tx
         .select({ id: clients.id })
         .from(clients)
@@ -380,18 +380,6 @@ export const fastKegRouter = router({
           currentKeg50Balance: balanceMap.get(balanceKey(client.id, "keg_50")) ?? 0,
         };
         const calculated = calculateFastKegRow(inputRow, current, pricing);
-        if (calculated.endingKeg30Balance < 0) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `${client.name}: KEG 30 qaytishi mavjud ${current.currentKeg30Balance + calculated.issued30} dona qoldiqdan oshdi.`,
-          });
-        }
-        if (calculated.endingKeg50Balance < 0) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `${client.name}: KEG 50 qaytishi mavjud ${current.currentKeg50Balance + calculated.issued50} dona qoldiqdan oshdi.`,
-          });
-        }
         if (calculated.endingDebt < 0) {
           throw new TRPCError({
             code: "BAD_REQUEST",

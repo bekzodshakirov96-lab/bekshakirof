@@ -58,7 +58,7 @@ export const factoryRouter = router({
       return {
         productId: product.id,
         productName: product.name,
-        warehouseTara: Math.max(0, returnedFromClients - taraSent),
+        warehouseTara: returnedFromClients - taraSent,
         taraPending: taraSent - filledReceived,
         brakPending: brakReturned - brakReplaced,
       };
@@ -372,20 +372,6 @@ export const factoryRouter = router({
             });
             return { success: true };
           });
-        }
-
-        // Zavodga yuborishda qo'lda yetarli butilka borligini tekshiramiz —
-        // aks holda "qo'lda qolgan" manfiy chiqib, hisob chalkashadi.
-        if (input.movementType === "sent") {
-          const [stock] = await db
-            .select({
-              onHand: sql<number>`coalesce(sum(case when ${bottleMovements.movementType} = 'purchase' then ${bottleMovements.quantity} when ${bottleMovements.movementType} = 'sent' then -${bottleMovements.quantity} else 0 end), 0)`,
-            })
-            .from(bottleMovements);
-          const available = Number(stock?.onHand ?? 0);
-          if (input.quantity > available) {
-            throw new Error(`Qo'lda faqat ${available.toLocaleString("uz-UZ")} dona butilka bor — avval sotib olinganini kiriting.`);
-          }
         }
 
         return db.transaction(async tx => {
