@@ -11,7 +11,7 @@ export default function Containers() {
   const balanceRows = balances.data ?? [];
   const issued = (movements.data ?? []).filter(row => row.movementType === "issued").reduce((sum, row) => sum + Number(row.quantity), 0);
   const returned = (movements.data ?? []).filter(row => row.movementType === "returned").reduce((sum, row) => sum + Number(row.quantity), 0);
-  const outstanding = balanceRows.reduce((sum, row) => sum + Math.max(0, Number(row.balance)), 0);
+  const outstanding = balanceRows.reduce((sum, row) => sum + Number(row.balance), 0);
   if (balances.error || movements.error) { const error = balances.error ?? movements.error; return <div className="mx-auto w-full max-w-[1550px]"><PageHeader eyebrow="Aylanma tara" title="Tara nazorati" description="Tara harakati va qoldiqlari." /><QueryError description={error?.message} onRetry={() => { balances.refetch(); movements.refetch(); }} /></div>; }
   return <div className="mx-auto w-full max-w-[1550px]">
     <PageHeader eyebrow="Aylanma tara" title="Tara nazorati" description="Mijozlarga berilgan va qaytarilgan KEG yoki boshqa taralarni agentlar kesimida kuzating." />
