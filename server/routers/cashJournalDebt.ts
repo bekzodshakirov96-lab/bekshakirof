@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, cashJournalDebts, employees } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
@@ -23,6 +23,34 @@ const payeeMessage = "Qarz eslatmasida agent yoki xodimdan faqat bittasini tanla
 
 /** Mustaqil eslatmalar: ushbu router kassa, savdo va mijoz to'lovlari jadvallariga yozmaydi. */
 export const cashJournalDebtRouter = router({
+  report: businessProcedure
+    .input(z.object({
+      agentId: z.number().int().positive().optional(),
+      page: z.number().int().positive().default(1),
+      pageSize: z.number().int().min(1).max(100).default(25),
+    }))
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const where = input.agentId ? eq(cashJournalDebts.agentId, input.agentId) : undefined;
+      const [summary] = await db.select({
+        total: count(),
+        totalAmount: sql<number>`coalesce(sum(${cashJournalDebts.amount}), 0)`.mapWith(Number),
+      }).from(cashJournalDebts).where(where);
+      const pageCount = Math.max(1, Math.ceil(summary.total / input.pageSize));
+      const page = Math.min(input.page, pageCount);
+      const items = await db.select({
+        id: cashJournalDebts.id, entryDate: cashJournalDebts.entryDate,
+        agentId: cashJournalDebts.agentId, agentName: agents.name,
+        employeeId: cashJournalDebts.employeeId, employeeName: employees.name,
+        amount: cashJournalDebts.amount, description: cashJournalDebts.description,
+      }).from(cashJournalDebts)
+        .leftJoin(agents, eq(cashJournalDebts.agentId, agents.id))
+        .leftJoin(employees, eq(cashJournalDebts.employeeId, employees.id))
+        .where(where)
+        .orderBy(desc(cashJournalDebts.entryDate), desc(cashJournalDebts.id))
+        .limit(input.pageSize).offset((page - 1) * input.pageSize);
+      return { items, ...summary, page, pageCount };
+    }),
   byDate: businessProcedure
     .input(z.object({ date: entrySchema.shape.entryDate }))
     .query(async ({ input }) => {
