@@ -10,6 +10,7 @@ import { authenticateRequest } from "./localAuth";
 import { createContext } from "./context";
 import { UPLOADS_DIR } from "../storage";
 import { serveStatic, setupVite } from "./vite";
+import { ensureCashJournalDebtTable } from "../cashJournalDebtSchema";
 
 // Kun chegaralari (Kassa, hisobotlar) server jarayonining LOKAL vaqt mintaqasiga tayanadi
 // (masalan, `new Date(...).setHours(0,0,0,0)`). Biznes doim Toshkentda ishlaydi, shuning
@@ -40,6 +41,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  if (process.env.DATABASE_URL) await ensureCashJournalDebtTable();
   const app = express();
   const server = createServer(app);
   // Reverse proxy ortida ishlaganda haqiqiy mijoz IP'sini olish uchun (rate-limit shunga tayanadi).
