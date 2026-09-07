@@ -2,6 +2,7 @@ import { MetricCard, PageHeader, QueryError } from "@/components/finance-ui";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
 import { buildEmployeeOptions } from "@/lib/cashPayees";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
@@ -36,7 +37,9 @@ const CATEGORY_TYPE: Record<string, "income" | "expense"> = Object.fromEntries([
   ...INCOME_CATEGORIES.map(name => [name, "income" as const]),
   ...EXPENSE_CATEGORIES.map(name => [name, "expense" as const]),
 ]);
-const JOURNAL_COLUMNS = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
+const DEBT_COLUMN = "Qarz";
+const CASH_COLUMNS = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
+const JOURNAL_COLUMNS = [...CASH_COLUMNS, DEBT_COLUMN];
 const DRAFT_ROWS = 4;
 
 /**
@@ -67,6 +70,11 @@ type CashEntryRow = {
   transferAmount: number;
 };
 
+/** Qarz — faqat jurnal qaydi; pul harakati va mijoz qarziga kirmaydi. */
+type JournalDebtRow = Omit<CashEntryRow, "type"> & { type: "memo"; amount: number };
+type JournalRow = CashEntryRow | JournalDebtRow;
+const journalRowKey = (entry: JournalRow) => `${entry.type === "memo" ? "debt" : "cash"}:${entry.id}`;
+
 /**
  * "Ойлик" qatorida pul agentga ham, oylik oladigan xodimga ham berilishi mumkin.
  * Ikkalasi bitta tanlovda ko'rsatilgani uchun qiymatlar prefiks bilan farqlanadi:
@@ -83,6 +91,7 @@ function payeeFromValue(value: string): Payee {
 
 type DraftRow = {
   agentId: string; reason: string; terminal: string; click: string; transfer: string;
+  debtAmount: string; debtReason: string; debtId: number | null;
   amounts: Record<string, string>;
   /** Har bir toifa uchun avtomatik saqlangandan keyingi cashEntries.id — bor bo'lsa,
    * keyingi o'zgarishlar yangi yozuv yaratmaydi, mavjudini yangilaydi. */
@@ -90,8 +99,9 @@ type DraftRow = {
 };
 const emptyDraftRow = (): DraftRow => ({
   agentId: "", reason: "", terminal: "", click: "", transfer: "",
-  amounts: Object.fromEntries(JOURNAL_COLUMNS.map(name => [name, ""])),
-  entryIds: Object.fromEntries(JOURNAL_COLUMNS.map(name => [name, null])),
+  debtAmount: "", debtReason: "", debtId: null,
+  amounts: Object.fromEntries(CASH_COLUMNS.map(name => [name, ""])),
+  entryIds: Object.fromEntries(CASH_COLUMNS.map(name => [name, null])),
 });
 
 const cellInputClass =
@@ -106,6 +116,52 @@ const selectInputClass =
   "w-full min-w-[120px] cursor-pointer rounded-md border border-transparent bg-muted/70 px-1.5 py-1.5 text-xs outline-none transition-colors hover:border-border hover:bg-muted focus:border-primary focus:bg-card focus:ring-2 focus:ring-primary/25";
 const emptyCellClass = "block px-1.5 py-1.5 text-right text-muted-foreground/35 select-none";
 const emptyCellClassLeft = "block px-1.5 py-1.5 text-left text-muted-foreground/35 select-none";
+
+/** Katakdagi tahrirlash va saqlash o'zgarishsiz; uzun izoh alohida o'qiladi. */
+function ExpandableJournalNote({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>
+        <div
+          title="Izohni to‘liq o‘qish uchun bosing (F2)"
+          onClick={event => {
+            if (!(event.target instanceof HTMLInputElement)) return;
+            setText(event.target.value);
+            setOpen(true);
+          }}
+          onChangeCapture={event => {
+            if (event.target instanceof HTMLInputElement) setText(event.target.value);
+          }}
+          onKeyDownCapture={event => {
+            if (event.key !== "F2" || !(event.target instanceof HTMLInputElement)) return;
+            event.preventDefault();
+            setText(event.target.value);
+            setOpen(true);
+          }}
+        >
+          {children}
+        </div>
+      </PopoverAnchor>
+      <PopoverContent
+        align="end"
+        className="w-[min(28rem,calc(100vw-2rem))] p-4"
+        aria-label="Nimaga rasxod — to‘liq izoh"
+        onOpenAutoFocus={event => event.preventDefault()}
+        onCloseAutoFocus={event => event.preventDefault()}
+      >
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <span className="text-sm font-semibold">Nimaga rasxod — izoh</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>Yopish</Button>
+        </div>
+        <p className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
+          {text || "Izoh kiritilmagan."}
+        </p>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 /**
  * Excel "Kunlik jurnal" A1:H16 diapazoniga aynan mos, to'g'ridan-to'g'ri
@@ -126,6 +182,14 @@ function DailyJournalGrid({
 }) {
   const utils = trpc.useUtils();
   const timestamp = dateToTimestamp(date);
+  const debtEntries = trpc.cash.journalDebt.byDate.useQuery({ date: timestamp });
+  const journalEntries = useMemo<JournalRow[]>(() => [
+    ...entries,
+    ...(debtEntries.data ?? []).map(entry => ({
+      ...entry, type: "memo" as const, category: DEBT_COLUMN,
+      cashAmount: 0, terminalAmount: 0, clickAmount: 0, transferAmount: 0,
+    })),
+  ], [entries, debtEntries.data]);
   const agents = trpc.agents.options.useQuery();
   const agentList = agents.data ?? [];
   /** Faolsizlantirilgan agentga tegishli eski yozuv bo'lsa ham, uning ismi tanlash
@@ -134,16 +198,16 @@ function DailyJournalGrid({
   const agentOptions = useMemo(() => {
     const known = new Set(agentList.map(agent => agent.id));
     const extra = new Map<number, string>();
-    for (const entry of entries) {
+    for (const entry of journalEntries) {
       if (entry.agentId && !known.has(entry.agentId) && entry.agentName) extra.set(entry.agentId, entry.agentName);
     }
     return [...agentList, ...Array.from(extra.entries()).map(([id, name]) => ({ id, name }))];
-  }, [agentList, entries]);
+  }, [agentList, journalEntries]);
   const employees = trpc.employees.options.useQuery();
   const employeeList = employees.data ?? [];
   const employeeOptions = useMemo(
-    () => buildEmployeeOptions(employeeList, entries, showEmployees),
-    [employeeList, entries, showEmployees],
+    () => buildEmployeeOptions(employeeList, journalEntries, showEmployees),
+    [employeeList, journalEntries, showEmployees],
   );
   const openingBalanceQuery = trpc.cash.openingBalance.useQuery({ date: timestamp });
   const [drafts, setDrafts] = useState<DraftRow[]>(() => Array.from({ length: DRAFT_ROWS }, emptyDraftRow));
@@ -151,6 +215,9 @@ function DailyJournalGrid({
    * siklidan qat'i nazar har doim eng so'nggi qiymatni sinxron o'qishi uchun. */
   const draftsRef = useRef(drafts);
   const autoSaveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const debtSaveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const pendingDebtSaves = useRef<Record<number, Promise<void>>>({});
+  const existingDebtSaves = useRef(new Map<number, { entry: JournalDebtRow; pending: Promise<void>; deleted?: boolean }>());
 
   const invalidate = () =>
     Promise.all([
@@ -163,23 +230,28 @@ function DailyJournalGrid({
   const create = trpc.cash.create.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
   const update = trpc.cash.update.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
   const del = trpc.cash.delete.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
+  const invalidateDebt = () => utils.cash.journalDebt.byDate.invalidate({ date: timestamp });
+  const createDebt = trpc.cash.journalDebt.create.useMutation({ onSuccess: invalidateDebt, onError: error => toast.error(error.message) });
+  const updateDebt = trpc.cash.journalDebt.update.useMutation({ onSuccess: invalidateDebt, onError: error => toast.error(error.message) });
+  const deleteDebt = trpc.cash.journalDebt.delete.useMutation({ onSuccess: invalidateDebt, onError: error => toast.error(error.message) });
 
   /** Qatorlar joyidan qo'zg'almasligi uchun: draft qatorida saqlanib turgan (entryIds'da
    * ko'rsatilgan) yozuvlar "sortedEntries" ro'yxatida qayta ko'rsatilmaydi — aks holda
    * saqlangan zahoti o'sha yozuv yuqoriga (entries bo'limiga) sakrab, draft qatori esa
    * bo'shab qolardi. */
   const activeDraftEntryIds = useMemo(() => {
-    const ids = new Set<number>();
+    const ids = new Set<string>();
     for (const draft of drafts) {
       for (const id of Object.values(draft.entryIds)) {
-        if (id) ids.add(id);
+        if (id) ids.add(`cash:${id}`);
       }
+      if (draft.debtId) ids.add(`debt:${draft.debtId}`);
     }
     return ids;
   }, [drafts]);
   const sortedEntries = useMemo(
-    () => [...entries].filter(entry => !activeDraftEntryIds.has(entry.id)).sort((a, b) => a.id - b.id),
-    [entries, activeDraftEntryIds],
+    () => journalEntries.filter(entry => !activeDraftEntryIds.has(journalRowKey(entry))).sort((a, b) => a.id - b.id),
+    [journalEntries, activeDraftEntryIds],
   );
   const openingBalance = openingBalanceQuery.data?.openingBalance ?? 0;
   const dayNetCash = useMemo(
@@ -188,15 +260,40 @@ function DailyJournalGrid({
   );
   const closingBalance = openingBalance + dayNetCash;
   const totals = useMemo(
-    () => JOURNAL_COLUMNS.map(name => entries.filter(entry => entry.category === name).reduce((sum, entry) => sum + entry.cashAmount + entry.terminalAmount + entry.clickAmount, 0)),
-    [entries],
+    () => JOURNAL_COLUMNS.map(name => name === DEBT_COLUMN
+      ? (debtEntries.data ?? []).reduce((sum, entry) => sum + entry.amount, 0)
+      : entries.filter(entry => entry.category === name).reduce((sum, entry) => sum + entry.cashAmount + entry.terminalAmount + entry.clickAmount, 0)),
+    [entries, debtEntries.data],
   );
   const terminalTotal = useMemo(() => entries.reduce((sum, entry) => sum + entry.terminalAmount, 0), [entries]);
   const clickTotal = useMemo(() => entries.reduce((sum, entry) => sum + entry.clickAmount, 0), [entries]);
   const transferTotal = useMemo(() => entries.reduce((sum, entry) => sum + entry.transferAmount, 0), [entries]);
 
-  function commitExistingAgent(entry: CashEntryRow, value: string) {
+  function saveExistingDebt(entry: JournalDebtRow, patch: Partial<JournalDebtRow>) {
+    let state = existingDebtSaves.current.get(entry.id);
+    if (!state) {
+      state = { entry, pending: Promise.resolve() };
+      existingDebtSaves.current.set(entry.id, state);
+    }
+    state.entry = { ...state.entry, ...patch };
+    const current = state;
+    current.pending = current.pending.catch(() => {}).then(async () => {
+      if (current.deleted) return;
+      const value = current.entry;
+      if (value.amount <= 0) { await deleteDebt.mutateAsync({ id: value.id }); current.deleted = true; return; }
+      await updateDebt.mutateAsync({
+        id: value.id, entryDate: timestamp, amount: value.amount,
+        agentId: value.agentId, employeeId: value.employeeId, description: value.description,
+      });
+    }).catch(() => {});
+  }
+
+  function commitExistingAgent(entry: JournalRow, value: string) {
     const { agentId, employeeId } = payeeFromValue(value);
+    if (entry.type === "memo") {
+      saveExistingDebt(entry, { agentId, employeeId });
+      return;
+    }
     if (agentId === entry.agentId && employeeId === entry.employeeId) return;
     update.mutate({
       id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId, employeeId,
@@ -205,8 +302,12 @@ function DailyJournalGrid({
     });
   }
 
-  function commitExistingReason(entry: CashEntryRow, value: string) {
+  function commitExistingReason(entry: JournalRow, value: string) {
     const next = value.trim();
+    if (entry.type === "memo") {
+      saveExistingDebt(entry, { description: next || null });
+      return;
+    }
     if ((entry.description ?? "") === next) return;
     update.mutate({
       id: entry.id, entryDate: timestamp, type: entry.type, category: entry.category, agentId: entry.agentId,
@@ -215,8 +316,12 @@ function DailyJournalGrid({
     });
   }
 
-  function commitExistingCash(entry: CashEntryRow, value: string) {
+  function commitExistingCash(entry: JournalRow, value: string) {
     const cashAmount = Math.round(Number(value || 0));
+    if (entry.type === "memo") {
+      saveExistingDebt(entry, { amount: cashAmount });
+      return;
+    }
     if (cashAmount === entry.cashAmount) return;
     if (cashAmount + entry.terminalAmount + entry.clickAmount + entry.transferAmount <= 0) { del.mutate({ id: entry.id }); return; }
     update.mutate({
@@ -270,7 +375,7 @@ function DailyJournalGrid({
     const hasIncomeCash = INCOME_CATEGORIES.some(name => Math.round(Number(draft.amounts[name] || 0)) > 0);
     const fallbackIncomeCategory =
       !hasIncomeCash && (terminalVal > 0 || clickVal > 0 || transferVal > 0) ? INCOME_CATEGORIES[0] : null;
-    for (const category of JOURNAL_COLUMNS) {
+    for (const category of CASH_COLUMNS) {
       const amount = Math.round(Number(draft.amounts[category] || 0));
       const existingId = draft.entryIds[category];
       const type = CATEGORY_TYPE[category];
@@ -307,10 +412,43 @@ function DailyJournalGrid({
       }
     }
     if (resetAfter) {
-      updateDraft(index, emptyDraftRow());
+      const { debtAmount, debtReason, debtId, agentId } = draftsRef.current[index];
+      updateDraft(index, { ...emptyDraftRow(), debtAmount, debtReason, debtId, agentId });
     } else if (idsChanged) {
       updateDraft(index, { entryIds: nextEntryIds });
     }
+  }
+
+  function flushDebtRow(index: number): Promise<void> {
+    // Qarz saqlash navbati pul kataklarining saqlashidan mustaqil.
+    const pending = (pendingDebtSaves.current[index] ?? Promise.resolve()).catch(() => {}).then(async () => {
+      const draft = draftsRef.current[index];
+      if (!draft) return;
+      const amount = Math.round(Number(draft.debtAmount || 0));
+      if (amount <= 0) {
+        if (draft.debtId) {
+          await deleteDebt.mutateAsync({ id: draft.debtId });
+          updateDraft(index, { debtId: null });
+        }
+        return;
+      }
+      const payload = { entryDate: timestamp, amount, ...payeeFromValue(draft.agentId), description: draft.debtReason.trim() || null };
+      if (draft.debtId) await updateDebt.mutateAsync({ id: draft.debtId, ...payload });
+      else {
+        const result = await createDebt.mutateAsync(payload);
+        updateDraft(index, { debtId: result.id });
+      }
+    }).catch(() => { /* Xato toast'da ko'rsatiladi; kiritilgan qiymatlar saqlanadi. */ });
+    pendingDebtSaves.current[index] = pending;
+    return pending;
+  }
+
+  function scheduleDebtSave(index: number) {
+    if (debtSaveTimers.current[index]) clearTimeout(debtSaveTimers.current[index]);
+    debtSaveTimers.current[index] = setTimeout(() => {
+      delete debtSaveTimers.current[index];
+      void flushDebtRow(index);
+    }, 700);
   }
 
   /** Yozayotganda ~700ms jimlikdan keyin fonda avtomatik saqlaydi — brauzer
@@ -331,6 +469,8 @@ function DailyJournalGrid({
     return () => {
       const count = draftsRef.current.length;
       for (let index = 0; index < count; index += 1) {
+        if (debtSaveTimers.current[index]) clearTimeout(debtSaveTimers.current[index]);
+        void flushDebtRow(index);
         if (autoSaveTimers.current[index]) { clearTimeout(autoSaveTimers.current[index]); delete autoSaveTimers.current[index]; }
         void flushDraftRow(index, true);
       }
@@ -341,7 +481,8 @@ function DailyJournalGrid({
   const TERMINAL_COL = JOURNAL_COLUMNS.length + 1;
   const CLICK_COL = JOURNAL_COLUMNS.length + 2;
   const TRANSFER_COL = JOURNAL_COLUMNS.length + 3;
-  const REASON_COL = JOURNAL_COLUMNS.length + 4;
+  const DEBT_REASON_COL = JOURNAL_COLUMNS.length + 4;
+  const REASON_COL = JOURNAL_COLUMNS.length + 5;
   const totalJournalRows = sortedEntries.length + drafts.length;
 
   /** Strelkalar bilan katakdan katakka o'tish: ustun bo'ylab Yuqori/Past, qator
@@ -386,6 +527,11 @@ function DailyJournalGrid({
    * qiymatlar aynan o'sha katakda qolaveradi (yuqoriga "sakramaydi").
    */
   function commitDraftRow(index: number, event: React.FocusEvent<HTMLTableRowElement>) {
+    if ((event.target as HTMLElement).closest("[data-debt-cell]")) {
+      if (debtSaveTimers.current[index]) { clearTimeout(debtSaveTimers.current[index]); delete debtSaveTimers.current[index]; }
+      void flushDebtRow(index);
+      return;
+    }
     const rowEl = event.currentTarget;
     window.setTimeout(() => {
       if (rowEl.contains(document.activeElement)) return;
@@ -396,14 +542,16 @@ function DailyJournalGrid({
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-border">
-      <table className="w-full min-w-[1080px] text-sm">
+      {debtEntries.isError && <div role="alert" className="px-3 py-2 text-sm text-destructive">Qarz qaydlarini yuklab bo‘lmadi. <button type="button" className="underline" onClick={() => debtEntries.refetch()}>Qayta urinish</button></div>}
+      <table className="w-full min-w-[1320px] text-sm">
         <thead>
           <tr className="border-b border-border bg-muted text-xs font-semibold tracking-wide text-muted-foreground">
             <th className="whitespace-nowrap px-3 py-2.5 text-left">Агент</th>
-            {JOURNAL_COLUMNS.map(name => <th key={name} className={`whitespace-nowrap px-3 py-2.5 text-right ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" : ""}`}>{name}</th>)}
+            {JOURNAL_COLUMNS.map(name => <th key={name} title={name === DEBT_COLUMN ? "Faqat qayd — kassa qoldig‘iga ta’sir qilmaydi" : undefined} className={`whitespace-nowrap px-3 py-2.5 text-right ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" : ""}`}>{name}</th>)}
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Терминал</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Click</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Перечисление</th>
+            <th className="whitespace-nowrap px-3 py-2.5 text-left">Qarz izohi</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-left">Нимага расход</th>
             <th className="w-11" />
           </tr>
@@ -416,7 +564,7 @@ function DailyJournalGrid({
           </tr>
           {sortedEntries.map((entry, rowIndex) => {
             return (
-              <tr key={entry.id} className="text-xs even:bg-muted/40">
+              <tr key={journalRowKey(entry)} className="text-xs even:bg-muted/40">
                 <td className="px-1.5 py-1">
                   <div>
                     <select
@@ -439,7 +587,7 @@ function DailyJournalGrid({
                         </optgroup>
                       )}
                     </select>
-                    {entry.agentId == null && entry.employeeId == null && entry.description ? (
+                    {entry.type !== "memo" && entry.agentId == null && entry.employeeId == null && entry.description ? (
                       <p className="truncate px-1.5 pt-0.5 text-[10px] text-muted-foreground">{entry.description}</p>
                     ) : null}
                   </div>
@@ -448,10 +596,11 @@ function DailyJournalGrid({
                   <td key={name} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40 dark:bg-rose-500/8" : ""}`}>
                     {entry.category === name ? (
                       <input
-                        key={`cash-${entry.id}-${entry.cashAmount}`}
+                        key={entry.type === "memo" ? journalRowKey(entry) : `cash-${entry.id}-${entry.cashAmount}`}
                         type="text" inputMode="numeric"
+                        aria-label={entry.type === "memo" ? "Qarz summasi" : undefined}
                         data-journal-cell={`${rowIndex}-${colOffset + 1}`}
-                        defaultValue={String(entry.cashAmount)}
+                        defaultValue={String(entry.type === "memo" ? entry.amount : entry.cashAmount)}
                         className={`${name === HIGHLIGHT_CATEGORY ? cellInputClassHighlight : cellInputClass} font-semibold text-foreground`}
                         onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
                         onBlur={event => commitExistingCash(entry, event.target.value)}
@@ -461,7 +610,7 @@ function DailyJournalGrid({
                   </td>
                 ))}
                 <td className="px-1.5 py-1">
-                  <input
+                  {entry.type === "memo" ? <span className={emptyCellClass}>—</span> : <input
                     key={`terminal-${entry.id}-${entry.terminalAmount}`}
                     type="text" inputMode="numeric"
                     data-journal-cell={`${rowIndex}-${TERMINAL_COL}`}
@@ -471,10 +620,10 @@ function DailyJournalGrid({
                     onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
                     onBlur={event => commitExistingChannel(entry, "terminal", event.target.value)}
                     onKeyDown={event => onAmountKeyDown(event, rowIndex, TERMINAL_COL)}
-                  />
+                  />}
                 </td>
                 <td className="px-1.5 py-1">
-                  <input
+                  {entry.type === "memo" ? <span className={emptyCellClass}>—</span> : <input
                     key={`click-${entry.id}-${entry.clickAmount}`}
                     type="text" inputMode="numeric"
                     data-journal-cell={`${rowIndex}-${CLICK_COL}`}
@@ -484,10 +633,10 @@ function DailyJournalGrid({
                     onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
                     onBlur={event => commitExistingChannel(entry, "click", event.target.value)}
                     onKeyDown={event => onAmountKeyDown(event, rowIndex, CLICK_COL)}
-                  />
+                  />}
                 </td>
                 <td className="px-1.5 py-1">
-                  <input
+                  {entry.type === "memo" ? <span className={emptyCellClass}>—</span> : <input
                     key={`transfer-${entry.id}-${entry.transferAmount}`}
                     type="text" inputMode="numeric"
                     data-journal-cell={`${rowIndex}-${TRANSFER_COL}`}
@@ -497,10 +646,24 @@ function DailyJournalGrid({
                     onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
                     onBlur={event => commitExistingChannel(entry, "transfer", event.target.value)}
                     onKeyDown={event => onAmountKeyDown(event, rowIndex, TRANSFER_COL)}
-                  />
+                  />}
+                </td>
+                <td className="px-1.5 py-1">
+                  {entry.type === "memo" ? <input
+                    key={`debt-reason-${entry.id}`}
+                    data-journal-cell={`${rowIndex}-${DEBT_REASON_COL}`}
+                    defaultValue={entry.description ?? ""}
+                    placeholder="Qarz kimga berilgan?"
+                    aria-label="Qarz kimga berilgan — izoh"
+                    maxLength={1000}
+                    className={textInputClass}
+                    onBlur={event => commitExistingReason(entry, event.target.value)}
+                    onKeyDown={event => onAmountKeyDown(event, rowIndex, DEBT_REASON_COL)}
+                  /> : <span className={emptyCellClassLeft}>—</span>}
                 </td>
                 <td className="px-1.5 py-1">
                   {entry.type === "expense" ? (
+                    <ExpandableJournalNote>
                     <input
                       key={`reason-${entry.id}-${entry.description ?? ""}`}
                       data-journal-cell={`${rowIndex}-${REASON_COL}`}
@@ -515,6 +678,7 @@ function DailyJournalGrid({
                         focusJournalCell(rowIndex, REASON_COL, 1, 0);
                       }}
                     />
+                    </ExpandableJournalNote>
                   ) : <span className={emptyCellClassLeft}>—</span>}
                 </td>
                 <td className="px-1 py-1 text-right">
@@ -522,7 +686,7 @@ function DailyJournalGrid({
                     type="button"
                     aria-label="O'chirish"
                     className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
-                    onClick={() => del.mutate({ id: entry.id })}
+                    onClick={() => entry.type === "memo" ? saveExistingDebt(entry, { amount: 0 }) : del.mutate({ id: entry.id })}
                   >
                     <Trash2 className="size-3.5" />
                   </button>
@@ -543,7 +707,7 @@ function DailyJournalGrid({
                   value={draft.agentId}
                   data-journal-cell={`${rowIndex}-0`}
                   className={`${selectInputClass} ${draft.agentId ? "text-foreground" : "text-muted-foreground"}`}
-                  onChange={event => { updateDraft(index, { agentId: event.target.value }); scheduleAutoSave(index); }}
+                  onChange={event => { updateDraft(index, { agentId: event.target.value }); scheduleAutoSave(index); scheduleDebtSave(index); }}
                   onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}
                 >
                   <option value="">Агент tanlang</option>
@@ -560,14 +724,21 @@ function DailyJournalGrid({
                 </select>
               </td>
               {JOURNAL_COLUMNS.map((name, colOffset) => (
-                <td key={name} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40 dark:bg-rose-500/8" : ""}`}>
+                <td key={name} data-debt-cell={name === DEBT_COLUMN ? "true" : undefined} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40 dark:bg-rose-500/8" : ""}`}>
                   <input
                     type="text" inputMode="numeric"
+                    aria-label={name === DEBT_COLUMN ? "Qarz summasi" : undefined}
                     data-journal-cell={`${rowIndex}-${colOffset + 1}`}
-                    value={draft.amounts[name]}
+                    value={name === DEBT_COLUMN ? draft.debtAmount : draft.amounts[name]}
                     placeholder="0"
                     className={`${name === HIGHLIGHT_CATEGORY ? cellInputClassHighlight : cellInputClass} text-muted-foreground`}
-                    onChange={event => { updateDraft(index, { amounts: { ...draft.amounts, [name]: sanitizeIntegerInput(event.target.value) } }); scheduleAutoSave(index); }}
+                    onChange={event => {
+                      if (name === DEBT_COLUMN) {
+                        updateDraft(index, { debtAmount: sanitizeIntegerInput(event.target.value) }); scheduleDebtSave(index);
+                      } else {
+                        updateDraft(index, { amounts: { ...draft.amounts, [name]: sanitizeIntegerInput(event.target.value) } }); scheduleAutoSave(index);
+                      }
+                    }}
                     onKeyDown={event => onAmountKeyDown(event, rowIndex, colOffset + 1)}
                   />
                 </td>
@@ -605,7 +776,20 @@ function DailyJournalGrid({
                   onKeyDown={event => onAmountKeyDown(event, rowIndex, TRANSFER_COL)}
                 />
               </td>
+              <td className="px-1.5 py-1" data-debt-cell="true">
+                <input
+                  value={draft.debtReason}
+                  data-journal-cell={`${rowIndex}-${DEBT_REASON_COL}`}
+                  placeholder="Qarz kimga berilgan?"
+                  aria-label="Qarz kimga berilgan — izoh"
+                  maxLength={1000}
+                  className={textInputClass}
+                  onChange={event => { updateDraft(index, { debtReason: event.target.value }); scheduleDebtSave(index); }}
+                  onKeyDown={event => onAmountKeyDown(event, rowIndex, DEBT_REASON_COL)}
+                />
+              </td>
               <td className="px-1.5 py-1">
+                <ExpandableJournalNote>
                 <input
                   value={draft.reason}
                   data-journal-cell={`${rowIndex}-${REASON_COL}`}
@@ -619,6 +803,7 @@ function DailyJournalGrid({
                     if (event.key === "ArrowDown") { event.preventDefault(); focusJournalCell(rowIndex, REASON_COL, 1, 0); }
                   }}
                 />
+                </ExpandableJournalNote>
               </td>
               <td />
             </tr>
@@ -632,7 +817,7 @@ function DailyJournalGrid({
             <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(terminalTotal)}</td>
             <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(clickTotal)}</td>
             <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(transferTotal)}</td>
-            <td colSpan={2} />
+            <td colSpan={3} />
           </tr>
           <tr className="border-t-2 border-sky-100 bg-sky-50/70 text-xs font-bold text-sky-900">
             <td colSpan={REASON_COL} className="px-3 py-2">Yakuniy qoldiq (naqd)</td>
@@ -1363,6 +1548,7 @@ export default function Cash() {
           </div>
         </div>
         <DailyJournalGrid
+          key={date}
           entries={allEntries}
           date={date}
           showEmployees={showEmployees}
