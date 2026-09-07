@@ -7,12 +7,14 @@ import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
+import { cashJournalDebtRouter } from "./cashJournalDebt";
 
 function toMySqlDate(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
 export const cashRouter = router({
+  journalDebt: cashJournalDebtRouter,
   /** Distinct category names previously used (optionally filtered to one type), most-recent
    * first — powers the "tur" dropdown on the quick Kassa entry form and report filters,
    * without a separate types table. */
