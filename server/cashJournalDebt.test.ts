@@ -23,9 +23,11 @@ function idOf(condition: SQL) {
 
 function createDbDouble() {
   const db = {
-    select: () => {
+    select: (selection?: Record<string, unknown>) => {
       let selected: Row[] = [];
       let isMemo = false;
+      let rowLimit = Infinity;
+      let rowOffset = 0;
       const chain = {
         from: (table: unknown) => {
           if (table === appSettings) selected = state.lockDate ? [{ value: state.lockDate }] : [];
@@ -34,10 +36,13 @@ function createDbDouble() {
           return chain;
         },
         leftJoin: () => chain,
-        where: (condition: SQL) => {
-          if (isMemo) {
+        where: (condition?: SQL) => {
+          if (isMemo && condition) {
             const params = dialect.sqlToQuery(condition).params;
-            if (params.length === 1) selected = selected.filter(row => row.id === params[0]);
+            if (params.length === 1) {
+              const field = dialect.sqlToQuery(condition).sql.includes('`agentId`') ? 'agentId' : 'id';
+              selected = selected.filter(row => row[field] === params[0]);
+            }
             else if (params.length === 2) {
               const timestamp = (value: unknown) => new Date(String(value).replace(" ", "T") + "Z").getTime();
               selected = selected.filter(row => {
@@ -48,11 +53,17 @@ function createDbDouble() {
           }
           return chain;
         },
-        limit: (limit: number) => { selected = selected.slice(0, limit); return chain; },
+        limit: (limit: number) => { rowLimit = limit; return chain; },
+        offset: (offset: number) => { rowOffset = offset; return chain; },
         for: () => chain,
-        orderBy: () => { selected.sort((a, b) => Number(b.id) - Number(a.id)); return chain; },
+        orderBy: (...columns: unknown[]) => {
+          selected.sort((a, b) => (columns.length > 1 ? Number(b.entryDate) - Number(a.entryDate) : 0) || Number(b.id) - Number(a.id));
+          return chain;
+        },
         then: (resolve: (value: Row[]) => unknown, reject: (reason: unknown) => unknown) =>
-          Promise.resolve(selected).then(resolve, reject),
+          Promise.resolve(selection && 'totalAmount' in selection
+            ? [{ total: selected.length, totalAmount: selected.reduce((sum, row) => sum + Number(row.amount), 0) }]
+            : selected.slice(rowOffset, rowOffset + rowLimit)).then(resolve, reject),
       };
       return chain;
     },
@@ -127,6 +138,26 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("cash.journalDebt", () => {
+  it("reports all dates, filters agents, and totals all pages without financial writes", async () => {
+    const api = caller();
+    await api.create({ entryDate, amount: 200, agentId: 2, description: "Ali uchun" });
+    await api.create({ entryDate: oldDate, amount: 100, agentId: 2, description: "Vali uchun" });
+    await api.create({ entryDate, amount: 900, agentId: 3 });
+    state.writes = [];
+    const first = await api.report({ agentId: 2, pageSize: 1 });
+    expect(first).toMatchObject({ total: 2, totalAmount: 300, page: 1, pageCount: 2, items: [{ amount: 200, agentId: 2, description: "Ali uchun" }] });
+    expect(await api.report({ agentId: 2, pageSize: 1, page: 99 })).toMatchObject({ page: 2, totalAmount: 300, items: [{ amount: 100, description: "Vali uchun" }] });
+    expect(await api.report({})).toMatchObject({ total: 3, totalAmount: 1200 });
+    expect(await api.report({ agentId: 99 })).toMatchObject({ items: [], total: 0, totalAmount: 0, pageCount: 1 });
+    expect(state.writes).toEqual([]);
+  });
+
+  it("restricts report access and validates pagination", async () => {
+    await expect(caller(null).report({})).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller("agent").report({})).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller().report({ page: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller().report({ pageSize: 101 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
   it("creates, edits and deletes only a memo and its audit history", async () => {
     const api = caller();
     const { id } = await api.create({ entryDate, amount: 150000, agentId: 2, description: "  Ali uchun qarz  " });
@@ -229,6 +260,6 @@ describe("debt memo schema startup", () => {
     expect(state.executed).toEqual([CASH_JOURNAL_DEBTS_DDL, CASH_JOURNAL_DEBTS_DDL]);
     expect(CASH_JOURNAL_DEBTS_DDL).toMatch(/^CREATE TABLE IF NOT EXISTS cash_journal_debts/);
     const migration = readFileSync(new URL("../drizzle/0016_cash_journal_debts.sql", import.meta.url), "utf8");
-    expect(migration.trim().replace(/;$/, "")).toBe(CASH_JOURNAL_DEBTS_DDL);
+    expect(migration.replace(/\r\n/g, "\n").trim().replace(/;$/, "")).toBe(CASH_JOURNAL_DEBTS_DDL);
   });
 });

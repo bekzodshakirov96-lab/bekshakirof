@@ -28,7 +28,9 @@ describe("localAuth session tokens", () => {
 
   it("rejects a tampered token", async () => {
     const token = await signSession(1);
-    const tampered = `${token.slice(0, -1)}${token.at(-1) === "a" ? "b" : "a"}`;
+    // The last base64url character can differ only in unused padding bits.
+    const [header, payload, signature] = token.split(".");
+    const tampered = `${header}.${payload}.${signature[0] === "a" ? "b" : "a"}${signature.slice(1)}`;
     await expect(verifySession(tampered)).resolves.toBeNull();
   });
 
