@@ -233,6 +233,27 @@ export const cashEntries = mysqlTable(
   ],
 );
 
+/** Kunlik jurnalning "Qarz" eslatmalari. Kassa kirim/chiqimi va mijoz qarziga ta'sir qilmaydi. */
+export const cashJournalDebts = mysqlTable(
+  "cash_journal_debts",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    entryDate: timestamp("entryDate").notNull(),
+    agentId: int("agentId").references(() => agents.id, { onDelete: "set null" }),
+    employeeId: int("employeeId").references(() => employees.id, { onDelete: "set null" }),
+    amount: int("amount").notNull(),
+    description: text("description"),
+    createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [
+    index("cash_journal_debts_date_idx").on(table.entryDate),
+    index("cash_journal_debts_agent_idx").on(table.agentId),
+    index("cash_journal_debts_employee_idx").on(table.employeeId),
+  ],
+);
+
 export const containerMovements = mysqlTable(
   "container_movements",
   {
