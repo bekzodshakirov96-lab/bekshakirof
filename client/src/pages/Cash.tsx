@@ -230,7 +230,10 @@ function DailyJournalGrid({
   const create = trpc.cash.create.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
   const update = trpc.cash.update.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
   const del = trpc.cash.delete.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
-  const invalidateDebt = () => utils.cash.journalDebt.byDate.invalidate({ date: timestamp });
+  const invalidateDebt = () => Promise.all([
+    utils.cash.journalDebt.byDate.invalidate({ date: timestamp }),
+    utils.cash.journalDebt.report.invalidate(),
+  ]);
   const createDebt = trpc.cash.journalDebt.create.useMutation({ onSuccess: invalidateDebt, onError: error => toast.error(error.message) });
   const updateDebt = trpc.cash.journalDebt.update.useMutation({ onSuccess: invalidateDebt, onError: error => toast.error(error.message) });
   const deleteDebt = trpc.cash.journalDebt.delete.useMutation({ onSuccess: invalidateDebt, onError: error => toast.error(error.message) });
