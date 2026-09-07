@@ -156,6 +156,8 @@ export default function Debts() {
         <MetricCard label="Joriy qarz" value={formatMoney(summary?.currentDebt ?? 0, true)} helper={`${(summary?.debtorCount ?? 0).toLocaleString("uz-UZ")} ta qarzdor`} icon={Banknote} tone="rose" />
       </div>
 
+      <CashJournalDebtReport />
+
       <SectionCard title="Mijozlar qarzdorligi" description="Qidiruv, filter va ustun sarlavhalari orqali saralang" className="mt-5">
         <div className="mb-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_180px_160px_150px_150px_auto]">
           <div className="relative">
@@ -225,6 +227,43 @@ export default function Debts() {
         onSaved={() => { void debts.refetch(); }}
       />
     </div>
+  );
+}
+
+function CashJournalDebtReport() {
+  const [page, setPage] = useState(1);
+  const [agentId, setAgentId] = useState("");
+  const agents = trpc.agents.options.useQuery();
+  const report = trpc.cash.journalDebt.report.useQuery({ page, pageSize: 25, agentId: agentId ? Number(agentId) : undefined });
+  return (
+    <SectionCard title="Kassadagi qarz qaydlari" description="Kassa jurnalining Qarz ustunida yozilgan summalar. Mijozlar qarzi va kassa qoldig‘iga qo‘shilmaydi." className="mt-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <select aria-label="Kassa qarzlari bo‘yicha agent" value={agentId} onChange={event => { setAgentId(event.target.value); setPage(1); }} className="finance-input border px-3 text-sm">
+            <option value="">Barcha agentlar</option>
+            {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+          </select>
+          <Button type="button" variant="outline" disabled={report.isFetching} onClick={() => report.refetch()}>Yangilash</Button>
+        </div>
+        <p className="text-sm text-muted-foreground">Qaydlar jami: <strong className="text-foreground tabular-nums">{report.data ? formatMoney(report.data.totalAmount) : "—"}</strong></p>
+      </div>
+      {report.error ? <QueryError description={report.error.message} onRetry={() => report.refetch()} /> : report.isLoading ? <TableLoading columns={4} /> : !report.data?.items.length ? (
+        <EmptyState description="Kassada qarz qaydi topilmadi." />
+      ) : (
+        <>
+          <Table className="finance-table min-w-[640px]">
+            <TableHeader><TableRow><TableHead>Sana</TableHead><TableHead>Agent / xodim</TableHead><TableHead className="text-right">Qarz summasi</TableHead><TableHead>Kimga berilgan / izoh</TableHead></TableRow></TableHeader>
+            <TableBody>{report.data.items.map(item => <TableRow key={item.id}>
+              <TableCell className="whitespace-nowrap align-top">{formatDate(item.entryDate)}</TableCell>
+              <TableCell className="align-top font-medium">{item.agentName || (item.employeeName ? `${item.employeeName} (xodim)` : "Agent tanlanmagan")}</TableCell>
+              <TableCell className="whitespace-nowrap text-right align-top font-semibold tabular-nums">{formatMoney(item.amount)}</TableCell>
+              <TableCell className="min-w-[220px] max-w-xl whitespace-pre-wrap break-words align-top [overflow-wrap:anywhere]">{item.description || "Izoh kiritilmagan"}</TableCell>
+            </TableRow>)}</TableBody>
+          </Table>
+          <PaginationBar page={report.data.page} pageCount={report.data.pageCount} total={report.data.total} onChange={setPage} />
+        </>
+      )}
+    </SectionCard>
   );
 }
 
