@@ -1,3 +1,4 @@
+import { FactoryKpis } from "@/components/FactoryKpis";
 import { ExportMenu } from "@/components/ExportMenu";
 import { FactoryStatementDialog } from "@/components/FactoryStatementDialog";
 import { EmptyState, PageHeader, TableLoading } from "@/components/finance-ui";
@@ -60,14 +61,14 @@ export default function Factory() {
       toast.success("Zavod operatsiyasi qo'shildi");
       setQuantity("");
       setNote("");
-      await Promise.all([utils.factory.balances.invalidate(), utils.factory.operations.invalidate(), utils.stock.list.invalidate(), utils.stock.movements.invalidate()]);
+      await Promise.all([utils.factory.balances.invalidate(), utils.factory.operations.invalidate(), utils.factory.statement.invalidate(), utils.stock.list.invalidate(), utils.stock.movements.invalidate()]);
     },
     onError: error => toast.error(error.message),
   });
   const deleteOperation = trpc.factory.delete.useMutation({
     onSuccess: async () => {
       toast.success("Yozuv o'chirildi");
-      await Promise.all([utils.factory.balances.invalidate(), utils.factory.operations.invalidate(), utils.stock.list.invalidate(), utils.stock.movements.invalidate()]);
+      await Promise.all([utils.factory.balances.invalidate(), utils.factory.operations.invalidate(), utils.factory.statement.invalidate(), utils.stock.list.invalidate(), utils.stock.movements.invalidate()]);
     },
     onError: error => toast.error(error.message),
   });
@@ -125,6 +126,8 @@ export default function Factory() {
         description="Tara almashinuvi, KEG qoldiqlari va zavod bilan hisob-kitob."
         action={<Button variant="outline" className="h-9 gap-2 rounded-lg bg-card" onClick={() => setStatementOpen(true)}><FileText className="size-4" />Akt sverka</Button>}
       />
+
+      <FactoryKpis />
 
       <FactorySection title="Joriy tara qoldiqlari" action={<span className="text-xs text-muted-foreground">O'lchov birligi: dona</span>}>
         {balances.isLoading ? (
