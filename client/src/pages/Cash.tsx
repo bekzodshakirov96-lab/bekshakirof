@@ -4,6 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
+import { createCashDraftSaver } from "@/lib/cashDraftSaver";
 import { buildEmployeeOptions } from "@/lib/cashPayees";
 import { groupJournalEntries, journalCellTotal } from "@/lib/cashJournalGroups";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
@@ -162,12 +163,12 @@ function ExpandableJournalNote({ children }: { children: React.ReactNode }) {
       <PopoverContent
         align="end"
         className="w-[min(28rem,calc(100vw-2rem))] p-4"
-        aria-label="Nimaga rasxod — to‘liq izoh"
+        aria-label="Izoh — to‘liq izoh"
         onOpenAutoFocus={event => event.preventDefault()}
         onCloseAutoFocus={event => event.preventDefault()}
       >
         <div className="mb-3 flex items-center justify-between gap-3">
-          <span className="text-sm font-semibold">Nimaga rasxod — izoh</span>
+          <span className="text-sm font-semibold">Izoh</span>
           <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>Yopish</Button>
         </div>
         <p className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
@@ -245,6 +246,10 @@ function DailyJournalGrid({
   const create = trpc.cash.create.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
   const update = trpc.cash.update.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
   const del = trpc.cash.delete.useMutation({ onSuccess: invalidate, onError: error => toast.error(error.message) });
+  // Draft IDs must be recorded before a query refresh can show these records.
+  const draftCreate = trpc.cash.create.useMutation({ onError: error => toast.error(error.message) });
+  const draftUpdate = trpc.cash.update.useMutation({ onError: error => toast.error(error.message) });
+  const draftDelete = trpc.cash.delete.useMutation({ onError: error => toast.error(error.message) });
   const invalidateDebt = () => Promise.all([
     utils.cash.journalDebt.byDate.invalidate({ date: timestamp }),
     utils.cash.journalDebt.report.invalidate(),
@@ -371,72 +376,35 @@ function DailyJournalGrid({
     setDrafts(next);
   }
 
-  /**
-   * Bitta qatordagi hozirgi qiymatlarni bazaga yozadi: toifa summasi bo'lgan
-   * har bir ustun uchun — birinchi marta bo'lsa yangi yozuv, keyingi safar
-   * o'sha yozuvni yangilaydi (entryIds orqali kuzatiladi). Summa 0'ga
-   * qaytarilsa, avval avtomatik saqlangan yozuv o'chiriladi.
-   * `resetAfter` — qator butunlay tark etilganda (fokus chiqqanda) qatorni
-   * bo'shatib, endi haqiqiy yozuv sifatida yuqorida ko'rinishini ta'minlaydi.
-   */
-  async function flushDraftRow(index: number, resetAfter: boolean) {
-    const draft = draftsRef.current[index];
-    if (!draft) return;
-    const nextEntryIds = { ...draft.entryIds };
-    let idsChanged = false;
-    const terminalVal = Math.round(Number(draft.terminal || 0));
-    const clickVal = Math.round(Number(draft.click || 0));
-    const transferVal = Math.round(Number(draft.transfer || 0));
-    // Приход кег/пет naqd katagi 0 bo'lsa-yu, Терминал/Click/Перечисление to'ldirilgan
-    // bo'lsa — pul hech qayerga (Kassa jamiPrihod'ga ham, Агент х Товар'ning Касса
-    // ustuniga ham) yozilmay, ko'zdan yo'qolib qolmasligi uchun standart bo'yicha
-    // "Приход кег" toifasiga yoziladi (naqd=0, boshqa kanallar bilan birga).
-    const hasIncomeCash = INCOME_CATEGORIES.some(name => Math.round(Number(draft.amounts[name] || 0)) > 0);
-    const fallbackIncomeCategory =
-      !hasIncomeCash && (terminalVal > 0 || clickVal > 0 || transferVal > 0) ? INCOME_CATEGORIES[0] : null;
-    for (const category of CASH_COLUMNS) {
-      const amount = Math.round(Number(draft.amounts[category] || 0));
-      const existingId = draft.entryIds[category];
-      const type = CATEGORY_TYPE[category];
-      const isFallback = category === fallbackIncomeCategory;
-      try {
-        if (amount <= 0 && !isFallback) {
-          if (existingId) {
-            await del.mutateAsync({ id: existingId });
-            nextEntryIds[category] = null;
-            idsChanged = true;
-          }
-          continue;
-        }
-        const draftPayee = payeeFromValue(draft.agentId);
-        const payload = {
-          entryDate: timestamp, type, category,
-          agentId: draftPayee.agentId ?? undefined,
-          employeeId: draftPayee.employeeId ?? undefined,
-          description: type === "expense" ? draft.reason.trim() || undefined : undefined,
-          cashAmount: amount,
-          terminalAmount: terminalVal,
-          clickAmount: clickVal,
-          transferAmount: transferVal,
-        };
-        if (existingId) {
-          await update.mutateAsync({ id: existingId, ...payload });
-        } else {
-          const result = await create.mutateAsync(payload);
-          nextEntryIds[category] = result.id;
-          idsChanged = true;
-        }
-      } catch {
-        // xato bo'lsa ham (toast allaqachon ko'rsatildi), qolgan toifalarni saqlashda davom etamiz
-      }
-    }
-    if (resetAfter) {
-      const { debtAmount, debtReason, debtId, agentId } = draftsRef.current[index];
-      updateDraft(index, { ...emptyDraftRow(), debtAmount, debtReason, debtId, agentId });
-    } else if (idsChanged) {
-      updateDraft(index, { entryIds: nextEntryIds });
-    }
-  }
+  const [flushDraftRow] = useState(() => createCashDraftSaver({
+    categories: CASH_COLUMNS,
+    getRow: (index: number) => draftsRef.current[index],
+    setEntryId: (index, category, id) => {
+      const current = draftsRef.current[index];
+      if (current) updateDraft(index, { entryIds: { ...current.entryIds, [category]: id } });
+    },
+    payload: (draft, category) => {
+      const cashAmount = Math.round(Number(draft.amounts[category] || 0));
+      const terminalAmount = Math.round(Number(draft.terminal || 0));
+      const clickAmount = Math.round(Number(draft.click || 0));
+      const transferAmount = Math.round(Number(draft.transfer || 0));
+      const hasIncomeCash = INCOME_CATEGORIES.some(name => Math.round(Number(draft.amounts[name] || 0)) > 0);
+      const isFallback = category === INCOME_CATEGORIES[0] && !hasIncomeCash
+        && (terminalAmount > 0 || clickAmount > 0 || transferAmount > 0);
+      if (cashAmount <= 0 && !isFallback) return null;
+      const payee = payeeFromValue(draft.agentId);
+      return {
+        entryDate: timestamp, type: CATEGORY_TYPE[category], category,
+        agentId: payee.agentId ?? undefined, employeeId: payee.employeeId ?? undefined,
+        description: draft.reason.trim() || undefined,
+        cashAmount, terminalAmount, clickAmount, transferAmount,
+      };
+    },
+    create: payload => draftCreate.mutateAsync(payload),
+    update: (id, payload) => draftUpdate.mutateAsync({ id, ...payload }),
+    remove: id => draftDelete.mutateAsync({ id }),
+    refresh: invalidate,
+  }));
 
   function flushDebtRow(index: number): Promise<void> {
     // Qarz saqlash navbati pul kataklarining saqlashidan mustaqil.
@@ -476,7 +444,7 @@ function DailyJournalGrid({
     if (autoSaveTimers.current[index]) clearTimeout(autoSaveTimers.current[index]);
     autoSaveTimers.current[index] = setTimeout(() => {
       delete autoSaveTimers.current[index];
-      void flushDraftRow(index, false);
+      void flushDraftRow(index);
     }, 700);
   }
 
@@ -491,7 +459,7 @@ function DailyJournalGrid({
         if (debtSaveTimers.current[index]) clearTimeout(debtSaveTimers.current[index]);
         void flushDebtRow(index);
         if (autoSaveTimers.current[index]) { clearTimeout(autoSaveTimers.current[index]); delete autoSaveTimers.current[index]; }
-        void flushDraftRow(index, true);
+        void flushDraftRow(index);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -542,7 +510,7 @@ function DailyJournalGrid({
    * keyin commit qilinadi. relatedTarget'ga tayanish avtomatlashtirilgan va
    * ba'zi brauzer holatlarida ishonchsiz bo'lib, summa avval yozilganda
    * qatorni vaqtidan oldin bo'shatib yuborardi.
-   * `resetAfter: false` — qator saqlangandan keyin bo'shatilmaydi, yozilgan
+   * Qator saqlangandan keyin bo'shatilmaydi, yozilgan
    * qiymatlar aynan o'sha katakda qolaveradi (yuqoriga "sakramaydi").
    */
   function commitDraftRow(index: number, event: React.FocusEvent<HTMLTableRowElement>) {
@@ -555,7 +523,7 @@ function DailyJournalGrid({
     window.setTimeout(() => {
       if (rowEl.contains(document.activeElement)) return;
       if (autoSaveTimers.current[index]) { clearTimeout(autoSaveTimers.current[index]); delete autoSaveTimers.current[index]; }
-      void flushDraftRow(index, false);
+      void flushDraftRow(index);
     }, 0);
   }
 
@@ -571,7 +539,7 @@ function DailyJournalGrid({
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Click</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Перечисление</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-left">Qarz izohi</th>
-            <th className="whitespace-nowrap px-3 py-2.5 text-left">Нимага расход</th>
+            <th className="whitespace-nowrap px-3 py-2.5 text-left">Izoh</th>
             <th className="w-11" />
           </tr>
         </thead>
@@ -621,8 +589,8 @@ function DailyJournalGrid({
                   </div>)}
                 </JournalDetails>;
               };
-              const notesCell = (type: "expense" | "memo", title: string, col: number) => {
-                const items = group.entries.filter(item => item.type === type);
+              const notesCell = (type: "cash" | "memo", title: string, col: number) => {
+                const items = group.entries.filter(item => type === "memo" ? item.type === "memo" : item.type !== "memo");
                 if (!items.length) return <span className={emptyCellClassLeft}>—</span>;
                 return <JournalDetails title={`${payeeName} · ${title}`} trigger={
                   <button type="button" data-journal-cell={`${rowIndex}-${col}`}
@@ -672,7 +640,7 @@ function DailyJournalGrid({
                 <td className="px-1.5 py-1">{amountCell(cashEntries, "click", "Click", CLICK_COL)}</td>
                 <td className="px-1.5 py-1">{amountCell(cashEntries, "transfer", "Перечисление", TRANSFER_COL)}</td>
                 <td className="px-1.5 py-1">{notesCell("memo", "Qarz izohi", DEBT_REASON_COL)}</td>
-                <td className="px-1.5 py-1">{notesCell("expense", "Нимага расход", REASON_COL)}</td>
+                <td className="px-1.5 py-1">{notesCell("cash", "Izoh", REASON_COL)}</td>
                 <td className="px-1 py-1">{manageEntries}</td>
               </tr>;
             }
@@ -775,13 +743,15 @@ function DailyJournalGrid({
                   /> : <span className={emptyCellClassLeft}>—</span>}
                 </td>
                 <td className="px-1.5 py-1">
-                  {entry.type === "expense" ? (
+                  {entry.type !== "memo" ? (
                     <ExpandableJournalNote>
                     <input
                       key={`reason-${entry.id}-${entry.description ?? ""}`}
                       data-journal-cell={`${rowIndex}-${REASON_COL}`}
                       defaultValue={entry.description ?? ""}
-                      placeholder="Нимага расход"
+                      placeholder="Izoh"
+                      aria-label="Izoh"
+                      maxLength={1000}
                       className={textInputClass}
                       onBlur={event => commitExistingReason(entry, event.target.value)}
                       onKeyDown={event => {
@@ -906,7 +876,9 @@ function DailyJournalGrid({
                 <input
                   value={draft.reason}
                   data-journal-cell={`${rowIndex}-${REASON_COL}`}
-                  placeholder="Нимага расход"
+                  placeholder="Izoh"
+                  aria-label="Izoh"
+                  maxLength={1000}
                   className={textInputClass}
                   onChange={event => { updateDraft(index, { reason: event.target.value }); scheduleAutoSave(index); }}
                   onKeyDown={event => {
