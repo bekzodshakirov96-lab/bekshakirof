@@ -2,9 +2,10 @@ import { MetricCard, PageHeader, QueryError } from "@/components/finance-ui";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
 import { buildEmployeeOptions } from "@/lib/cashPayees";
+import { groupJournalEntries, journalCellTotal } from "@/lib/cashJournalGroups";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import {
@@ -116,6 +117,20 @@ const selectInputClass =
   "w-full min-w-[120px] cursor-pointer rounded-md border border-transparent bg-muted/70 px-1.5 py-1.5 text-xs outline-none transition-colors hover:border-border hover:bg-muted focus:border-primary focus:bg-card focus:ring-2 focus:ring-primary/25";
 const emptyCellClass = "block px-1.5 py-1.5 text-right text-muted-foreground/35 select-none";
 const emptyCellClassLeft = "block px-1.5 py-1.5 text-left text-muted-foreground/35 select-none";
+
+function JournalDetails({ title, trigger, children }: { title: string; trigger: React.ReactElement; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return <Popover open={open} onOpenChange={setOpen}>
+    <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+    <PopoverContent align="end" className="w-[min(28rem,calc(100vw-2rem))] bg-card" aria-label={title}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <span className="text-sm font-semibold">{title}</span>
+        <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>Yopish</Button>
+      </div>
+      <div className="max-h-[min(60vh,calc(var(--radix-popover-content-available-height)-5rem))] space-y-3 overflow-y-auto">{children}</div>
+    </PopoverContent>
+  </Popover>;
+}
 
 /** Katakdagi tahrirlash va saqlash o'zgarishsiz; uzun izoh alohida o'qiladi. */
 function ExpandableJournalNote({ children }: { children: React.ReactNode }) {
@@ -256,6 +271,7 @@ function DailyJournalGrid({
     () => journalEntries.filter(entry => !activeDraftEntryIds.has(journalRowKey(entry))).sort((a, b) => a.id - b.id),
     [journalEntries, activeDraftEntryIds],
   );
+  const groupedEntries = useMemo(() => groupJournalEntries(sortedEntries), [sortedEntries]);
   const openingBalance = openingBalanceQuery.data?.openingBalance ?? 0;
   const dayNetCash = useMemo(
     () => entries.reduce((sum, entry) => sum + (entry.type === "income" ? entry.cashAmount : -entry.cashAmount), 0),
@@ -486,7 +502,7 @@ function DailyJournalGrid({
   const TRANSFER_COL = JOURNAL_COLUMNS.length + 3;
   const DEBT_REASON_COL = JOURNAL_COLUMNS.length + 4;
   const REASON_COL = JOURNAL_COLUMNS.length + 5;
-  const totalJournalRows = sortedEntries.length + drafts.length;
+  const totalJournalRows = groupedEntries.length + drafts.length;
 
   /** Strelkalar bilan katakdan katakka o'tish: ustun bo'ylab Yuqori/Past, qator
    * bo'ylab Chap/O'ng (faqat kursor matn chetida bo'lsa — aks holda oddiy
@@ -565,7 +581,101 @@ function DailyJournalGrid({
             <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(openingBalance)}</td>
             <td />
           </tr>
-          {sortedEntries.map((entry, rowIndex) => {
+          {groupedEntries.map((group, rowIndex) => {
+            const entry = group.entries[0];
+            if (group.entries.length > 1) {
+              const payeeName = entry.employeeName ?? entry.agentName ?? "Agent";
+              const cashEntries = group.entries.filter((item): item is CashEntryRow => item.type !== "memo");
+              const numberInput = (item: JournalRow, field: "amount" | "terminal" | "click" | "transfer", col?: number) => {
+                const value = field === "amount" ? (item.type === "memo" ? item.amount : item.cashAmount)
+                  : item[`${field}Amount`];
+                return <input
+                  key={`${journalRowKey(item)}-${field}-${value}`}
+                  type="text" inputMode="numeric" defaultValue={String(value)}
+                  aria-label={`${item.category} — ${field === "amount" ? "summa" : field} #${item.id}`}
+                  data-journal-cell={col == null ? undefined : `${rowIndex}-${col}`}
+                  className={`${field === "amount" && item.category === HIGHLIGHT_CATEGORY ? cellInputClassHighlight : cellInputClass} font-semibold`}
+                  onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
+                  onBlur={event => field === "amount" ? commitExistingCash(item, event.target.value)
+                    : item.type !== "memo" && commitExistingChannel(item, field, event.target.value)}
+                  onKeyDown={event => {
+                    if (col != null) onAmountKeyDown(event, rowIndex, col);
+                    else if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
+                  }}
+                />;
+              };
+              const amountCell = (items: JournalRow[], field: "amount" | "terminal" | "click" | "transfer", title: string, col: number) => {
+                if (!items.length) return <span className={emptyCellClass}>—</span>;
+                if (items.length === 1) return numberInput(items[0], field, col);
+                return <JournalDetails title={`${payeeName} · ${title}`} trigger={
+                  <button type="button" data-journal-cell={`${rowIndex}-${col}`}
+                    aria-label={`${title}: ${items.length} ta yozuvni ko‘rish`}
+                    className={`${title === HIGHLIGHT_CATEGORY ? cellInputClassHighlight : cellInputClass} font-semibold underline decoration-dotted underline-offset-4`}>
+                    {journalCellTotal(items, field === "amount" ? "amount" : `${field}Amount`).toLocaleString("en-US")}
+                  </button>
+                }>
+                  {items.map(item => <div key={journalRowKey(item)} className="space-y-1">
+                    <label className="block text-xs text-muted-foreground">{item.category} · #{item.id}</label>
+                    {numberInput(item, field)}
+                    {item.description && <p className="whitespace-pre-wrap break-words text-xs">{item.description}</p>}
+                  </div>)}
+                </JournalDetails>;
+              };
+              const notesCell = (type: "expense" | "memo", title: string, col: number) => {
+                const items = group.entries.filter(item => item.type === type);
+                if (!items.length) return <span className={emptyCellClassLeft}>—</span>;
+                return <JournalDetails title={`${payeeName} · ${title}`} trigger={
+                  <button type="button" data-journal-cell={`${rowIndex}-${col}`}
+                    className={`${textInputClass} block max-w-[180px] truncate text-left`} aria-label={`${title} — to‘liq izoh`}>
+                    {items.map(item => item.description).filter(Boolean).join("; ") || title}
+                  </button>
+                }>
+                  {items.map(item => <div key={journalRowKey(item)} className="space-y-2 border-b border-border pb-3 last:border-0">
+                    <span className="text-xs text-muted-foreground">{item.category} · #{item.id} · {formatMoney(item.type === "memo" ? item.amount : item.cashAmount)}</span>
+                    <p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{item.description || "Izoh kiritilmagan."}</p>
+                    <details>
+                      <summary className="cursor-pointer text-xs text-primary">Izohni tahrirlash</summary>
+                      <textarea key={`${journalRowKey(item)}-${item.description}`} rows={3}
+                        aria-label={`${title} #${item.id}`} defaultValue={item.description ?? ""}
+                        maxLength={1000} className={`${textInputClass} mt-2 resize-y whitespace-pre-wrap`}
+                        onBlur={event => commitExistingReason(item, event.target.value)} />
+                    </details>
+                  </div>)}
+                </JournalDetails>;
+              };
+              const manageEntries = <JournalDetails title={`${payeeName} · yozuvlar`} trigger={
+                <button type="button" aria-label={`${payeeName} yozuvlarini tahrirlash`} className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"><ChevronDown className="size-4" /></button>
+              }>
+                {group.entries.map(item => <div key={journalRowKey(item)} className="space-y-2 rounded-lg border border-border p-2">
+                  <p className="text-xs font-medium">{item.category} · #{item.id} · {formatMoney(item.type === "memo" ? item.amount : item.cashAmount)}</p>
+                  <div className="flex items-center gap-2">
+                    <select key={`${journalRowKey(item)}-${payeeToValue(item)}`} defaultValue={payeeToValue(item)}
+                      aria-label={`Yozuv agenti #${item.id}`} className={selectInputClass}
+                      onChange={event => commitExistingAgent(item, event.target.value)}>
+                      <option value="">Агент tanlanmagan</option>
+                      <optgroup label="Агентлар">{agentOptions.map(agent => <option key={agent.id} value={`a:${agent.id}`}>{agent.name}</option>)}</optgroup>
+                      {employeeOptions.length > 0 && <optgroup label="Ходимлар">{employeeOptions.map(employee => <option key={employee.id} value={`e:${employee.id}`}>{employee.name}</option>)}</optgroup>}
+                    </select>
+                    <button type="button" aria-label={`${item.category} #${item.id} — o‘chirish`}
+                      className="shrink-0 rounded p-2 text-destructive hover:bg-destructive/10"
+                      onClick={() => item.type === "memo" ? saveExistingDebt(item, { amount: 0 }) : del.mutate({ id: item.id })}><Trash2 className="size-4" /></button>
+                  </div>
+                </div>)}
+              </JournalDetails>;
+              return <tr key={group.key} className="text-xs even:bg-muted/40">
+                <td className="px-3 py-2 font-medium"><span tabIndex={0} data-journal-cell={`${rowIndex}-0`} className="block min-w-[110px]"
+                  onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}>{payeeName}</span></td>
+                {JOURNAL_COLUMNS.map((name, index) => <td key={name} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40 dark:bg-rose-500/8" : ""}`}>
+                  {amountCell(group.entries.filter(item => item.category === name), "amount", name, index + 1)}
+                </td>)}
+                <td className="px-1.5 py-1">{amountCell(cashEntries, "terminal", "Терминал", TERMINAL_COL)}</td>
+                <td className="px-1.5 py-1">{amountCell(cashEntries, "click", "Click", CLICK_COL)}</td>
+                <td className="px-1.5 py-1">{amountCell(cashEntries, "transfer", "Перечисление", TRANSFER_COL)}</td>
+                <td className="px-1.5 py-1">{notesCell("memo", "Qarz izohi", DEBT_REASON_COL)}</td>
+                <td className="px-1.5 py-1">{notesCell("expense", "Нимага расход", REASON_COL)}</td>
+                <td className="px-1 py-1">{manageEntries}</td>
+              </tr>;
+            }
             return (
               <tr key={journalRowKey(entry)} className="text-xs even:bg-muted/40">
                 <td className="px-1.5 py-1">
@@ -698,7 +808,7 @@ function DailyJournalGrid({
             );
           })}
           {drafts.map((draft, index) => {
-            const rowIndex = sortedEntries.length + index;
+            const rowIndex = groupedEntries.length + index;
             return (
             <tr
               key={`draft-${index}`}
