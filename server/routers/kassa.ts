@@ -5,6 +5,7 @@ import {
   agentTakingEntries,
   agents,
   cashEntries,
+  cashMatrixLayouts,
   clientPayments,
   dailyProductPrices,
   kassaDailyActuals,
@@ -25,6 +26,24 @@ const numberSql = (template: TemplateStringsArray, ...params: unknown[]) =>
  * "topshirish" tushunchasi yo'q (pul to'g'ridan-to'g'ri bankka/Click hisobiga tushadi),
  * shu sababli ular kassaDailyActuals'dagi qo'lda tasdiqlangan summa bilan solishtiriladi. */
 const CASH_SUBMISSION_CATEGORIES = ["Приход кег", "Приход пет"] as const;
+const matrixLayoutValueSchema = z.object({
+  productOrder: z.array(z.number().int().positive()).max(2_000),
+  visibleProductIds: z.array(z.number().int().positive()).max(2_000),
+  agentOrder: z.array(z.number().int().positive()).min(1).max(500),
+});
+
+function uniqueIds(ids: number[]) {
+  return Array.from(new Set(ids));
+}
+
+function tashkentDateKey(value: number | Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tashkent",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
+}
 
 function dayRange(timestamp: number) {
   const start = new Date(timestamp);
@@ -377,6 +396,70 @@ export const kassaRouter = router({
             });
           }
           return { success: true } as const;
+        });
+      }),
+  }),
+
+  matrixLayout: router({
+    /** Tanlangan sana uchun shu sanagacha kuchga kirgan eng so'nggi jadval ko'rinishi. */
+    forDate: businessProcedure.input(z.object({ date: z.number().int() })).query(async ({ input }) => {
+      const db = await requireDb();
+      const { end } = dayRange(input.date);
+      const [row] = await db
+        .select({ effectiveDate: cashMatrixLayouts.effectiveDate, layout: cashMatrixLayouts.layout })
+        .from(cashMatrixLayouts)
+        .where(lte(cashMatrixLayouts.effectiveDate, end))
+        .orderBy(desc(cashMatrixLayouts.effectiveDate))
+        .limit(1);
+      if (!row) return null;
+      const parsed = matrixLayoutValueSchema.safeParse(JSON.parse(row.layout));
+      if (!parsed.success) throw new Error("Jadval ko‘rinishi bazada noto‘g‘ri saqlangan.");
+      return { ...parsed.data, effectiveDate: row.effectiveDate.getTime() };
+    }),
+    /** O'zgarish tanlangan sana va undan keyingi kunlarga o'tadi. O'tgan sana
+     * uchun yangi versiya yozishga yo'l qo'yilmaydi — eski hisobot muzlatilgan. */
+    save: businessProcedure
+      .input(z.object({ date: z.number().int(), layout: matrixLayoutValueSchema }))
+      .mutation(async ({ input, ctx }) => {
+        if (tashkentDateKey(input.date) < tashkentDateKey(Date.now())) {
+          throw new Error("O‘tgan sana jadvali o‘zgartirilmaydi. Bugungi yoki kelgusi sanani tanlang.");
+        }
+        const db = await requireDb();
+        const productRows = await db.select({ id: products.id }).from(products);
+        const agentRows = await db.select({ id: agents.id, isActive: agents.isActive }).from(agents);
+        const productIds = new Set(productRows.map(row => row.id));
+        const activeAgentIds = new Set(agentRows.filter(row => row.isActive).map(row => row.id));
+        const requestedOrder = uniqueIds(input.layout.productOrder).filter(id => productIds.has(id));
+        const normalized = {
+          productOrder: [...requestedOrder, ...productRows.map(row => row.id).filter(id => !requestedOrder.includes(id))],
+          visibleProductIds: uniqueIds(input.layout.visibleProductIds).filter(id => productIds.has(id)),
+          agentOrder: uniqueIds(input.layout.agentOrder).filter(id => activeAgentIds.has(id)),
+        };
+        if (normalized.agentOrder.length === 0) throw new Error("Kamida bitta agent ko‘rsatilishi kerak.");
+        const effectiveDate = new Date(`${tashkentDateKey(input.date)}T07:00:00.000Z`);
+        const { start, end } = dayRange(effectiveDate.getTime());
+        const [existing] = await db
+          .select()
+          .from(cashMatrixLayouts)
+          .where(and(gte(cashMatrixLayouts.effectiveDate, start), lte(cashMatrixLayouts.effectiveDate, end)))
+          .limit(1);
+        const serialized = JSON.stringify(normalized);
+        return db.transaction(async tx => {
+          if (existing) {
+            await tx.update(cashMatrixLayouts).set({ layout: serialized, updatedBy: ctx.user.id, updatedAt: new Date() }).where(eq(cashMatrixLayouts.id, existing.id));
+            await logAudit(tx, {
+              tableName: "cash_matrix_layouts", recordId: existing.id, action: "update", userId: ctx.user.id,
+              before: { effectiveDate: existing.effectiveDate, layout: JSON.parse(existing.layout) },
+              after: { effectiveDate, layout: normalized },
+            });
+          } else {
+            const [created] = await tx.insert(cashMatrixLayouts).values({ effectiveDate, layout: serialized, updatedBy: ctx.user.id }).$returningId();
+            await logAudit(tx, {
+              tableName: "cash_matrix_layouts", recordId: created.id, action: "create", userId: ctx.user.id,
+              after: { effectiveDate, layout: normalized },
+            });
+          }
+          return { success: true, ...normalized } as const;
         });
       }),
   }),
