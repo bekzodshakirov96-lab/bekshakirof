@@ -3,12 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
 import { createCashDraftSaver } from "@/lib/cashDraftSaver";
 import { buildEmployeeOptions } from "@/lib/cashPayees";
 import { groupJournalEntries, journalCellTotal } from "@/lib/cashJournalGroups";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
+import { moveProductId } from "@shared/productOrder";
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -17,7 +19,9 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
+  GripVertical,
+  EyeOff,
+  Package,
   Landmark,
   Plus,
   Smartphone,
@@ -83,6 +87,7 @@ const journalRowKey = (entry: JournalRow) => `${entry.type === "memo" ? "debt" :
  * `a:12` — agent, `e:3` — xodim.
  */
 type Payee = { agentId: number | null; employeeId: number | null };
+type MatrixLayoutValue = { productOrder: number[]; visibleProductIds: number[]; agentOrder: number[] };
 const payeeToValue = (payee: Payee) =>
   payee.employeeId != null ? `e:${payee.employeeId}` : payee.agentId != null ? `a:${payee.agentId}` : "";
 function payeeFromValue(value: string): Payee {
@@ -936,6 +941,7 @@ function AgentProductMatrix() {
   const takingRows = trpc.kassa.agentTaking.listForDay.useQuery({ date: timestamp });
   const daySummary = trpc.kassa.daySummary.useQuery({ date: timestamp });
   const dayPriceQuery = trpc.kassa.dayPrice.listForDay.useQuery({ date: timestamp });
+  const matrixLayoutQuery = trpc.kassa.matrixLayout.forDate.useQuery({ date: timestamp });
 
   const invalidateMatrix = () =>
     Promise.all([
@@ -960,10 +966,19 @@ function AgentProductMatrix() {
     onSuccess: () => Promise.all([invalidateMatrix(), utils.kassa.dayPrice.listForDay.invalidate({ date: timestamp })]),
     onError: error => toast.error(error.message),
   });
-  const reorderProduct = trpc.products.reorder.useMutation({
-    onSuccess: () => utils.products.list.invalidate(),
-    onError: error => toast.error(error.message),
+  const [layoutDraft, setLayoutDraft] = useState<MatrixLayoutValue | null>(null);
+  const [draggedProduct, setDraggedProduct] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: number; placement: "before" | "after" } | null>(null);
+  const [orderNotice, setOrderNotice] = useState("");
+  const saveMatrixLayout = trpc.kassa.matrixLayout.save.useMutation({
+    onSuccess: async (_result, variables) => {
+      await utils.kassa.matrixLayout.forDate.invalidate({ date: variables.date });
+      setLayoutDraft(null);
+      setOrderNotice("Jadval ko‘rinishi shu sana va keyingi kunlar uchun saqlandi.");
+    },
+    onError: error => { setLayoutDraft(null); setOrderNotice("Jadval ko‘rinishi saqlanmadi."); toast.error(error.message); },
   });
+  const [productSearch, setProductSearch] = useState("");
   const createAgent = trpc.agents.create.useMutation({
     onSuccess: async () => {
       toast.success("Agent qo'shildi");
@@ -984,6 +999,48 @@ function AgentProductMatrix() {
 
   const agentList = agents.data ?? [];
   const productList = products.data ?? [];
+  const savedLayout = matrixLayoutQuery.data;
+  const savedProductOrder = savedLayout?.productOrder.filter(id => productList.some(product => product.id === id)) ?? [];
+  const savedAgentOrder = savedLayout?.agentOrder.filter(id => agentList.some(agent => agent.id === id)) ?? [];
+  const inheritedLayout: MatrixLayoutValue = {
+    productOrder: savedLayout ? savedProductOrder : productList.map(product => product.id),
+    visibleProductIds: savedLayout
+      ? savedLayout.visibleProductIds.filter(id => productList.some(product => product.id === id))
+      : productList.map(product => product.id),
+    agentOrder: savedLayout && savedAgentOrder.length > 0 ? savedAgentOrder : agentList.map(agent => agent.id),
+  };
+  const activeLayout = layoutDraft ?? inheritedLayout;
+  const isHistoricalLayout = date < today();
+  const layoutIsSaving = saveMatrixLayout.isPending;
+  const orderedProducts = [...productList].sort((a, b) => {
+    const aIndex = activeLayout.productOrder.indexOf(a.id);
+    const bIndex = activeLayout.productOrder.indexOf(b.id);
+    return (aIndex < 0 ? Number.MAX_SAFE_INTEGER : aIndex) - (bIndex < 0 ? Number.MAX_SAFE_INTEGER : bIndex);
+  });
+  const hiddenProductIds = productList.map(product => product.id).filter(id => !activeLayout.visibleProductIds.includes(id));
+  const visibleProducts = orderedProducts.filter(product => activeLayout.visibleProductIds.includes(product.id));
+  const hiddenWithEntries = (takingRows.data ?? []).filter(row => row.productId != null && hiddenProductIds.includes(row.productId));
+  function saveLayout(next: MatrixLayoutValue) {
+    if (isHistoricalLayout) { toast.error("O‘tgan sana ko‘rinishi saqlangan. Bugungi yoki kelgusi sanani tanlang."); return; }
+    if (layoutIsSaving) return;
+    setLayoutDraft(next);
+    saveMatrixLayout.mutate({ date: timestamp, layout: next });
+  }
+  function setProductVisible(id: number, visible: boolean) {
+    const nextVisible = visible
+      ? Array.from(new Set([...activeLayout.visibleProductIds, id]))
+      : activeLayout.visibleProductIds.filter(value => value !== id);
+    const nextOrder = activeLayout.productOrder.includes(id) ? activeLayout.productOrder : [...activeLayout.productOrder, id];
+    saveLayout({ ...activeLayout, productOrder: nextOrder, visibleProductIds: nextVisible });
+  }
+  function moveProduct(id: number, targetId: number, placement: "before" | "after") {
+    if (layoutIsSaving || isHistoricalLayout || id === targetId) return;
+    const ids = activeLayout.productOrder;
+    const next = moveProductId(ids, id, targetId, placement);
+    if (next.every((value, index) => value === ids[index])) return;
+    saveLayout({ ...activeLayout, productOrder: next });
+  }
+
 
   /** Faolsizlantirilgan agentning shu kundagi haqiqiy yozuvlari (tovar olib ketgani,
    * kassaga topshirgani) bo'lsa, uning ustuni butunlay ko'rinmay qolmasligi uchun —
@@ -996,18 +1053,30 @@ function AgentProductMatrix() {
       .map(row => ({ id: row.agentId, name: row.agentName }));
   }, [agentList, daySummary.data]);
 
-  /** null = hammasi ko'rsatiladi (standart holat); tanlash boshlangandan keyin aniq to'plamga aylanadi. */
-  const [selectedAgentIds, setSelectedAgentIds] = useState<Set<number> | null>(null);
   const visibleAgents = [
-    ...(selectedAgentIds === null ? agentList : agentList.filter(agent => selectedAgentIds.has(agent.id))),
-    ...historicalAgents,
+    ...activeLayout.agentOrder.map(id => agentList.find(agent => agent.id === id)).filter((agent): agent is NonNullable<typeof agent> => Boolean(agent)),
+    ...historicalAgents.filter(agent => !activeLayout.agentOrder.includes(agent.id)),
   ];
   function toggleAgentVisible(agentId: number) {
-    setSelectedAgentIds(prev => {
-      const base = new Set(prev === null ? agentList.map(agent => agent.id) : prev);
-      if (base.has(agentId)) base.delete(agentId); else base.add(agentId);
-      return base;
-    });
+    const next = activeLayout.agentOrder.includes(agentId)
+      ? activeLayout.agentOrder.filter(id => id !== agentId)
+      : [...activeLayout.agentOrder, agentId];
+    if (next.length === 0) { toast.error("Kamida bitta agent ko‘rsatilishi kerak."); return; }
+    saveLayout({ ...activeLayout, agentOrder: next });
+  }
+  function replaceAgentColumn(currentId: number, nextId: number) {
+    if (currentId === nextId) return;
+    const ids = [...activeLayout.agentOrder];
+    const currentIndex = ids.indexOf(currentId);
+    const nextIndex = ids.indexOf(nextId);
+    if (currentIndex < 0) return;
+
+    if (nextIndex >= 0) {
+      [ids[currentIndex], ids[nextIndex]] = [ids[nextIndex], ids[currentIndex]];
+    } else {
+      ids[currentIndex] = nextId;
+    }
+    saveLayout({ ...activeLayout, agentOrder: ids });
   }
 
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
@@ -1039,6 +1108,12 @@ function AgentProductMatrix() {
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [newProductOpen]);
+  useEffect(() => {
+    setLayoutDraft(null);
+    setAgentPickerOpen(false);
+    setNewAgentOpen(false);
+    setNewProductOpen(false);
+  }, [timestamp]);
   const canCreateProduct = newProductForm.code.trim() && newProductForm.name.trim() && newProductForm.unit.trim() && newProductForm.price.trim();
   const missingProductFields = [
     !newProductForm.code.trim() && "Kodi",
@@ -1087,7 +1162,7 @@ function AgentProductMatrix() {
     else if (event.key === "ArrowDown" || event.key === "Enter") targetRow += 1;
     else if (event.key === "ArrowLeft") targetColumn -= 1;
     else if (event.key === "ArrowRight") targetColumn += 1;
-    if (targetRow < 0 || targetRow >= productList.length || targetColumn < 0 || targetColumn >= visibleAgents.length) return;
+    if (targetRow < 0 || targetRow >= visibleProducts.length || targetColumn < 0 || targetColumn >= visibleAgents.length) return;
     event.preventDefault();
     const target = document.querySelector<HTMLInputElement>(`[data-cash-matrix-cell="${targetRow}-${targetColumn}"]`);
     target?.focus();
@@ -1098,7 +1173,7 @@ function AgentProductMatrix() {
     <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
       <div>
         <div className="flex items-center gap-2"><Users className="size-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Агент x Товар</h3></div>
-        <p className="mt-1 text-xs text-muted-foreground">Tab yoki ←/→ — qo‘shni katak, Enter/↑/↓ — shu ustunda keyingi/oldingi mahsulot.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Mahsulotni ⋮⋮ belgisidan ushlab suring. Tab yoki ←/→ — qo‘shni katak, Enter/↑/↓ — keyingi/oldingi mahsulot.</p>
       </div>
       <div className="flex items-center gap-1.5">
         <Button
@@ -1130,7 +1205,7 @@ function AgentProductMatrix() {
     </div>
   );
 
-  if (agents.isLoading || products.isLoading) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Yuklanmoqda...</p></div>;
+  if (agents.isLoading || products.isLoading || matrixLayoutQuery.isLoading) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Yuklanmoqda...</p></div>;
   if (visibleAgents.length === 0) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Faol agentlar topilmadi.</p></div>;
   if (productList.length === 0) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Mahsulotlar topilmadi.</p></div>;
 
@@ -1153,10 +1228,11 @@ function AgentProductMatrix() {
                 {agentList.map(agent => (
                   <button
                     key={agent.id} type="button"
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-muted"
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={layoutIsSaving || isHistoricalLayout}
                     onClick={() => toggleAgentVisible(agent.id)}
                   >
-                    <Checkbox checked={selectedAgentIds === null || selectedAgentIds.has(agent.id)} />
+                    <Checkbox checked={activeLayout.agentOrder.includes(agent.id)} />
                     <span className="flex-1 truncate font-medium text-foreground">{agent.name}</span>
                   </button>
                 ))}
@@ -1166,6 +1242,7 @@ function AgentProductMatrix() {
                   <button
                     type="button"
                     className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5"
+                    disabled={isHistoricalLayout}
                     onClick={() => setNewAgentOpen(true)}
                   >
                     <Plus className="size-3.5" /> Yangi agent qo'shish
@@ -1192,9 +1269,34 @@ function AgentProductMatrix() {
           )}
         </div>
 
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 bg-card text-xs font-semibold">
+              <Package className="size-3.5" /> Mahsulotlar ({visibleProducts.length}/{productList.length})
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-80 bg-card p-3" aria-label="Jadvaldagi mahsulotlar">
+            <p className="mb-2 text-sm font-semibold">Jadvalda ko‘rsatiladigan mahsulotlar</p>
+            <Input aria-label="Mahsulot qidirish" placeholder="Mahsulot qidirish" value={productSearch} onChange={event => setProductSearch(event.target.value)} className="mb-2 h-8" />
+            <div className="max-h-72 overflow-y-auto">
+              {orderedProducts.filter(product => `${product.name} ${product.code}`.toLocaleLowerCase().includes(productSearch.toLocaleLowerCase())).map(product => (
+                <label key={product.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 hover:bg-muted">
+                  <Checkbox disabled={layoutIsSaving || isHistoricalLayout} checked={!hiddenProductIds.includes(product.id)} onCheckedChange={checked => setProductVisible(product.id, checked === true)} aria-label={`${product.name} — ko‘rsatish`} />
+                  <span className="text-sm">{product.name}</span>
+                </label>
+              ))}
+            </div>
+            <Button type="button" variant="ghost" size="sm" className="mt-2 w-full" disabled={layoutIsSaving || isHistoricalLayout} onClick={() => {
+              saveLayout({ ...activeLayout, visibleProductIds: productList.map(product => product.id) });
+            }}>Barchasini ko‘rsatish</Button>
+            <p className="mt-2 text-xs text-muted-foreground">Tanlov shu sana va keyingi kunlarga saqlanadi. Yashirish hisob-kitoblarni o‘zgartirmaydi.</p>
+          </PopoverContent>
+        </Popover>
+
         <div className="relative" ref={newProductRef}>
           <Button
             type="button" variant="outline" size="sm" className="h-8 gap-1.5 bg-card text-xs font-semibold"
+            disabled={isHistoricalLayout}
             onClick={() => setNewProductOpen(open => !open)}
           >
             <Plus className="size-3.5" /> Mahsulot qo'shish
@@ -1224,6 +1326,9 @@ function AgentProductMatrix() {
         </div>
       </div>
 
+      <p role="status" className="sr-only">{orderNotice}</p>
+      {isHistoricalLayout && <p className="mb-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">Bu tarixiy sana: agentlar va mahsulotlar ko‘rinishi saqlangan, uni bu yerdan o‘zgartirib bo‘lmaydi.</p>}
+      {hiddenWithEntries.length > 0 && <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">Yashirilgan mahsulotlarda shu kun uchun yozuvlar bor. Ularning summalari jami hisobga kiradi.</p>}
       <div className="overflow-x-auto rounded-2xl border border-border">
       <table className="w-full min-w-[720px] text-sm">
         <thead>
@@ -1231,34 +1336,68 @@ function AgentProductMatrix() {
             <th className="sticky left-0 whitespace-nowrap bg-muted px-3 py-2 text-left">Товар</th>
             <th className="whitespace-nowrap px-3 py-2 text-right">Narxi</th>
             <th className="whitespace-nowrap px-3 py-2 text-right">Kunlik narx</th>
-            {visibleAgents.map(agent => <th key={agent.id} className="whitespace-nowrap px-3 py-2 text-right">{agent.name}</th>)}
+            {visibleAgents.map(agent => (
+              <th key={agent.id} className="whitespace-nowrap px-2 py-1.5 text-right">
+                {agentList.some(option => option.id === agent.id) ? (
+                  <Select disabled={layoutIsSaving || isHistoricalLayout} value={String(agent.id)} onValueChange={value => replaceAgentColumn(agent.id, Number(value))}>
+                    <SelectTrigger size="sm" aria-label={`${agent.name} ustunidagi agentni tanlash`} className="ml-auto h-8 min-w-28 justify-end border-transparent bg-transparent px-2 font-semibold shadow-none hover:border-border hover:bg-card">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      {agentList.map(option => <SelectItem key={option.id} value={String(option.id)}>{option.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : agent.name}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {productList.map((product, rowIndex) => {
+          {visibleProducts.length === 0 && <tr><td colSpan={3 + visibleAgents.length} className="p-6 text-center text-sm text-muted-foreground">Mahsulotlar yashirilgan. “Mahsulotlar” tugmasidan keraklisini yoqing.</td></tr>}
+          {visibleProducts.map((product, rowIndex) => {
             const dayPrice = dayPriceByProduct.get(product.id) ?? null;
             return (
-            <tr key={product.id}>
+            <tr key={product.id}
+              className={`${draggedProduct === product.id ? "opacity-40" : ""} ${dropTarget?.id === product.id ? (dropTarget.placement === "before" ? "[&>td]:border-t-2 [&>td]:border-t-primary" : "[&>td]:border-b-2 [&>td]:border-b-primary") : ""}`}
+              onDragOver={event => {
+                if (draggedProduct == null || layoutIsSaving || isHistoricalLayout) return;
+                event.preventDefault(); event.dataTransfer.dropEffect = "move";
+                const rect = event.currentTarget.getBoundingClientRect();
+                setDropTarget({ id: product.id, placement: event.clientY < rect.top + rect.height / 2 ? "before" : "after" });
+              }}
+              onDrop={event => {
+                event.preventDefault();
+                if (draggedProduct != null) {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  moveProduct(draggedProduct, product.id, event.clientY < rect.top + rect.height / 2 ? "before" : "after");
+                }
+                setDraggedProduct(null); setDropTarget(null);
+              }}>
               <td className="sticky left-0 whitespace-nowrap bg-card px-3 py-1.5 font-medium text-foreground">
                 <div className="flex items-center gap-1.5">
-                  <div className="flex shrink-0 flex-col">
-                    <button
-                      type="button" aria-label="Yuqoriga surish"
-                      className="flex size-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-muted-foreground disabled:pointer-events-none disabled:opacity-0"
-                      disabled={rowIndex === 0}
-                      onClick={() => reorderProduct.mutate({ id: product.id, direction: "up" })}
-                    >
-                      <ChevronUp className="size-3" />
-                    </button>
-                    <button
-                      type="button" aria-label="Pastga surish"
-                      className="flex size-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-muted-foreground disabled:pointer-events-none disabled:opacity-0"
-                      disabled={rowIndex === productList.length - 1}
-                      onClick={() => reorderProduct.mutate({ id: product.id, direction: "down" })}
-                    >
-                      <ChevronDown className="size-3" />
-                    </button>
-                  </div>
+                  <button type="button" draggable={!layoutIsSaving && !isHistoricalLayout}
+                    disabled={layoutIsSaving || isHistoricalLayout}
+                    aria-label={`${product.name} — tartibini o‘zgartirish`}
+                    title="Ushlab tepaga/pastga suring. Klaviaturada ↑/↓."
+                    className="flex size-8 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-primary active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                    onDragStart={event => {
+                      setDraggedProduct(product.id);
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", String(product.id));
+                      const row = event.currentTarget.closest("tr");
+                      if (row) event.dataTransfer.setDragImage(row, 20, 20);
+                    }}
+                    onDragEnd={() => { setDraggedProduct(null); setDropTarget(null); }}
+                    onKeyDown={event => {
+                      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                      event.preventDefault();
+                      const target = visibleProducts[rowIndex + (event.key === "ArrowUp" ? -1 : 1)];
+                      if (target) moveProduct(product.id, target.id, event.key === "ArrowUp" ? "before" : "after");
+                    }}><GripVertical className="size-4" /></button>
+                  <button type="button" aria-label={`${product.name} — yashirish`} title="Jadvaldan yashirish"
+                    className="flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-primary"
+                    disabled={layoutIsSaving || isHistoricalLayout}
+                    onClick={() => setProductVisible(product.id, false)}><EyeOff className="size-3.5" /></button>
                   {product.name}
                 </div>
               </td>

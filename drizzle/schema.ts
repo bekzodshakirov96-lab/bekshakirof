@@ -498,6 +498,24 @@ export const dailyProductPrices = mysqlTable(
   table => [uniqueIndex("daily_product_prices_date_product_unique").on(table.entryDate, table.productId)],
 );
 
+/**
+ * "Agent x Tovar" jadvalining sanadan boshlab amal qiladigan ko'rinishi.
+ * Har bir o'zgarish yangi sana versiyasini yaratadi: keyingi kunlar eng so'nggi
+ * versiyani meros oladi, oldingi kunlar esa o'z davridagi ko'rinishda qoladi.
+ */
+export const cashMatrixLayouts = mysqlTable(
+  "cash_matrix_layouts",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    effectiveDate: timestamp("effectiveDate").notNull(),
+    layout: text("layout").notNull(),
+    updatedBy: int("updatedBy").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+  },
+  table => [uniqueIndex("cash_matrix_layouts_date_unique").on(table.effectiveDate)],
+);
+
 /** How much cash each agent handed over on a given day, one row per agent per day. */
 export const agentCashSubmissions = mysqlTable(
   "agent_cash_submissions",
@@ -569,5 +587,6 @@ export type KassaDailyActual = typeof kassaDailyActuals.$inferSelect;
 export type AgentTakingEntry = typeof agentTakingEntries.$inferSelect;
 export type AgentCashSubmission = typeof agentCashSubmissions.$inferSelect;
 export type DailyProductPrice = typeof dailyProductPrices.$inferSelect;
+export type CashMatrixLayout = typeof cashMatrixLayouts.$inferSelect;
 export type AuditLog = typeof auditLog.$inferSelect;
 export type AppSetting = typeof appSettings.$inferSelect;
