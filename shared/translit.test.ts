@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toCyrillic } from "./translit";
+import { normalizeSearch, normalizeSearchable, toCyrillic } from "./translit";
 
 describe("toCyrillic", () => {
   it("o'giradi oddiy so'zlarni", () => {
@@ -66,5 +66,10 @@ describe("toCyrillic", () => {
 
   it("aralash matnni to'g'ri ishlaydi", () => {
     expect(toCyrillic("Jami: 135,000 so'm")).toBe("Жами: 135,000 сўм");
+  });
+
+  it("lotincha qidiruvni kirillcha mahsulot nomiga moslaydi", () => {
+    expect(normalizeSearchable("Барлос 1,5л P015")).toContain(normalizeSearch("barlos"));
+    expect(normalizeSearchable("Бучингер НФ B003")).toContain(normalizeSearch("buchinger"));
   });
 });

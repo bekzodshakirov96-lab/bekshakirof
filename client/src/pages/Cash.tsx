@@ -11,6 +11,7 @@ import { groupJournalEntries, journalCellTotal } from "@/lib/cashJournalGroups";
 import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { moveProductId } from "@shared/productOrder";
+import { normalizeSearch, normalizeSearchable } from "@shared/translit";
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -1019,6 +1020,10 @@ function AgentProductMatrix() {
   });
   const hiddenProductIds = productList.map(product => product.id).filter(id => !activeLayout.visibleProductIds.includes(id));
   const visibleProducts = orderedProducts.filter(product => activeLayout.visibleProductIds.includes(product.id));
+  const normalizedProductSearch = normalizeSearch(productSearch);
+  const filteredPickerProducts = orderedProducts.filter(product =>
+    normalizeSearchable(`${product.name} ${product.code}`).includes(normalizedProductSearch),
+  );
   const hiddenWithEntries = (takingRows.data ?? []).filter(row => row.productId != null && hiddenProductIds.includes(row.productId));
   function saveLayout(next: MatrixLayoutValue) {
     if (isHistoricalLayout) { toast.error("O‘tgan sana ko‘rinishi saqlangan. Bugungi yoki kelgusi sanani tanlang."); return; }
@@ -1279,12 +1284,15 @@ function AgentProductMatrix() {
             <p className="mb-2 text-sm font-semibold">Jadvalda ko‘rsatiladigan mahsulotlar</p>
             <Input aria-label="Mahsulot qidirish" placeholder="Mahsulot qidirish" value={productSearch} onChange={event => setProductSearch(event.target.value)} className="mb-2 h-8" />
             <div className="max-h-72 overflow-y-auto">
-              {orderedProducts.filter(product => `${product.name} ${product.code}`.toLocaleLowerCase().includes(productSearch.toLocaleLowerCase())).map(product => (
+              {filteredPickerProducts.map(product => (
                 <label key={product.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 hover:bg-muted">
                   <Checkbox disabled={layoutIsSaving || isHistoricalLayout} checked={!hiddenProductIds.includes(product.id)} onCheckedChange={checked => setProductVisible(product.id, checked === true)} aria-label={`${product.name} — ko‘rsatish`} />
                   <span className="text-sm">{product.name}</span>
                 </label>
               ))}
+              {filteredPickerProducts.length === 0 && (
+                <p className="px-2 py-6 text-center text-sm text-muted-foreground">Mos mahsulot topilmadi.</p>
+              )}
             </div>
             <Button type="button" variant="ghost" size="sm" className="mt-2 w-full" disabled={layoutIsSaving || isHistoricalLayout} onClick={() => {
               saveLayout({ ...activeLayout, visibleProductIds: productList.map(product => product.id) });
