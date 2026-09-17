@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, gte, like, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, cashEntries, employees } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
@@ -8,7 +8,7 @@ import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
 import { cashJournalDebtRouter } from "./cashJournalDebt";
-import { summarizeCashAccounting } from "../../shared/cashAccounting";
+import { normalizeCashReportEntries, summarizeCashAccounting } from "../../shared/cashAccounting";
 
 function toMySqlDate(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
@@ -114,14 +114,12 @@ export const cashRouter = router({
     .query(async ({ input }) => {
       const db = await requireDb();
       const conditions = [
-        input.type !== "all" ? eq(cashEntries.type, input.type) : undefined,
-        input.category ? like(cashEntries.category, `%${input.category}%`) : undefined,
         input.agentId ? eq(cashEntries.agentId, input.agentId) : undefined,
         input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
         input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
       ].filter(Boolean);
       const where = conditions.length ? and(...conditions) : undefined;
-      const items = await db
+      const rawItems = await db
         .select({
           id: cashEntries.id,
           entryDate: cashEntries.entryDate,
@@ -139,18 +137,21 @@ export const cashRouter = router({
         })
         .from(cashEntries)
         .leftJoin(agents, eq(cashEntries.agentId, agents.id))
-      .leftJoin(employees, eq(cashEntries.employeeId, employees.id))
+        .leftJoin(employees, eq(cashEntries.employeeId, employees.id))
         .where(where)
-        .orderBy(desc(cashEntries.entryDate), desc(cashEntries.id))
-        .limit(input.pageSize)
-        .offset((input.page - 1) * input.pageSize);
-      const [totalRow] = await db.select({ total: count() }).from(cashEntries).where(where);
+        .orderBy(desc(cashEntries.entryDate), desc(cashEntries.id));
+      const normalizedItems = normalizeCashReportEntries(rawItems).filter(item =>
+        (input.type === "all" || item.type === input.type)
+        && (!input.category || item.category.toLocaleLowerCase().includes(input.category.toLocaleLowerCase())),
+      );
+      const total = normalizedItems.length;
+      const items = normalizedItems.slice((input.page - 1) * input.pageSize, input.page * input.pageSize);
       return {
         items,
-        total: totalRow.total,
+        total,
         page: input.page,
         pageSize: input.pageSize,
-        pageCount: Math.max(1, Math.ceil(totalRow.total / input.pageSize)),
+        pageCount: Math.max(1, Math.ceil(total / input.pageSize)),
       };
     }),
   exportData: businessProcedure
@@ -166,16 +167,12 @@ export const cashRouter = router({
     .query(async ({ input }) => {
       const db = await requireDb();
       const conditions = [
-        input.type !== "all" ? eq(cashEntries.type, input.type) : undefined,
-        input.category ? like(cashEntries.category, `%${input.category}%`) : undefined,
         input.agentId ? eq(cashEntries.agentId, input.agentId) : undefined,
         input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
         input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
       ].filter(Boolean);
       const where = conditions.length ? and(...conditions) : undefined;
-      const [{ total }] = await db.select({ total: count() }).from(cashEntries).where(where);
-      assertExportRowLimit(total, { entityLabel: "kassa yozuvi" });
-      const rows = await db
+      const rawRows = await db
         .select({
           id: cashEntries.id,
           entryDate: cashEntries.entryDate,
@@ -192,9 +189,14 @@ export const cashRouter = router({
         })
         .from(cashEntries)
         .leftJoin(agents, eq(cashEntries.agentId, agents.id))
-      .leftJoin(employees, eq(cashEntries.employeeId, employees.id))
+        .leftJoin(employees, eq(cashEntries.employeeId, employees.id))
         .where(where)
         .orderBy(desc(cashEntries.entryDate), desc(cashEntries.id));
+      const rows = normalizeCashReportEntries(rawRows).filter(row =>
+        (input.type === "all" || row.type === input.type)
+        && (!input.category || row.category.toLocaleLowerCase().includes(input.category.toLocaleLowerCase())),
+      );
+      assertExportRowLimit(rows.length, { entityLabel: "kassa yozuvi" });
       const accounting = summarizeCashAccounting(rows);
       return { rows, summary: { income: accounting.income, expense: accounting.expense }, generatedAt: Date.now() };
     }),

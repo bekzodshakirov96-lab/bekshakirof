@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeCashAccounting } from "./cashAccounting";
+import { ELECTRONIC_PAYMENT_CATEGORY, normalizeCashReportEntries, summarizeCashAccounting } from "./cashAccounting";
 
 describe("cash accounting", () => {
   it("treats Terminal and Click as income even when legacy data attached them to an expense row", () => {
@@ -19,5 +19,49 @@ describe("cash accounting", () => {
     expect(summarizeCashAccounting([
       { type: "income", cashAmount: 200_000, terminalAmount: 30_000, clickAmount: 20_000, transferAmount: 500_000 },
     ])).toMatchObject({ income: 250_000, expense: 0, cashBalance: 200_000, transfer: 500_000 });
+  });
+
+  it("splits legacy mixed expense rows into cash expense and electronic payment movements", () => {
+    expect(normalizeCashReportEntries([{
+      id: 17,
+      type: "expense",
+      category: "Расход",
+      cashAmount: 10_000,
+      terminalAmount: 3_063_000,
+      clickAmount: 0,
+      transferAmount: 1_785_000,
+    }])).toEqual([
+      expect.objectContaining({
+        reportKey: "17:cash",
+        type: "expense",
+        category: "Расход",
+        cashAmount: 10_000,
+        terminalAmount: 0,
+        transferAmount: 0,
+      }),
+      expect.objectContaining({
+        reportKey: "17:electronic",
+        type: "income",
+        category: ELECTRONIC_PAYMENT_CATEGORY,
+        cashAmount: 0,
+        terminalAmount: 3_063_000,
+        transferAmount: 1_785_000,
+        isElectronicSplit: true,
+      }),
+    ]);
+  });
+
+  it("keeps regular rows as one report movement", () => {
+    expect(normalizeCashReportEntries([{
+      id: 3,
+      type: "expense",
+      category: "Ойлик",
+      cashAmount: 500_000,
+      terminalAmount: 0,
+      clickAmount: 0,
+      transferAmount: 0,
+    }])).toEqual([
+      expect.objectContaining({ reportKey: "3:base", type: "expense", cashAmount: 500_000 }),
+    ]);
   });
 });

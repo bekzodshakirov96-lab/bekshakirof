@@ -6,6 +6,53 @@ export type CashAccountingEntry = {
   transferAmount?: number;
 };
 
+export const ELECTRONIC_PAYMENT_CATEGORY = "Elektron to‘lovlar";
+
+export type CashReportEntry = CashAccountingEntry & {
+  id: number;
+  category: string;
+};
+
+export type NormalizedCashReportEntry<T extends CashReportEntry> = T & {
+  reportKey: string;
+  isElectronicSplit: boolean;
+};
+
+/**
+ * Eski Kassa jurnalida bitta rasxod qatoriga naqd rasxod bilan birga Terminal,
+ * Click yoki O‘tkazma ham yozilgan. Hisobotda bu kanallarni rasxod deb ko‘rsatmaslik
+ * uchun qatorni ikki virtual harakatga ajratamiz. Bazadagi asl yozuv o‘zgarmaydi.
+ */
+export function normalizeCashReportEntries<T extends CashReportEntry>(entries: T[]) {
+  return entries.flatMap<NormalizedCashReportEntry<T>>(entry => {
+    const electronicAmount = entry.terminalAmount + entry.clickAmount + (entry.transferAmount ?? 0);
+    if (entry.type !== "expense" || electronicAmount <= 0) {
+      return [{ ...entry, reportKey: `${entry.id}:base`, isElectronicSplit: false }];
+    }
+
+    const normalized: NormalizedCashReportEntry<T>[] = [];
+    if (entry.cashAmount > 0) {
+      normalized.push({
+        ...entry,
+        terminalAmount: 0,
+        clickAmount: 0,
+        transferAmount: 0,
+        reportKey: `${entry.id}:cash`,
+        isElectronicSplit: false,
+      });
+    }
+    normalized.push({
+      ...entry,
+      type: "income",
+      category: ELECTRONIC_PAYMENT_CATEGORY,
+      cashAmount: 0,
+      reportKey: `${entry.id}:electronic`,
+      isElectronicSplit: true,
+    });
+    return normalized;
+  });
+}
+
 /**
  * Terminal va Click — agentdan kassaga keladigan elektron tushumlar. Ular qaysi
  * naqd toifa yozuviga biriktirilganidan qat'i nazar rasxod bo'la olmaydi.

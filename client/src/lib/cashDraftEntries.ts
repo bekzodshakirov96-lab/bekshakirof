@@ -1,6 +1,7 @@
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "./cashCategories";
+import { ELECTRONIC_PAYMENT_CATEGORY } from "../../../shared/cashAccounting";
 
-export const PAYMENT_CHANNEL_CATEGORY = "Elektron to‘lovlar";
+export const PAYMENT_CHANNEL_CATEGORY = ELECTRONIC_PAYMENT_CATEGORY;
 export const CASH_DRAFT_ENTRY_CATEGORIES = [
   ...INCOME_CATEGORIES,
   ...EXPENSE_CATEGORIES,
