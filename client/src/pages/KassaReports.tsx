@@ -32,7 +32,11 @@ export default function KassaReports() {
   const products = trpc.products.list.useQuery({});
   const categories = trpc.cash.categories.useQuery({ type: typeFilter === "all" ? undefined : typeFilter });
   const categoryOptions = useMemo(() => {
-    const staticList = typeFilter === "income" ? INCOME_CATEGORIES : typeFilter === "expense" ? EXPENSE_CATEGORIES : [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
+    const staticList = typeFilter === "income"
+      ? [...INCOME_CATEGORIES, ELECTRONIC_PAYMENT_CATEGORY]
+      : typeFilter === "expense"
+        ? EXPENSE_CATEGORIES
+        : [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES, ELECTRONIC_PAYMENT_CATEGORY];
     return Array.from(new Set([...staticList, ...(categories.data ?? [])]));
   }, [typeFilter, categories.data]);
 
