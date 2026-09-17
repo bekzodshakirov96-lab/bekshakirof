@@ -8,6 +8,7 @@ import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
 import { formatDate, formatMoney, formatNumber, localDateInputValue } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
+import { ELECTRONIC_PAYMENT_CATEGORY } from "../../../shared/cashAccounting";
 import { Landmark, RotateCcw, Scale, TrendingDown, TrendingUp, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -69,7 +70,7 @@ export default function KassaReports() {
       type Row = (typeof data.rows)[number];
       const columns: ReportColumn<Row>[] = [
         { title: "Sana", value: row => formatDate(row.entryDate), width: 48 },
-        { title: "Turi", value: row => row.type === "income" ? "Prihod" : "Rasxod", width: 40 },
+        { title: "Turi", value: row => row.category === ELECTRONIC_PAYMENT_CATEGORY ? "Elektron to‘lov" : row.type === "income" ? "Prihod" : "Rasxod", width: 48 },
         { title: "Tur", value: row => row.category, width: "*" },
         { title: "Agent", value: row => row.agentName || "—", width: 62 },
         { title: "Izoh", value: row => row.description || "—", width: 80 },
@@ -224,16 +225,16 @@ export default function KassaReports() {
         )}
       </SectionCard>
 
-      <SectionCard title="Kassa harakatlari" description="Prihod va rasxod yozuvlari" className="mt-5" action={<ExportMenu onExcel={() => exportCash("xlsx")} onPdf={() => exportCash("pdf")} isLoading={isExportingCash} disabled={cashList.isLoading} />}>
+      <SectionCard title="Kassa harakatlari" description="Naqd prihod/rasxod va elektron to‘lovlar alohida ko‘rsatiladi" className="mt-5" action={<ExportMenu onExcel={() => exportCash("xlsx")} onPdf={() => exportCash("pdf")} isLoading={isExportingCash} disabled={cashList.isLoading} />}>
         <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
           {cashList.isLoading ? <TableLoading columns={9} /> : cashRows.length === 0 ? <EmptyState /> : (
             <Table className="finance-table min-w-[1100px]"><TableHeader><TableRow>
               <TableHead>Sana</TableHead><TableHead>Turi</TableHead><TableHead>Tur</TableHead><TableHead>Agent</TableHead><TableHead>Izoh</TableHead>
               <TableHead className="text-right">Naqd</TableHead><TableHead className="text-right">Terminal</TableHead><TableHead className="text-right">Click</TableHead><TableHead className="text-right">O‘tkazma</TableHead>
             </TableRow></TableHeader><TableBody>
-              {cashRows.map(row => <TableRow key={row.id}>
+              {cashRows.map(row => <TableRow key={row.reportKey}>
                 <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.entryDate)}</TableCell>
-                <TableCell><Badge className={row.type === "income" ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50"}>{row.type === "income" ? "Prihod" : "Rasxod"}</Badge></TableCell>
+                <TableCell><Badge className={row.category === ELECTRONIC_PAYMENT_CATEGORY ? "rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-50" : row.type === "income" ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50"}>{row.category === ELECTRONIC_PAYMENT_CATEGORY ? "Elektron" : row.type === "income" ? "Prihod" : "Rasxod"}</Badge></TableCell>
                 <TableCell className="font-semibold text-foreground">{row.category}</TableCell>
                 <TableCell>{row.agentName || "—"}</TableCell>
                 <TableCell className="max-w-64 truncate">{row.description || "—"}</TableCell>
