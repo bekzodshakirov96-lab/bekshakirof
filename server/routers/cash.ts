@@ -8,6 +8,7 @@ import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
 import { cashJournalDebtRouter } from "./cashJournalDebt";
+import { summarizeCashAccounting } from "../../shared/cashAccounting";
 
 function toMySqlDate(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
@@ -194,15 +195,8 @@ export const cashRouter = router({
       .leftJoin(employees, eq(cashEntries.employeeId, employees.id))
         .where(where)
         .orderBy(desc(cashEntries.entryDate), desc(cashEntries.id));
-      const summary = rows.reduce(
-        (acc, row) => {
-          const total = row.cashAmount + row.terminalAmount + row.clickAmount + row.transferAmount;
-          if (row.type === "income") acc.income += total; else acc.expense += total;
-          return acc;
-        },
-        { income: 0, expense: 0 },
-      );
-      return { rows, summary, generatedAt: Date.now() };
+      const accounting = summarizeCashAccounting(rows);
+      return { rows, summary: { income: accounting.income, expense: accounting.expense }, generatedAt: Date.now() };
     }),
   create: businessProcedure
     .input(

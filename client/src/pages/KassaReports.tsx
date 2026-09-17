@@ -76,6 +76,7 @@ export default function KassaReports() {
         { title: "Naqd", value: row => row.cashAmount, width: 52, align: "right" },
         { title: "Terminal", value: row => row.terminalAmount, width: 52, align: "right" },
         { title: "Click", value: row => row.clickAmount, width: 48, align: "right" },
+        { title: "O‘tkazma", value: row => row.transferAmount, width: 52, align: "right" },
       ];
       const options = {
         title: "Kassa harakatlari hisoboti",
@@ -225,9 +226,10 @@ export default function KassaReports() {
 
       <SectionCard title="Kassa harakatlari" description="Prihod va rasxod yozuvlari" className="mt-5" action={<ExportMenu onExcel={() => exportCash("xlsx")} onPdf={() => exportCash("pdf")} isLoading={isExportingCash} disabled={cashList.isLoading} />}>
         <div className="-mx-5 -mb-5 overflow-hidden rounded-b-2xl border-t border-border">
-          {cashList.isLoading ? <TableLoading columns={7} /> : cashRows.length === 0 ? <EmptyState /> : (
-            <Table className="finance-table min-w-[900px]"><TableHeader><TableRow>
-              <TableHead>Sana</TableHead><TableHead>Turi</TableHead><TableHead>Tur</TableHead><TableHead>Agent</TableHead><TableHead>Izoh</TableHead><TableHead className="text-right">Summa</TableHead>
+          {cashList.isLoading ? <TableLoading columns={9} /> : cashRows.length === 0 ? <EmptyState /> : (
+            <Table className="finance-table min-w-[1100px]"><TableHeader><TableRow>
+              <TableHead>Sana</TableHead><TableHead>Turi</TableHead><TableHead>Tur</TableHead><TableHead>Agent</TableHead><TableHead>Izoh</TableHead>
+              <TableHead className="text-right">Naqd</TableHead><TableHead className="text-right">Terminal</TableHead><TableHead className="text-right">Click</TableHead><TableHead className="text-right">O‘tkazma</TableHead>
             </TableRow></TableHeader><TableBody>
               {cashRows.map(row => <TableRow key={row.id}>
                 <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.entryDate)}</TableCell>
@@ -235,7 +237,10 @@ export default function KassaReports() {
                 <TableCell className="font-semibold text-foreground">{row.category}</TableCell>
                 <TableCell>{row.agentName || "—"}</TableCell>
                 <TableCell className="max-w-64 truncate">{row.description || "—"}</TableCell>
-                <TableCell className="text-right font-bold tabular-nums">{formatMoney(row.cashAmount + row.terminalAmount + row.clickAmount)}</TableCell>
+                <TableCell className="text-right font-bold tabular-nums">{formatMoney(row.cashAmount)}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatMoney(row.terminalAmount)}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatMoney(row.clickAmount)}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatMoney(row.transferAmount)}</TableCell>
               </TableRow>)}
             </TableBody></Table>
           )}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { agents, cashEntries, clients, transactions } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
 import { enrichClientFinancialRows, getClientFinancialRows } from "../businessQueries";
+import { cashExpenseSql, realizedIncomeSql } from "../cashAccounting";
 import { requireDb } from "../db";
 import { router } from "../_core/trpc";
 
@@ -109,13 +110,9 @@ export const dashboardRouter = router({
             Number,
           ),
         terminal:
-          sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' then ${cashEntries.terminalAmount} else -${cashEntries.terminalAmount} end), 0)`.mapWith(
-            Number,
-          ),
+          sql<number>`coalesce(sum(${cashEntries.terminalAmount}), 0)`.mapWith(Number),
         click:
-          sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' then ${cashEntries.clickAmount} else -${cashEntries.clickAmount} end), 0)`.mapWith(
-            Number,
-          ),
+          sql<number>`coalesce(sum(${cashEntries.clickAmount}), 0)`.mapWith(Number),
       })
       .from(cashEntries);
 
@@ -130,14 +127,8 @@ export const dashboardRouter = router({
       : [sql`year(${cashEntries.entryDate}) = year(current_date())`];
     const [periodCashFlow] = await db
       .select({
-        income:
-          sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' then ${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} else 0 end), 0)`.mapWith(
-            Number,
-          ),
-        expense:
-          sql<number>`coalesce(sum(case when ${cashEntries.type} = 'expense' then ${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} else 0 end), 0)`.mapWith(
-            Number,
-          ),
+        income: realizedIncomeSql(),
+        expense: cashExpenseSql(),
       })
       .from(cashEntries)
       .where(and(...cashPeriodConditions));

@@ -148,7 +148,7 @@ export const transactionsRouter = router({
     const expenseRows = await db
       .select({
         category: cashEntries.category,
-        amount: sql<number>`${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount}`,
+        amount: cashEntries.cashAmount,
       })
       .from(cashEntries)
       .where(

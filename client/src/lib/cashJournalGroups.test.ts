@@ -5,11 +5,12 @@ const row = (id: number, patch: Partial<JournalGroupEntry> = {}): JournalGroupEn
   terminalAmount: 0, clickAmount: 0, transferAmount: 0, ...patch,
 });
 describe("daily cash journal grouping", () => {
-  it("keeps Suxrob's five categories in one row without changing amounts or channel owners", () => {
+  it("keeps Suxrob's cash categories and electronic payment entry in one row", () => {
     const entries = [row(1, { cashAmount: 4150000 }), row(2, { type: "expense", category: "Газ", cashAmount: 82000 }),
       row(3, { type: "expense", category: "Обед", cashAmount: 40000 }),
-      row(4, { type: "expense", category: "Ойлик", cashAmount: 180000, terminalAmount: 1220000 }),
-      row(5, { category: "Приход кег", cashAmount: 80000 })];
+      row(4, { type: "expense", category: "Ойлик", cashAmount: 180000 }),
+      row(5, { category: "Приход кег", cashAmount: 80000 }),
+      row(6, { category: "Elektron to‘lovlar", terminalAmount: 1220000 })];
     const groups = groupJournalEntries(entries);
     expect(groups).toHaveLength(1);
     expect(groups[0].entries).toEqual(entries);
