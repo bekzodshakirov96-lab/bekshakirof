@@ -14,6 +14,7 @@ import {
 } from "../../drizzle/schema";
 import { businessProcedure, skladProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
+import { cashExpenseSql, physicalCashBalanceSql, realizedIncomeSql } from "../cashAccounting";
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
@@ -173,17 +174,18 @@ export const kassaRouter = router({
 
     const [cashTotals] = await db
       .select({
-        prihod:
-          sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' then ${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} else 0 end), 0)`.mapWith(
-            Number,
-          ),
-        rasxod:
-          sql<number>`coalesce(sum(case when ${cashEntries.type} = 'expense' then ${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} else 0 end), 0)`.mapWith(
-            Number,
-          ),
+        prihod: realizedIncomeSql(),
+        rasxod: cashExpenseSql(),
       })
       .from(cashEntries)
       .where(and(sql`${cashEntries.entryDate} >= ${start}`, sql`${cashEntries.entryDate} <= ${end}`));
+
+    // Haqiqiy sanalgan naqd kunlik oqim bilan emas, shu kun oxiridagi jami naqd
+    // qoldiq bilan solishtiriladi. Oldingi kunlarning qoldig'i ham shu yerda bor.
+    const [cashPosition] = await db
+      .select({ balance: physicalCashBalanceSql() })
+      .from(cashEntries)
+      .where(sql`${cashEntries.entryDate} <= ${end}`);
 
     const [actual] = await db
       .select()
@@ -208,10 +210,7 @@ export const kassaRouter = router({
       .select({
         agentId: cashEntries.agentId,
         agentName: agents.name,
-        submittedAmount:
-          sql<number>`coalesce(sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount}), 0)`.mapWith(
-            Number,
-          ),
+        submittedAmount: sql<number>`coalesce(sum(${cashEntries.cashAmount}), 0)`.mapWith(Number),
       })
       .from(cashEntries)
       .innerJoin(agents, eq(cashEntries.agentId, agents.id))
@@ -247,7 +246,7 @@ export const kassaRouter = router({
 
     const jamiPrihod = cashTotals.prihod;
     const jamiRasxod = cashTotals.rasxod;
-    const kassaQoldigi = jamiPrihod - jamiRasxod;
+    const kassaQoldigi = cashPosition.balance;
     const agentComputedTotal = agentSummaries.reduce((sum, row) => sum + row.computedAmount, 0);
     const agentSubmittedTotal = agentSummaries.reduce((sum, row) => sum + row.submittedAmount, 0);
 
@@ -683,14 +682,8 @@ export const kassaRouter = router({
         const cashWhere = cashConditions.length ? and(...cashConditions) : undefined;
         const [cashTotals] = await db
           .select({
-            prihod:
-              sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' then ${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} else 0 end), 0)`.mapWith(
-                Number,
-              ),
-            rasxod:
-              sql<number>`coalesce(sum(case when ${cashEntries.type} = 'expense' then ${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} else 0 end), 0)`.mapWith(
-                Number,
-              ),
+            prihod: realizedIncomeSql(),
+            rasxod: cashExpenseSql(),
           })
           .from(cashEntries)
           .where(cashWhere);
@@ -712,7 +705,7 @@ export const kassaRouter = router({
           input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
         ].filter(Boolean);
         const [submissionTotals] = await db
-          .select({ submitted: sql<number>`coalesce(sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount}), 0)`.mapWith(Number) })
+          .select({ submitted: sql<number>`coalesce(sum(${cashEntries.cashAmount}), 0)`.mapWith(Number) })
           .from(cashEntries)
           .where(and(...submissionConditions));
 
@@ -740,12 +733,12 @@ export const kassaRouter = router({
         const rows = await db
           .select({
             category: cashEntries.category,
-            total: sql<number>`coalesce(sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount}), 0)`.mapWith(Number),
+            total: sql<number>`coalesce(sum(${cashEntries.cashAmount}), 0)`.mapWith(Number),
           })
           .from(cashEntries)
           .where(and(...conditions))
           .groupBy(cashEntries.category)
-          .orderBy(desc(sql`sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount})`));
+          .orderBy(desc(sql`sum(${cashEntries.cashAmount})`));
         const total = rows.reduce((sum, row) => sum + row.total, 0);
         return { rows, total, generatedAt: Date.now() };
       }),
@@ -828,7 +821,7 @@ export const kassaRouter = router({
           .select({
             entryDate: cashEntries.entryDate,
             agentId: cashEntries.agentId,
-            submittedAmount: sql<number>`coalesce(sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount}), 0)`.mapWith(Number),
+            submittedAmount: sql<number>`coalesce(sum(${cashEntries.cashAmount}), 0)`.mapWith(Number),
           })
           .from(cashEntries)
           .where(and(...submissionConditions))

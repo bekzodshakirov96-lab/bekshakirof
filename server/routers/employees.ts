@@ -31,10 +31,7 @@ async function loadSalaryTotals(db: Awaited<ReturnType<typeof requireDb>>, perio
   const rows = await db
     .select({
       employeeId: cashEntries.employeeId,
-      paidAmount:
-        sql<number>`coalesce(sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} + ${cashEntries.transferAmount}), 0)`.mapWith(
-          Number,
-        ),
+      paidAmount: sql<number>`coalesce(sum(${cashEntries.cashAmount}), 0)`.mapWith(Number),
       paymentCount: sql<number>`count(${cashEntries.id})`.mapWith(Number),
       lastPaidAt: sql<string | null>`max(${cashEntries.entryDate})`,
     })

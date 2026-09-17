@@ -283,7 +283,7 @@ export default function Employees() {
                       <TableCell>{formatDate(row.entryDate)}</TableCell>
                       <TableCell>{row.description || "—"}</TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">
-                        {formatMoney(row.cashAmount + row.terminalAmount + row.clickAmount + row.transferAmount)}
+                        {formatMoney(row.cashAmount)}
                       </TableCell>
                     </TableRow>
                   ))}

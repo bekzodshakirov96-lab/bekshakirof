@@ -286,10 +286,7 @@ export const agentsRouter = router({
       const takenRows = await db
         .select({
           agentId: cashEntries.agentId,
-          takenAmount:
-            sql<number>`coalesce(sum(${cashEntries.cashAmount} + ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} + ${cashEntries.transferAmount}), 0)`.mapWith(
-              Number,
-            ),
+          takenAmount: sql<number>`coalesce(sum(${cashEntries.cashAmount}), 0)`.mapWith(Number),
         })
         .from(cashEntries)
         .where(and(...salaryPeriodConditions))

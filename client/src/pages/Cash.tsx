@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
+import { CASH_DRAFT_ENTRY_CATEGORIES, cashDraftEntryAmounts } from "@/lib/cashDraftEntries";
 import { createCashDraftSaver } from "@/lib/cashDraftSaver";
 import { buildEmployeeOptions } from "@/lib/cashPayees";
 import { groupJournalEntries, journalCellTotal } from "@/lib/cashJournalGroups";
@@ -40,10 +41,6 @@ function shiftDate(value: string, days: number): string {
   return localDateInputValue(shifted);
 }
 
-const CATEGORY_TYPE: Record<string, "income" | "expense"> = Object.fromEntries([
-  ...INCOME_CATEGORIES.map(name => [name, "income" as const]),
-  ...EXPENSE_CATEGORIES.map(name => [name, "expense" as const]),
-]);
 const DEBT_COLUMN = "Qarz";
 const CASH_COLUMNS = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
 const JOURNAL_COLUMNS = [...CASH_COLUMNS, DEBT_COLUMN];
@@ -109,7 +106,7 @@ const emptyDraftRow = (): DraftRow => ({
   agentId: "", reason: "", terminal: "", click: "", transfer: "",
   debtAmount: "", debtReason: "", debtId: null,
   amounts: Object.fromEntries(CASH_COLUMNS.map(name => [name, ""])),
-  entryIds: Object.fromEntries(CASH_COLUMNS.map(name => [name, null])),
+  entryIds: Object.fromEntries(CASH_DRAFT_ENTRY_CATEGORIES.map(name => [name, null])),
 });
 
 const cellInputClass =
@@ -292,7 +289,7 @@ function DailyJournalGrid({
   const totals = useMemo(
     () => JOURNAL_COLUMNS.map(name => name === DEBT_COLUMN
       ? (debtEntries.data ?? []).reduce((sum, entry) => sum + entry.amount, 0)
-      : entries.filter(entry => entry.category === name).reduce((sum, entry) => sum + entry.cashAmount + entry.terminalAmount + entry.clickAmount, 0)),
+      : entries.filter(entry => entry.category === name).reduce((sum, entry) => sum + entry.cashAmount, 0)),
     [entries, debtEntries.data],
   );
   const terminalTotal = useMemo(() => entries.reduce((sum, entry) => sum + entry.terminalAmount, 0), [entries]);
@@ -383,27 +380,21 @@ function DailyJournalGrid({
   }
 
   const [flushDraftRow] = useState(() => createCashDraftSaver({
-    categories: CASH_COLUMNS,
+    categories: CASH_DRAFT_ENTRY_CATEGORIES,
     getRow: (index: number) => draftsRef.current[index],
     setEntryId: (index, category, id) => {
       const current = draftsRef.current[index];
       if (current) updateDraft(index, { entryIds: { ...current.entryIds, [category]: id } });
     },
     payload: (draft, category) => {
-      const cashAmount = Math.round(Number(draft.amounts[category] || 0));
-      const terminalAmount = Math.round(Number(draft.terminal || 0));
-      const clickAmount = Math.round(Number(draft.click || 0));
-      const transferAmount = Math.round(Number(draft.transfer || 0));
-      const hasIncomeCash = INCOME_CATEGORIES.some(name => Math.round(Number(draft.amounts[name] || 0)) > 0);
-      const isFallback = category === INCOME_CATEGORIES[0] && !hasIncomeCash
-        && (terminalAmount > 0 || clickAmount > 0 || transferAmount > 0);
-      if (cashAmount <= 0 && !isFallback) return null;
+      const amounts = cashDraftEntryAmounts(draft, category);
+      if (!amounts) return null;
       const payee = payeeFromValue(draft.agentId);
       return {
-        entryDate: timestamp, type: CATEGORY_TYPE[category], category,
+        entryDate: timestamp,
+        ...amounts,
         agentId: payee.agentId ?? undefined, employeeId: payee.employeeId ?? undefined,
         description: draft.reason.trim() || undefined,
-        cashAmount, terminalAmount, clickAmount, transferAmount,
       };
     },
     create: payload => draftCreate.mutateAsync(payload),
@@ -642,9 +633,9 @@ function DailyJournalGrid({
                 {JOURNAL_COLUMNS.map((name, index) => <td key={name} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40 dark:bg-rose-500/8" : ""}`}>
                   {amountCell(group.entries.filter(item => item.category === name), "amount", name, index + 1)}
                 </td>)}
-                <td className="px-1.5 py-1">{amountCell(cashEntries, "terminal", "Терминал", TERMINAL_COL)}</td>
-                <td className="px-1.5 py-1">{amountCell(cashEntries, "click", "Click", CLICK_COL)}</td>
-                <td className="px-1.5 py-1">{amountCell(cashEntries, "transfer", "Перечисление", TRANSFER_COL)}</td>
+                <td className="px-1.5 py-1">{amountCell(cashEntries.filter(item => item.terminalAmount > 0), "terminal", "Терминал", TERMINAL_COL)}</td>
+                <td className="px-1.5 py-1">{amountCell(cashEntries.filter(item => item.clickAmount > 0), "click", "Click", CLICK_COL)}</td>
+                <td className="px-1.5 py-1">{amountCell(cashEntries.filter(item => item.transferAmount > 0), "transfer", "Перечисление", TRANSFER_COL)}</td>
                 <td className="px-1.5 py-1">{notesCell("memo", "Qarz izohi", DEBT_REASON_COL)}</td>
                 <td className="px-1.5 py-1">{notesCell("cash", "Izoh", REASON_COL)}</td>
                 <td className="px-1 py-1">{manageEntries}</td>
@@ -1714,7 +1705,7 @@ export default function Cash() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Jami Приход" value={formatMoney(data?.jamiPrihod, true)} helper="Tanlangan kun" icon={Banknote} tone="green" />
         <MetricCard label="Jami Расход" value={formatMoney(data?.jamiRasxod, true)} helper="Tanlangan kun" icon={Banknote} tone="rose" />
-        <MetricCard label="Қолдиқ" value={formatMoney(kassaQoldigi, true)} helper="Приход - Расход" icon={Landmark} tone="cyan" />
+        <MetricCard label="Naqd qoldiq" value={formatMoney(kassaQoldigi, true)} helper="Tanlangan kun yakunida" icon={Landmark} tone="cyan" />
         <MetricCard
           label="Muammoli agentlar"
           value={String(data?.problemAgentCount ?? 0)}
