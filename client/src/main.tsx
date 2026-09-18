@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { localPreviewLink } from "@/lib/localPreview";
 import { COOKIE_NAME } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
@@ -24,7 +25,7 @@ queryClient.getMutationCache().subscribe(event => {
 });
 
 const trpcClient = trpc.createClient({
-  links: [
+  links: import.meta.env.VITE_LOCAL_PREVIEW === "true" ? [localPreviewLink] : [
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
