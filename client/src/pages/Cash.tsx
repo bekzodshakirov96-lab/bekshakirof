@@ -1691,19 +1691,25 @@ export default function Cash() {
   const allEntries = prihodEntries.data ?? [];
 
   if (daySummary.error) {
-    return <div className="mx-auto w-full max-w-[1500px]"><PageHeader eyebrow="Pul oqimi" title="КАССА" description="Kunlik jurnal va agentlar bo'yicha tezkor nazorat." /><QueryError description={daySummary.error.message} onRetry={() => daySummary.refetch()} /></div>;
+    return <div className="mx-auto w-full max-w-none"><PageHeader eyebrow="Pul oqimi" title="КАССА" description="Kunlik jurnal va agentlar bo'yicha tezkor nazorat." /><QueryError description={daySummary.error.message} onRetry={() => daySummary.refetch()} /></div>;
   }
 
   const data = daySummary.data;
   const kassaQoldigi = data?.kassaQoldigi ?? 0;
 
   return (
-    <div className="mx-auto w-full max-w-[1500px]">
+    <div className="mx-auto w-full max-w-none">
       <PageHeader
         eyebrow="Pul oqimi"
         title="КАССА"
         description="Kunlik jurnal va agentlar bo'yicha tezkor nazorat."
       />
+
+      {import.meta.env.VITE_LOCAL_PREVIEW === "true" && (
+        <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs font-medium text-sky-800 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
+          Local ko‘rish rejimi: namunaviy ma’lumotlar ishlatiladi, kiritilgan qiymatlar bazaga saqlanmaydi.
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Jami Приход" value={formatMoney(data?.jamiPrihod, true)} helper="Tanlangan kun" icon={Banknote} tone="green" />
@@ -1732,7 +1738,7 @@ export default function Cash() {
         onSaved={() => daySummary.refetch()}
       />
 
-      <div className="mt-5 rounded-2xl border border-border bg-card p-5">
+      <div className="mt-5 min-w-0 rounded-2xl border border-border bg-card p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-sm font-bold text-foreground">Kunlik jurnal</h3>
           <div className="flex items-center gap-1.5">
@@ -1782,7 +1788,7 @@ export default function Cash() {
         />
       </div>
 
-      <div className="mt-5 rounded-2xl border border-border bg-card p-5">
+      <div className="mt-5 min-w-0 rounded-2xl border border-border bg-card p-5">
         <AgentProductMatrix />
       </div>
     </div>
