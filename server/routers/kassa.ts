@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, sql, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   agentCashSubmissions,
@@ -18,6 +18,7 @@ import { cashExpenseSql, physicalCashBalanceSql, realizedIncomeSql } from "../ca
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
+import { AGENT_SETTLEMENT_CASH_CATEGORIES } from "../../shared/cashAccounting";
 
 const numberSql = (template: TemplateStringsArray, ...params: unknown[]) =>
   sql<number>(template, ...params).mapWith(Number);
@@ -27,6 +28,29 @@ const numberSql = (template: TemplateStringsArray, ...params: unknown[]) =>
  * "topshirish" tushunchasi yo'q (pul to'g'ridan-to'g'ri bankka/Click hisobiga tushadi),
  * shu sababli ular kassaDailyActuals'dagi qo'lda tasdiqlangan summa bilan solishtiriladi. */
 const CASH_SUBMISSION_CATEGORIES = ["Приход кег", "Приход пет"] as const;
+
+/** Agent x Tovar uchun yopilgan summa: naqd prihodlar va barcha elektron kanallar. */
+const agentSettlementAmountSql = () =>
+  sql<number>`coalesce(sum(
+    case when ${and(
+      eq(cashEntries.type, "income"),
+      inArray(cashEntries.category, [...AGENT_SETTLEMENT_CASH_CATEGORIES]),
+    )} then ${cashEntries.cashAmount} else 0 end
+    + ${cashEntries.terminalAmount}
+    + ${cashEntries.clickAmount}
+    + ${cashEntries.transferAmount}
+  ), 0)`.mapWith(Number);
+
+const agentSettlementEntrySql = () =>
+  or(
+    and(
+      eq(cashEntries.type, "income"),
+      inArray(cashEntries.category, [...AGENT_SETTLEMENT_CASH_CATEGORIES]),
+    ),
+    gt(cashEntries.terminalAmount, 0),
+    gt(cashEntries.clickAmount, 0),
+    gt(cashEntries.transferAmount, 0),
+  );
 const matrixLayoutValueSchema = z.object({
   productOrder: z.array(z.number().int().positive()).max(2_000),
   visibleProductIds: z.array(z.number().int().positive()).max(2_000),
@@ -204,20 +228,19 @@ export const kassaRouter = router({
       .where(and(sql`${agentTakingEntries.entryDate} >= ${start}`, sql`${agentTakingEntries.entryDate} <= ${end}`))
       .groupBy(agentTakingEntries.agentId, agents.name);
 
-    // "Kassa" (topshirilgan naqd) endi qo'lda kiritilmaydi — Kunlik jurnaldagi shu agentning
-    // "Приход кег" va "Приход пет" yozuvlari yig'indisidan avtomatik olinadi.
+    // "Kassa" qo'lda kiritilmaydi — Kunlik jurnaldagi shu agentning Приход кег/пет
+    // naqd summasi hamda Terminal, Click va Перечисление ustunlaridan avtomatik olinadi.
     const journalIncomeRows = await db
       .select({
         agentId: cashEntries.agentId,
         agentName: agents.name,
-        submittedAmount: sql<number>`coalesce(sum(${cashEntries.cashAmount}), 0)`.mapWith(Number),
+        submittedAmount: agentSettlementAmountSql(),
       })
       .from(cashEntries)
       .innerJoin(agents, eq(cashEntries.agentId, agents.id))
       .where(
         and(
-          eq(cashEntries.type, "income"),
-          inArray(cashEntries.category, ["Приход кег", "Приход пет"]),
+          agentSettlementEntrySql(),
           sql`${cashEntries.entryDate} >= ${start}`,
           sql`${cashEntries.entryDate} <= ${end}`,
         ),
@@ -699,13 +722,13 @@ export const kassaRouter = router({
           .where(takingWhere);
 
         const submissionConditions = [
-          eq(cashEntries.type, "income"),
-          inArray(cashEntries.category, ["Приход кег", "Приход пет"]),
+          isNotNull(cashEntries.agentId),
+          agentSettlementEntrySql(),
           input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
           input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
         ].filter(Boolean);
         const [submissionTotals] = await db
-          .select({ submitted: sql<number>`coalesce(sum(${cashEntries.cashAmount}), 0)`.mapWith(Number) })
+          .select({ submitted: agentSettlementAmountSql() })
           .from(cashEntries)
           .where(and(...submissionConditions));
 
@@ -811,8 +834,8 @@ export const kassaRouter = router({
           .groupBy(agentTakingEntries.entryDate, agentTakingEntries.agentId, agents.name);
 
         const submissionConditions = [
-          eq(cashEntries.type, "income"),
-          inArray(cashEntries.category, ["Приход кег", "Приход пет"]),
+          isNotNull(cashEntries.agentId),
+          agentSettlementEntrySql(),
           input.agentId ? eq(cashEntries.agentId, input.agentId) : undefined,
           input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
           input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
@@ -821,11 +844,13 @@ export const kassaRouter = router({
           .select({
             entryDate: cashEntries.entryDate,
             agentId: cashEntries.agentId,
-            submittedAmount: sql<number>`coalesce(sum(${cashEntries.cashAmount}), 0)`.mapWith(Number),
+            agentName: agents.name,
+            submittedAmount: agentSettlementAmountSql(),
           })
           .from(cashEntries)
+          .innerJoin(agents, eq(cashEntries.agentId, agents.id))
           .where(and(...submissionConditions))
-          .groupBy(cashEntries.entryDate, cashEntries.agentId);
+          .groupBy(cashEntries.entryDate, cashEntries.agentId, agents.name);
         const submissionRows = submissionRowsRaw.filter(
           (row): row is typeof row & { agentId: number } => row.agentId !== null,
         );
@@ -852,11 +877,10 @@ export const kassaRouter = router({
         for (const submission of submissionRows) {
           const k = key(submission.entryDate, submission.agentId);
           if (seen.has(k)) continue;
-          const agentName = takingRows.find(row => row.agentId === submission.agentId)?.agentName ?? "";
           rows.push({
             entryDate: submission.entryDate,
             agentId: submission.agentId,
-            agentName,
+            agentName: submission.agentName,
             computedAmount: 0,
             submittedAmount: submission.submittedAmount,
             farq: 0 - submission.submittedAmount,

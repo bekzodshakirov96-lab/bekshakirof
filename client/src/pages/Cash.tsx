@@ -9,7 +9,14 @@ import { CASH_DRAFT_ENTRY_CATEGORIES, cashDraftEntryAmounts } from "@/lib/cashDr
 import { createCashDraftSaver } from "@/lib/cashDraftSaver";
 import { buildEmployeeOptions } from "@/lib/cashPayees";
 import { groupJournalEntries, journalCellTotal } from "@/lib/cashJournalGroups";
-import { formatMoney, localDateInputValue, sanitizeDecimalInput, sanitizeIntegerInput } from "@/lib/format";
+import {
+  formatMoney,
+  sanitizeDecimalInput,
+  sanitizeIntegerInput,
+  shiftDateInputValue,
+  tashkentDateInputValue,
+  tashkentDateToTimestamp,
+} from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { moveProductId } from "@shared/productOrder";
 import { normalizeSearch, normalizeSearchable } from "@shared/translit";
@@ -33,13 +40,9 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-const today = localDateInputValue;
-const dateToTimestamp = (value: string) => new Date(`${value}T12:00:00`).getTime();
-function shiftDate(value: string, days: number): string {
-  const shifted = new Date(dateToTimestamp(value));
-  shifted.setDate(shifted.getDate() + days);
-  return localDateInputValue(shifted);
-}
+const today = tashkentDateInputValue;
+const dateToTimestamp = tashkentDateToTimestamp;
+const shiftDate = shiftDateInputValue;
 
 const DEBT_COLUMN = "Qarz";
 const CASH_COLUMNS = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
@@ -1446,7 +1449,7 @@ function AgentProductMatrix() {
           <tr className="bg-muted/80 text-xs font-bold text-foreground">
             <td className="sticky left-0 whitespace-nowrap bg-muted/80 px-3 py-2" colSpan={3}>
               Касса
-              <span className="ml-1.5 font-normal text-muted-foreground">(Приход кег + Приход пет)</span>
+              <span className="ml-1.5 font-normal text-muted-foreground">(Приход кег + Приход пет + Terminal + Click + Перечисление)</span>
             </td>
             {visibleAgents.map(agent => (
               <td key={agent.id} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
