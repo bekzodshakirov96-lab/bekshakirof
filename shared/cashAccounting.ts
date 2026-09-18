@@ -7,6 +7,7 @@ export type CashAccountingEntry = {
 };
 
 export const ELECTRONIC_PAYMENT_CATEGORY = "Elektron to‘lovlar";
+export const AGENT_SETTLEMENT_CASH_CATEGORIES = ["Приход кег", "Приход пет"] as const;
 
 export type CashReportEntry = CashAccountingEntry & {
   id: number;
@@ -17,6 +18,19 @@ export type NormalizedCashReportEntry<T extends CashReportEntry> = T & {
   reportKey: string;
   isElectronicSplit: boolean;
 };
+
+/**
+ * Agent x Tovar solishtirishida agent yopgan summa: topshirilgan naqd pul va uning
+ * nomiga yozilgan barcha elektron to'lovlar. Rasxod qatoriga tarixan birikib qolgan
+ * elektron to'lov ham to'lov hisoblanadi, ammo rasxodning naqd qismi hisoblanmaydi.
+ */
+export function agentSettlementAmount(entry: CashAccountingEntry & { category: string }) {
+  const submittedCash = entry.type === "income"
+    && AGENT_SETTLEMENT_CASH_CATEGORIES.includes(entry.category as typeof AGENT_SETTLEMENT_CASH_CATEGORIES[number])
+    ? entry.cashAmount
+    : 0;
+  return submittedCash + entry.terminalAmount + entry.clickAmount + (entry.transferAmount ?? 0);
+}
 
 /**
  * Eski Kassa jurnalida bitta rasxod qatoriga naqd rasxod bilan birga Terminal,

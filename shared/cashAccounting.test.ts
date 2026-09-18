@@ -1,7 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { ELECTRONIC_PAYMENT_CATEGORY, normalizeCashReportEntries, summarizeCashAccounting } from "./cashAccounting";
+import {
+  ELECTRONIC_PAYMENT_CATEGORY,
+  agentSettlementAmount,
+  normalizeCashReportEntries,
+  summarizeCashAccounting,
+} from "./cashAccounting";
 
 describe("cash accounting", () => {
+  it("adds cash, Terminal, Click and transfer to the agent settlement", () => {
+    expect(agentSettlementAmount({
+      type: "income",
+      category: "Приход кег",
+      cashAmount: 100_000,
+      terminalAmount: 200_000,
+      clickAmount: 300_000,
+      transferAmount: 400_000,
+    })).toBe(1_000_000);
+  });
+
+  it("counts legacy electronic payments without treating expense cash as agent settlement", () => {
+    expect(agentSettlementAmount({
+      type: "expense",
+      category: "Расход",
+      cashAmount: 100_000,
+      terminalAmount: 200_000,
+      clickAmount: 300_000,
+      transferAmount: 400_000,
+    })).toBe(900_000);
+  });
+
   it("treats Terminal and Click as income even when legacy data attached them to an expense row", () => {
     expect(summarizeCashAccounting([
       { type: "expense", cashAmount: 100_000, terminalAmount: 400_000, clickAmount: 50_000, transferAmount: 25_000 },

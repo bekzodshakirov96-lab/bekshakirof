@@ -47,6 +47,43 @@ export function localDateInputValue(date: Date = new Date()): string {
 }
 
 /**
+ * Biznes kuni barcha qurilmalarda Toshkent kalendari bo'yicha bir xil bo'lishi kerak.
+ * Brauzerning mahalliy vaqt mintaqasiga tayanilsa, Mac va Windows boshqa mintaqalarda
+ * turganida ayni yozuv turli kunga tushib qolishi mumkin.
+ */
+export function tashkentDateInputValue(date: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Tashkent",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+/**
+ * YYYY-MM-DD qiymatini Toshkentdagi kunduz soat 12:00 ga bog'laydi. Natija qurilma
+ * vaqt mintaqasidan mustaqil va serverdagi kunlik chegaralar bilan bir xil ishlaydi.
+ */
+export function tashkentDateToTimestamp(value: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return Number.NaN;
+  const [, year, month, day] = match;
+  const timestamp = Date.UTC(Number(year), Number(month) - 1, Number(day), 7);
+  return tashkentDateInputValue(new Date(timestamp)) === value ? timestamp : Number.NaN;
+}
+
+/** YYYY-MM-DD qiymatini vaqt mintaqasiga bog'lamasdan kunlar bo'yicha suradi. */
+export function shiftDateInputValue(value: string, days: number): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+  const [, year, month, day] = match;
+  const shifted = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day) + days));
+  return shifted.toISOString().slice(0, 10);
+}
+
+/**
  * type="number" ishlatilmasin: fokusdagi number-inputda sichqoncha g'ildiragi qiymatni
  * tasodifan o'zgartirib/o'chirib yuborishi mumkin (brauzerning standart xatti-harakati).
  * O'rniga type="text" + inputMode + shu sanitizatsiya funksiyalaridan foydalaning.
