@@ -62,6 +62,21 @@ export function tashkentDateInputValue(date: Date = new Date()): string {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
+export function formatTashkentDate(value: string | number | Date | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const [year, month, day] = tashkentDateInputValue(date).split("-");
+  return `${day}.${month}.${year}`;
+}
+
+/** Toshkent biznes kunining UTC bo'yicha boshi yoki oxiri. */
+export function tashkentDayBoundary(value: string, endOfDay = false): number {
+  const noon = tashkentDateToTimestamp(value);
+  if (!Number.isFinite(noon)) return Number.NaN;
+  return noon - (endOfDay ? 0 : 12 * 60 * 60 * 1000) + (endOfDay ? 12 * 60 * 60 * 1000 - 1 : 0);
+}
+
 /**
  * YYYY-MM-DD qiymatini Toshkentdagi kunduz soat 12:00 ga bog'laydi. Natija qurilma
  * vaqt mintaqasidan mustaqil va serverdagi kunlik chegaralar bilan bir xil ishlaydi.

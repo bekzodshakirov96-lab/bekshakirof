@@ -1,6 +1,8 @@
 import type { TRPCLink } from "@trpc/client";
 import { observable } from "@trpc/server/observable";
 import type { AppRouter } from "../../../server/routers";
+import { buildAgentDifferenceSummary } from "../../../shared/agentDifference";
+import { tashkentDateInputValue } from "./format";
 
 const agents = ["Dilshod", "Doston", "Farhod", "Rasul", "Rustam", "Suxrob", "Zafar", "Xusayn"]
   .map((name, index) => ({ id: index + 1, name }));
@@ -74,7 +76,18 @@ const daySummary = {
   channelConfirmed: { terminal: 0, click: 0, transfer: 0, note: "" },
 };
 
-function previewResult(path: string) {
+function inPreviewRange(date: Date, input?: unknown) {
+  const range = (input ?? {}) as { from?: number; to?: number };
+  return (!range.from || date.getTime() >= range.from) && (!range.to || date.getTime() <= range.to);
+}
+
+function inPreviewBusinessRange(date: Date, input?: unknown) {
+  const range = (input ?? {}) as { fromDate?: string; toDate?: string };
+  const key = tashkentDateInputValue(date);
+  return (!range.fromDate || key >= range.fromDate) && (!range.toDate || key <= range.toDate);
+}
+
+function previewResult(path: string, input?: unknown) {
   switch (path) {
     case "auth.me":
       return { id: 1, name: "Local preview", email: "preview@localhost", role: "admin", tokenVersion: 0, agentId: null, language: "latin", createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() };
@@ -85,10 +98,87 @@ function previewResult(path: string) {
     case "cash.byDate": return cashEntries;
     case "cash.journalDebt.byDate": return [{ id: 1, entryDate: new Date(), agentId: 6, agentName: "Suxrob", employeeId: null, employeeName: null, amount: 300_000, description: "Mahalliy preview uchun qarz qaydi" }];
     case "cash.openingBalance": return { openingBalance: 37_701_000 };
+    case "cash.categories": return [];
+    case "cash.list": {
+      const query = (input ?? {}) as { page?: number; pageSize?: number; agentId?: number; type?: string; category?: string };
+      const filtered = cashEntries.filter(row => inPreviewRange(row.entryDate, input) && (!query.agentId || row.agentId === query.agentId) && (!query.type || query.type === "all" || row.type === query.type) && (!query.category || row.category.toLocaleLowerCase().includes(query.category.toLocaleLowerCase())));
+      const page = query.page ?? 1;
+      const pageSize = query.pageSize ?? 50;
+      return {
+        items: filtered.slice((page - 1) * pageSize, page * pageSize).map(row => ({ ...row, reportKey: `${row.id}:base`, isElectronicSplit: false })),
+        total: filtered.length, page, pageSize,
+        totals: filtered.reduce((result, row) => {
+          if (row.type === "income") result.cashIncome += row.cashAmount; else result.cashExpense += row.cashAmount;
+          result.terminal += row.terminalAmount; result.click += row.clickAmount; result.transfer += row.transferAmount;
+          return result;
+        }, { cashIncome: 0, cashExpense: 0, terminal: 0, click: 0, transfer: 0 }),
+      };
+    }
     case "kassa.daySummary": return daySummary;
     case "kassa.agentTaking.listForDay": return takingRows;
     case "kassa.dayPrice.listForDay": return [];
     case "kassa.matrixLayout.forDate": return null;
+    case "kassa.report.agentDifferenceSummary": {
+      const requestedIds = typeof input === "object" && input && "agentIds" in input
+        ? (input as { agentIds?: number[] }).agentIds
+        : undefined;
+      const selectedAgents = requestedIds
+        ? agents.filter(agent => requestedIds.includes(agent.id))
+        : agents.filter(agent => takingRows.some(row => row.agentId === agent.id && inPreviewBusinessRange(row.entryDate, input)) || cashEntries.some(row => row.agentId === agent.id && row.type === "income" && inPreviewBusinessRange(row.entryDate, input)));
+      const computedRows = selectedAgents.map(agent => ({
+        ...agent,
+        agentId: agent.id,
+        agentName: agent.name,
+        computedAmount: takingRows.filter(row => row.agentId === agent.id && inPreviewBusinessRange(row.entryDate, input)).reduce((sum, row) => sum + row.amount, 0),
+      }));
+      const submittedRows = selectedAgents.map(agent => ({
+        ...agent,
+        agentId: agent.id,
+        agentName: agent.name,
+        submittedAmount: cashEntries.filter(row => row.agentId === agent.id && row.type === "income" && inPreviewBusinessRange(row.entryDate, input))
+          .reduce((sum, row) => sum + row.cashAmount + row.terminalAmount + row.clickAmount + row.transferAmount, 0),
+      }));
+      return buildAgentDifferenceSummary(selectedAgents.map(agent => ({ agentId: agent.id, agentName: agent.name })), computedRows, submittedRows);
+    }
+    case "kassa.report.agentDifferenceOptions": return agents;
+    case "kassa.report.summary": {
+      const selectedCash = cashEntries.filter(row => inPreviewRange(row.entryDate, input));
+      const income = selectedCash.reduce((sum, row) => sum + (row.type === "income" ? row.cashAmount : 0) + row.terminalAmount + row.clickAmount, 0);
+      const expense = selectedCash.reduce((sum, row) => sum + (row.type === "expense" ? row.cashAmount : 0), 0);
+      const computed = takingRows.filter(row => inPreviewRange(row.entryDate, input)).reduce((sum, row) => sum + row.amount, 0);
+      const submitted = selectedCash.filter(row => row.type === "income").reduce((sum, row) => sum + row.cashAmount + row.terminalAmount + row.clickAmount + row.transferAmount, 0);
+      return { jamiPrihod: income, jamiRasxod: expense, sofNatija: income - expense, agentComputedTotal: computed, agentSubmittedTotal: submitted, agentFarqTotal: computed - submitted };
+    }
+    case "kassa.report.expenseByCategory": {
+      const totals = new Map<string, number>();
+      cashEntries.filter(row => inPreviewRange(row.entryDate, input) && row.type === "expense").forEach(row => totals.set(row.category, (totals.get(row.category) ?? 0) + row.cashAmount));
+      const rows = Array.from(totals, ([category, total]) => ({ category, total }));
+      return { rows, total: rows.reduce((sum, row) => sum + row.total, 0), generatedAt: Date.now() };
+    }
+    case "kassa.report.agentTakingDetails": {
+      const query = (input ?? {}) as { page?: number; pageSize?: number; agentId?: number; productId?: number };
+      const filtered = takingRows.filter(row => inPreviewRange(row.entryDate, input) && (!query.agentId || row.agentId === query.agentId) && (!query.productId || row.productId === query.productId));
+      const page = query.page ?? 1;
+      const pageSize = query.pageSize ?? filtered.length;
+      return { rows: filtered.slice((page - 1) * pageSize, page * pageSize).map(row => ({ ...row, agentName: agents.find(agent => agent.id === row.agentId)?.name ?? "—", productUnit: products.find(product => product.id === row.productId)?.unit ?? null })), totalAmount: filtered.reduce((sum, row) => sum + row.amount, 0), total: filtered.length, page, pageSize, generatedAt: Date.now() };
+    }
+    case "kassa.report.agentReconciliation": {
+      const query = (input ?? {}) as { agentIds?: number[]; agentId?: number; page?: number; pageSize?: number };
+      const selectedAgents = agents.filter(agent => (!query.agentIds || query.agentIds.includes(agent.id)) && (!query.agentId || query.agentId === agent.id) && (takingRows.some(row => row.agentId === agent.id && inPreviewRange(row.entryDate, input)) || cashEntries.some(row => row.agentId === agent.id && row.type === "income" && inPreviewRange(row.entryDate, input))));
+      const rows = selectedAgents.map(agent => {
+        const computedAmount = takingRows.filter(row => row.agentId === agent.id && inPreviewRange(row.entryDate, input)).reduce((sum, row) => sum + row.amount, 0);
+        const submittedAmount = cashEntries.filter(row => row.agentId === agent.id && row.type === "income" && inPreviewRange(row.entryDate, input))
+          .reduce((sum, row) => sum + row.cashAmount + row.terminalAmount + row.clickAmount + row.transferAmount, 0);
+        return { entryDate: new Date(), agentId: agent.id, agentName: agent.name, computedAmount, submittedAmount, farq: computedAmount - submittedAmount, note: null };
+      });
+      const page = query.page ?? 1;
+      const pageSize = query.pageSize ?? rows.length;
+      return {
+        rows: rows.slice((page - 1) * pageSize, page * pageSize), total: rows.length,
+        totals: rows.reduce((result, row) => ({ computedAmount: result.computedAmount + row.computedAmount, submittedAmount: result.submittedAmount + row.submittedAmount, farq: result.farq + row.farq }), { computedAmount: 0, submittedAmount: 0, farq: 0 }),
+        page, pageSize, generatedAt: Date.now(),
+      };
+    }
     default: return { success: true, id: Date.now(), amount: 0 };
   }
 }
@@ -99,7 +189,7 @@ function previewResult(path: string) {
  */
 export const localPreviewLink: TRPCLink<AppRouter> = () => ({ op }) =>
   observable(observer => {
-    observer.next({ result: { data: previewResult(op.path) } });
+    observer.next({ result: { data: previewResult(op.path, op.input) } });
     observer.complete();
     return () => {};
   });

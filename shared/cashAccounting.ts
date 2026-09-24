@@ -67,6 +67,36 @@ export function normalizeCashReportEntries<T extends CashReportEntry>(entries: T
   });
 }
 
+/** Kassaning bo'laklab o'qilgan hisobotini xotirada butun tarixni saqlamasdan yig'adi. */
+export function createCashReportPageAccumulator<T extends CashReportEntry>(options: {
+  page: number;
+  pageSize: number;
+  type: "all" | "income" | "expense";
+  category?: string;
+}) {
+  const items: NormalizedCashReportEntry<T>[] = [];
+  const totals = { cashIncome: 0, cashExpense: 0, terminal: 0, click: 0, transfer: 0 };
+  let total = 0;
+  const firstWanted = (options.page - 1) * options.pageSize;
+  const category = options.category?.toLocaleLowerCase();
+  return {
+    add(batch: T[]) {
+      for (const item of normalizeCashReportEntries(batch)) {
+        if (options.type !== "all" && item.type !== options.type) continue;
+        if (category && !item.category.toLocaleLowerCase().includes(category)) continue;
+        if (total >= firstWanted && total < firstWanted + options.pageSize) items.push(item);
+        total++;
+        if (item.type === "income") totals.cashIncome += item.cashAmount;
+        else totals.cashExpense += item.cashAmount;
+        totals.terminal += item.terminalAmount;
+        totals.click += item.clickAmount;
+        totals.transfer += item.transferAmount ?? 0;
+      }
+    },
+    result() { return { items, total, totals }; },
+  };
+}
+
 /**
  * Terminal va Click — agentdan kassaga keladigan elektron tushumlar. Ular qaysi
  * naqd toifa yozuviga biriktirilganidan qat'i nazar rasxod bo'la olmaydi.

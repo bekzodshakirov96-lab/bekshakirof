@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, cashEntries, employees } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
@@ -8,7 +8,7 @@ import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
 import { cashJournalDebtRouter } from "./cashJournalDebt";
-import { normalizeCashReportEntries, summarizeCashAccounting } from "../../shared/cashAccounting";
+import { createCashReportPageAccumulator, normalizeCashReportEntries, summarizeCashAccounting } from "../../shared/cashAccounting";
 
 function toMySqlDate(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
@@ -117,10 +117,24 @@ export const cashRouter = router({
         input.agentId ? eq(cashEntries.agentId, input.agentId) : undefined,
         input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
         input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+        input.type === "income" ? or(eq(cashEntries.type, "income"), gt(cashEntries.terminalAmount, 0), gt(cashEntries.clickAmount, 0), gt(cashEntries.transferAmount, 0)) : undefined,
+        input.type === "expense" ? and(eq(cashEntries.type, "expense"), gt(cashEntries.cashAmount, 0)) : undefined,
       ].filter(Boolean);
       const where = conditions.length ? and(...conditions) : undefined;
-      const rawItems = await db
-        .select({
+      // Kategoriya qidiruvi bo'lmasa, jami va kanal summalarini DBning o'zida
+      // hisoblaymiz. Shunda birinchi sahifa uchun butun tarixni o'qish shart emas.
+      const aggregate = !input.category ? (await db.select({
+        rawCount: sql<number>`count(*)`.mapWith(Number),
+        mixedCount: sql<number>`coalesce(sum(case when ${cashEntries.type} = 'expense' and ${cashEntries.cashAmount} > 0 and (${cashEntries.terminalAmount} > 0 or ${cashEntries.clickAmount} > 0 or ${cashEntries.transferAmount} > 0) then 1 else 0 end), 0)`.mapWith(Number),
+        incomeCount: sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' then 1 else 0 end), 0)`.mapWith(Number),
+        expenseElectronicCount: sql<number>`coalesce(sum(case when ${cashEntries.type} = 'expense' and (${cashEntries.terminalAmount} > 0 or ${cashEntries.clickAmount} > 0 or ${cashEntries.transferAmount} > 0) then 1 else 0 end), 0)`.mapWith(Number),
+        cashIncome: sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' then ${cashEntries.cashAmount} else 0 end), 0)`.mapWith(Number),
+        cashExpense: sql<number>`coalesce(sum(case when ${cashEntries.type} = 'expense' then ${cashEntries.cashAmount} else 0 end), 0)`.mapWith(Number),
+        terminal: sql<number>`coalesce(sum(${cashEntries.terminalAmount}), 0)`.mapWith(Number),
+        click: sql<number>`coalesce(sum(${cashEntries.clickAmount}), 0)`.mapWith(Number),
+        transfer: sql<number>`coalesce(sum(${cashEntries.transferAmount}), 0)`.mapWith(Number),
+      }).from(cashEntries).where(where))[0] : null;
+      const selection = {
           id: cashEntries.id,
           entryDate: cashEntries.entryDate,
           type: cashEntries.type,
@@ -134,21 +148,42 @@ export const cashRouter = router({
           clickAmount: cashEntries.clickAmount,
           transferAmount: cashEntries.transferAmount,
           source: cashEntries.source,
-        })
-        .from(cashEntries)
-        .leftJoin(agents, eq(cashEntries.agentId, agents.id))
-        .leftJoin(employees, eq(cashEntries.employeeId, employees.id))
-        .where(where)
-        .orderBy(desc(cashEntries.entryDate), desc(cashEntries.id));
-      const normalizedItems = normalizeCashReportEntries(rawItems).filter(item =>
-        (input.type === "all" || item.type === input.type)
-        && (!input.category || item.category.toLocaleLowerCase().includes(input.category.toLocaleLowerCase())),
-      );
-      const total = normalizedItems.length;
-      const items = normalizedItems.slice((input.page - 1) * input.pageSize, input.page * input.pageSize);
+      };
+      const accumulator = createCashReportPageAccumulator<{
+        id: number; entryDate: Date; type: "income" | "expense"; category: string; agentName: string | null;
+        employeeId: number | null; employeeName: string | null; description: string | null;
+        cashAmount: number; terminalAmount: number; clickAmount: number; transferAmount: number;
+        source: typeof cashEntries.$inferSelect.source;
+      }>({ page: input.page, pageSize: input.pageSize, type: input.type, category: input.category });
+      let offset = 0;
+      // DBdan bo'laklab o'qish katta tarixda barcha yozuvlarni xotirada ushlamaydi.
+      while (true) {
+        const batch = await db.select(selection).from(cashEntries)
+          .leftJoin(agents, eq(cashEntries.agentId, agents.id))
+          .leftJoin(employees, eq(cashEntries.employeeId, employees.id))
+          .where(where)
+          .orderBy(desc(cashEntries.entryDate), desc(cashEntries.id))
+          .limit(250).offset(offset);
+        accumulator.add(batch);
+        offset += batch.length;
+        if (batch.length < 250 || (aggregate && accumulator.result().total >= input.page * input.pageSize)) break;
+      }
+      const page = accumulator.result();
+      const total = aggregate
+        ? input.type === "income" ? aggregate.incomeCount + aggregate.expenseElectronicCount
+          : input.type === "expense" ? aggregate.rawCount : aggregate.rawCount + aggregate.mixedCount
+        : page.total;
+      const totals = aggregate ? {
+        cashIncome: aggregate.cashIncome,
+        cashExpense: input.type === "income" ? 0 : aggregate.cashExpense,
+        terminal: input.type === "expense" ? 0 : aggregate.terminal,
+        click: input.type === "expense" ? 0 : aggregate.click,
+        transfer: input.type === "expense" ? 0 : aggregate.transfer,
+      } : page.totals;
       return {
-        items,
+        items: page.items,
         total,
+        totals,
         page: input.page,
         pageSize: input.pageSize,
         pageCount: Math.max(1, Math.ceil(total / input.pageSize)),

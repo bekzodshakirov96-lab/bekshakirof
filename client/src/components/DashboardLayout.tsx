@@ -17,7 +17,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -25,6 +24,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,7 +58,7 @@ import {
   WalletCards,
   Warehouse,
 } from "lucide-react";
-import { useState, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 
@@ -81,16 +81,20 @@ function canSeeMenuItem(item: MenuItem, role: AppRole | undefined) {
   return (item.roles ?? defaultRoles).includes(role);
 }
 
-const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
+const menuGroups: Array<{ id: string; label: string; icon: MenuItem["icon"]; items: MenuItem[] }> = [
   {
+    id: "general",
     label: "Umumiy",
+    icon: LayoutDashboard,
     items: [
       { icon: LayoutDashboard, label: "Boshqaruv paneli", path: "/" },
       { icon: CircleDollarSign, label: "Qarzdorlik hisoboti", path: "/qarzdorlik", roles: ["admin", "accountant", "agent"] },
     ],
   },
   {
+    id: "sales",
     label: "Savdo va moliya",
+    icon: WalletCards,
     items: [
       { icon: Beer, label: "Tezkor KEG savdosi", path: "/tezkor-keg", roles: ["admin", "accountant", "agent"] },
       { icon: ReceiptText, label: "Yangi savdo", path: "/savdo", roles: ["admin", "accountant", "agent"] },
@@ -100,7 +104,9 @@ const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
     ],
   },
   {
+    id: "warehouse",
     label: "Ombor",
+    icon: Warehouse,
     items: [
       { icon: PackageOpen, label: "Mahsulotlar", path: "/mahsulotlar", roles: ["admin", "accountant", "sklad"] },
       { icon: Warehouse, label: "Sklad", path: "/sklad", roles: ["admin", "accountant", "sklad"] },
@@ -109,7 +115,9 @@ const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
     ],
   },
   {
+    id: "partners",
     label: "Hamkorlar",
+    icon: UsersRound,
     items: [
       { icon: UsersRound, label: "Agentlar", path: "/agentlar" },
       { icon: BriefcaseBusiness, label: "Xodimlar", path: "/xodimlar", roles: ["admin", "accountant"] },
@@ -118,7 +126,9 @@ const menuGroups: Array<{ label: string; items: MenuItem[] }> = [
     ],
   },
   {
+    id: "control",
     label: "Nazorat",
+    icon: ShieldCheck,
     items: [
       { icon: Boxes, label: "Tara nazorati", path: "/tara" },
       { icon: FileSpreadsheet, label: "Excel import", path: "/import" },
@@ -398,7 +408,12 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
   const { user } = useAuth();
   const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const { state: sidebarState, isMobile, setOpen } = useSidebar();
   const [location, setLocation] = useLocation();
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
+    const currentGroup = menuGroups.find(group => group.items.some(item => item.path === location));
+    return new Set(currentGroup ? [currentGroup.id] : []);
+  });
   const visibleGroups = menuGroups
     .map(group => ({
       ...group,
@@ -407,6 +422,10 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
     .filter(group => group.items.length > 0);
   const activeItem = visibleGroups.flatMap(group => group.items).find(item => item.path === location);
   const activeGroup = visibleGroups.find(group => group.items.some(item => item.path === location));
+  useEffect(() => {
+    if (!activeGroup) return;
+    setOpenGroups(current => current.has(activeGroup.id) ? current : new Set(current).add(activeGroup.id));
+  }, [location, activeGroup?.id]);
   const roleLabels: Record<AppRole, string> = {
     admin: "Rahbar",
     accountant: "Buxgalter",
@@ -431,13 +450,39 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
           </div>
         </SidebarHeader>
         <SidebarContent className="gap-0 px-2 py-3 group-data-[collapsible=icon]:overflow-y-auto">
-          {visibleGroups.map(group => (
-            <SidebarGroup key={group.label} className="px-0 py-1">
-              <SidebarGroupLabel className="h-7 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden">
-                {group.label}
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="gap-0.5">
+          {visibleGroups.map(group => {
+            const isOpen = openGroups.has(group.id);
+            const isCurrentGroup = activeGroup?.label === group.label;
+            const contentId = `sidebar-group-${group.id}`;
+            return (
+              <SidebarGroup key={group.id} className="px-0 py-0.5">
+              <button
+                type="button"
+                aria-expanded={sidebarState === "collapsed" && !isMobile ? false : isOpen}
+                aria-controls={contentId}
+                title={group.label}
+                onClick={() => {
+                  if (!isMobile && sidebarState === "collapsed") {
+                    setOpenGroups(current => new Set(current).add(group.id));
+                    setOpen(true);
+                  } else {
+                    setOpenGroups(current => {
+                      const next = new Set(current);
+                      if (next.has(group.id)) next.delete(group.id);
+                      else next.add(group.id);
+                      return next;
+                    });
+                  }
+                }}
+                className={`flex h-10 w-full items-center gap-2.5 rounded-lg px-3 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 ${isCurrentGroup ? "bg-sidebar-accent text-sidebar-foreground" : "text-sidebar-foreground/65 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"}`}
+              >
+                <group.icon className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">{group.label}</span>
+                <span className="rounded-md bg-sidebar-accent px-1.5 py-0.5 text-[10px] tabular-nums text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden">{group.items.length}</span>
+                <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[collapsible=icon]:hidden ${isOpen ? "rotate-180" : ""}`} />
+              </button>
+              <SidebarGroupContent id={contentId} hidden={!isOpen} className="group-data-[collapsible=icon]:hidden">
+                <SidebarMenu className="mt-1 gap-0.5 border-l border-sidebar-border ml-5 pl-2">
                   {group.items.map(item => {
                     const isActive = location === item.path;
                     return (
@@ -447,7 +492,7 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
                           aria-current={isActive ? "page" : undefined}
                           tooltip={item.label}
                           onClick={() => setLocation(item.path)}
-                          className="h-10 gap-2.5 rounded-md px-3 text-[13px] font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground data-[active=true]:bg-sidebar-primary data-[active=true]:font-semibold data-[active=true]:text-sidebar-primary-foreground md:h-8 group-data-[collapsible=icon]:mx-auto"
+                          className="h-10 gap-2.5 rounded-md px-3 text-[13px] font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground data-[active=true]:bg-sidebar-primary data-[active=true]:font-semibold data-[active=true]:text-sidebar-primary-foreground md:h-8"
                         >
                           <item.icon className={`h-4 w-4 ${isActive ? "text-sidebar-primary-foreground" : "text-sidebar-foreground/60"}`} />
                           <span>{item.label}</span>
@@ -457,8 +502,9 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
                   })}
                 </SidebarMenu>
               </SidebarGroupContent>
-            </SidebarGroup>
-          ))}
+              </SidebarGroup>
+            );
+          })}
         </SidebarContent>
         <SidebarFooter className="gap-2 border-t border-sidebar-border p-3 group-data-[collapsible=icon]:px-2">
           {/* Ko‘rinish va yozuvni tez almashtirish — hisob kartochkasi ustida */}
