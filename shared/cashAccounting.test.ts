@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ELECTRONIC_PAYMENT_CATEGORY,
   agentSettlementAmount,
+  createCashReportPageAccumulator,
   normalizeCashReportEntries,
   summarizeCashAccounting,
 } from "./cashAccounting";
@@ -90,5 +91,19 @@ describe("cash accounting", () => {
     }])).toEqual([
       expect.objectContaining({ reportKey: "3:base", type: "expense", cashAmount: 500_000 }),
     ]);
+  });
+
+  it("pages normalized movements across batches and totals the full filtered range", () => {
+    const report = createCashReportPageAccumulator({ page: 2, pageSize: 1, type: "all" });
+    report.add([{ id: 17, type: "expense", category: "Расход", cashAmount: 10_000, terminalAmount: 3_000, clickAmount: 0, transferAmount: 0 }]);
+    report.add([{ id: 18, type: "income", category: "Приход кег", cashAmount: 20_000, terminalAmount: 0, clickAmount: 500, transferAmount: 0 }]);
+    expect(report.result().items.map(row => row.reportKey)).toEqual(["17:electronic"]);
+    expect(report.result()).toMatchObject({ total: 3, totals: { cashIncome: 20_000, cashExpense: 10_000, terminal: 3_000, click: 500 } });
+  });
+
+  it("expense filter excludes the electronic half of a historical mixed row", () => {
+    const report = createCashReportPageAccumulator({ page: 1, pageSize: 10, type: "expense" });
+    report.add([{ id: 17, type: "expense", category: "Расход", cashAmount: 10_000, terminalAmount: 3_000, clickAmount: 0, transferAmount: 0 }]);
+    expect(report.result()).toMatchObject({ total: 1, totals: { cashExpense: 10_000, terminal: 0 } });
   });
 });

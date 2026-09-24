@@ -19,6 +19,8 @@ import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
 import { AGENT_SETTLEMENT_CASH_CATEGORIES } from "../../shared/cashAccounting";
+import { buildAgentDifferenceSummary } from "../../shared/agentDifference";
+import { buildDailyReconciliation, tashkentBusinessDate } from "../../shared/agentReconciliation";
 
 const numberSql = (template: TemplateStringsArray, ...params: unknown[]) =>
   sql<number>(template, ...params).mapWith(Number);
@@ -62,12 +64,7 @@ function uniqueIds(ids: number[]) {
 }
 
 function tashkentDateKey(value: number | Date) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tashkent",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(value));
+  return tashkentBusinessDate(new Date(value));
 }
 
 function dayRange(timestamp: number) {
@@ -76,6 +73,23 @@ function dayRange(timestamp: number) {
   const end = new Date(start);
   end.setHours(23, 59, 59, 999);
   return { start, end };
+}
+
+const reportDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
+  const [year, month, day] = value.split("-").map(Number);
+  const timestamp = Date.UTC(year, month - 1, day, 7);
+  return tashkentDateKey(timestamp) === value;
+}, "Sana noto‘g‘ri.");
+
+function reportDateRange(fromDate: string, toDate: string) {
+  const toTimestamp = (value: string) => {
+    const [year, month, day] = value.split("-").map(Number);
+    return Date.UTC(year, month - 1, day) - 5 * 60 * 60 * 1000;
+  };
+  return {
+    start: new Date(toTimestamp(fromDate)),
+    end: new Date(toTimestamp(toDate) + 24 * 60 * 60 * 1000 - 1),
+  };
 }
 
 /**
@@ -693,6 +707,72 @@ export const kassaRouter = router({
   }),
 
   report: router({
+    /** Hisobotlarda tarixiy (faolsiz) agentlarni ham tanlash mumkin bo'lishi kerak. */
+    agentDifferenceOptions: businessProcedure.query(async () => {
+      const db = await requireDb();
+      return db.select({ id: agents.id, name: agents.name }).from(agents).orderBy(agents.name);
+    }),
+
+    /** Sana oralig'i va bir nechta agent bo'yicha Agent x Tovar raznitsasi. */
+    agentDifferenceSummary: businessProcedure
+      .input(
+        z.object({
+          fromDate: reportDateSchema,
+          toDate: reportDateSchema,
+          agentIds: z.array(z.number().int().positive()).max(500).optional(),
+        }).refine(input => input.fromDate <= input.toDate, {
+          message: "Boshlanish sanasi tugash sanasidan keyin bo‘lishi mumkin emas.",
+          path: ["fromDate"],
+        }),
+      )
+      .query(async ({ input }) => {
+        if (input.agentIds?.length === 0) {
+          return buildAgentDifferenceSummary([], [], []);
+        }
+
+        const db = await requireDb();
+        const agentIds = input.agentIds ? uniqueIds(input.agentIds) : undefined;
+        const { start, end } = reportDateRange(input.fromDate, input.toDate);
+        const agentCondition = agentIds ? inArray(agents.id, agentIds) : undefined;
+
+        const [computedRows, submittedRows, selectedAgents] = await Promise.all([
+          db
+            .select({
+              agentId: agentTakingEntries.agentId,
+              agentName: agents.name,
+              computedAmount: sql<number>`coalesce(sum(${agentTakingEntries.amount}), 0)`.mapWith(Number),
+            })
+            .from(agentTakingEntries)
+            .innerJoin(agents, eq(agentTakingEntries.agentId, agents.id))
+            .where(and(gte(agentTakingEntries.entryDate, start), lte(agentTakingEntries.entryDate, end), agentCondition))
+            .groupBy(agentTakingEntries.agentId, agents.name),
+          db
+            .select({
+              agentId: cashEntries.agentId,
+              agentName: agents.name,
+              submittedAmount: agentSettlementAmountSql(),
+            })
+            .from(cashEntries)
+            .innerJoin(agents, eq(cashEntries.agentId, agents.id))
+            .where(and(
+              isNotNull(cashEntries.agentId),
+              agentSettlementEntrySql(),
+              gte(cashEntries.entryDate, start),
+              lte(cashEntries.entryDate, end),
+              agentCondition,
+            ))
+            .groupBy(cashEntries.agentId, agents.name),
+          agentIds
+            ? db.select({ agentId: agents.id, agentName: agents.name }).from(agents).where(inArray(agents.id, agentIds))
+            : Promise.resolve([]),
+        ]);
+
+        const normalizedSubmittedRows = submittedRows.filter(
+          (row): row is typeof row & { agentId: number } => row.agentId !== null,
+        );
+        return buildAgentDifferenceSummary(selectedAgents, computedRows, normalizedSubmittedRows);
+      }),
+
     /** Range totals for the Hisobotlar summary cards. */
     summary: businessProcedure
       .input(z.object({ from: z.number().int().optional(), to: z.number().int().optional() }))
@@ -774,6 +854,8 @@ export const kassaRouter = router({
           productId: z.number().int().positive().optional(),
           from: z.number().int().optional(),
           to: z.number().int().optional(),
+          page: z.number().int().positive().optional(),
+          pageSize: z.number().int().min(10).max(100).optional(),
         }),
       )
       .query(async ({ input }) => {
@@ -785,24 +867,30 @@ export const kassaRouter = router({
           input.to ? sql`${agentTakingEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
         ].filter(Boolean);
         const where = conditions.length ? and(...conditions) : undefined;
-        const countRows = await db.select({ id: agentTakingEntries.id }).from(agentTakingEntries).where(where);
-        assertExportRowLimit(countRows.length, { entityLabel: "agent-tovar yozuvi" });
+        const [totals] = await db.select({
+          count: sql<number>`count(*)`.mapWith(Number),
+          totalAmount: sql<number>`coalesce(sum(${agentTakingEntries.amount}), 0)`.mapWith(Number),
+        }).from(agentTakingEntries).where(where);
+        if (!input.page) assertExportRowLimit(totals.count, { entityLabel: "agent-tovar yozuvi" });
         const rows = await db
           .select({
             id: agentTakingEntries.id,
             entryDate: agentTakingEntries.entryDate,
             agentName: agents.name,
             productName: agentTakingEntries.productName,
+            productUnit: products.unit,
             unitPrice: agentTakingEntries.unitPrice,
             quantity: agentTakingEntries.quantity,
             amount: agentTakingEntries.amount,
           })
           .from(agentTakingEntries)
           .innerJoin(agents, eq(agentTakingEntries.agentId, agents.id))
+          .leftJoin(products, eq(agentTakingEntries.productId, products.id))
           .where(where)
-          .orderBy(desc(agentTakingEntries.entryDate), desc(agentTakingEntries.id));
-        const totalAmount = rows.reduce((sum, row) => sum + row.amount, 0);
-        return { rows, totalAmount, generatedAt: Date.now() };
+          .orderBy(desc(agentTakingEntries.entryDate), desc(agentTakingEntries.id))
+          .limit(input.page ? (input.pageSize ?? 50) : totals.count)
+          .offset(input.page ? (input.page - 1) * (input.pageSize ?? 50) : 0);
+        return { rows, totalAmount: totals.totalAmount, total: totals.count, page: input.page ?? 1, pageSize: input.pageSize ?? totals.count, generatedAt: Date.now() };
       }),
 
     /** Per-agent-per-day reconciliation rows for the detail table, filterable and export-ready. */
@@ -810,14 +898,18 @@ export const kassaRouter = router({
       .input(
         z.object({
           agentId: z.number().int().positive().optional(),
+          agentIds: z.array(z.number().int().positive()).max(500).optional(),
           from: z.number().int().optional(),
           to: z.number().int().optional(),
+          page: z.number().int().positive().optional(),
+          pageSize: z.number().int().min(10).max(100).optional(),
         }),
       )
       .query(async ({ input }) => {
         const db = await requireDb();
         const takingConditions = [
           input.agentId ? eq(agentTakingEntries.agentId, input.agentId) : undefined,
+          input.agentIds ? inArray(agentTakingEntries.agentId, input.agentIds.length ? input.agentIds : [-1]) : undefined,
           input.from ? sql`${agentTakingEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
           input.to ? sql`${agentTakingEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
         ].filter(Boolean);
@@ -837,6 +929,7 @@ export const kassaRouter = router({
           isNotNull(cashEntries.agentId),
           agentSettlementEntrySql(),
           input.agentId ? eq(cashEntries.agentId, input.agentId) : undefined,
+          input.agentIds ? inArray(cashEntries.agentId, input.agentIds.length ? input.agentIds : [-1]) : undefined,
           input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
           input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
         ].filter(Boolean);
@@ -855,41 +948,15 @@ export const kassaRouter = router({
           (row): row is typeof row & { agentId: number } => row.agentId !== null,
         );
 
-        const key = (date: Date, agentId: number) => `${date.toISOString().slice(0, 10)}:${agentId}`;
-        const submissionMap = new Map(submissionRows.map(row => [key(row.entryDate, row.agentId), row]));
-        const seen = new Set<string>();
-        const rows = takingRows.map(row => {
-          const k = key(row.entryDate, row.agentId);
-          seen.add(k);
-          const submission = submissionMap.get(k);
-          const submittedAmount = submission?.submittedAmount ?? 0;
-          return {
-            entryDate: row.entryDate,
-            agentId: row.agentId,
-            agentName: row.agentName,
-            computedAmount: row.computedAmount,
-            submittedAmount,
-            farq: row.computedAmount - submittedAmount,
-            note: null as string | null,
-          };
-        });
-        // Include submission-only rows (agent had journal income on a day with no taking entries recorded).
-        for (const submission of submissionRows) {
-          const k = key(submission.entryDate, submission.agentId);
-          if (seen.has(k)) continue;
-          rows.push({
-            entryDate: submission.entryDate,
-            agentId: submission.agentId,
-            agentName: submission.agentName,
-            computedAmount: 0,
-            submittedAmount: submission.submittedAmount,
-            farq: 0 - submission.submittedAmount,
-            note: null as string | null,
-          });
-        }
-        rows.sort((a, b) => b.entryDate.getTime() - a.entryDate.getTime());
-        assertExportRowLimit(rows.length, { entityLabel: "agent solishtirish yozuvi" });
-        return { rows, generatedAt: Date.now() };
+        const rows = buildDailyReconciliation(takingRows, submissionRows);
+        if (!input.page) assertExportRowLimit(rows.length, { entityLabel: "agent solishtirish yozuvi" });
+        const totals = rows.reduce((result, row) => ({
+          computedAmount: result.computedAmount + row.computedAmount,
+          submittedAmount: result.submittedAmount + row.submittedAmount,
+          farq: result.farq + row.farq,
+        }), { computedAmount: 0, submittedAmount: 0, farq: 0 });
+        const pageSize = input.pageSize ?? 50;
+        return { rows: input.page ? rows.slice((input.page - 1) * pageSize, input.page * pageSize) : rows, total: rows.length, totals, page: input.page ?? 1, pageSize: input.page ? pageSize : rows.length, generatedAt: Date.now() };
       }),
   }),
 });
