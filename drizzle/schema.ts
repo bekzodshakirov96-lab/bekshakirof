@@ -233,6 +233,23 @@ export const cashEntries = mysqlTable(
   ],
 );
 
+/** Jurnaldagi bitta o‘tkazma bir nechta savdo yoki qarz to‘lovini jamlashi mumkin. */
+export const cashTransferLinks = mysqlTable(
+  "cash_transfer_links",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    cashEntryId: int("cashEntryId").notNull().references(() => cashEntries.id, { onDelete: "cascade" }),
+    transactionId: int("transactionId").references(() => transactions.id, { onDelete: "restrict" }),
+    clientPaymentId: int("clientPaymentId").references(() => clientPayments.id, { onDelete: "restrict" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("cash_transfer_links_cash_idx").on(table.cashEntryId),
+    uniqueIndex("cash_transfer_links_transaction_unique").on(table.transactionId),
+    uniqueIndex("cash_transfer_links_payment_unique").on(table.clientPaymentId),
+  ],
+);
+
 /** Kunlik jurnalning "Qarz" eslatmalari. Kassa kirim/chiqimi va mijoz qarziga ta'sir qilmaydi. */
 export const cashJournalDebts = mysqlTable(
   "cash_journal_debts",

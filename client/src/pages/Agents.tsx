@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { formatMoney, localDateInputValue, sanitizeDecimalInput } from "@/lib/format";
+import { formatMoney, localDateInputValue, sanitizeDecimalInput, tashkentDateInputValue, tashkentDayBoundary } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
 import { ArrowDown, ArrowUp, ArrowUpDown, CircleDollarSign, HandCoins, Pencil, Percent, Plus, RotateCcw, Search, Trash2, TrendingUp, UserCheck } from "lucide-react";
@@ -61,14 +61,10 @@ function CommissionPercentCell({ agentId, commissionPercent, canEdit }: { agentI
 /** "Agent oyligi" — period commission report, computed from collected (paid) amounts only. */
 function AgentCommissionSection() {
   const utils = trpc.useUtils();
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return localDateInputValue(d);
-  });
-  const [toDate, setToDate] = useState(() => localDateInputValue());
-  const from = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : undefined;
-  const to = toDate ? new Date(`${toDate}T23:59:59.999`).getTime() : undefined;
+  const [fromDate, setFromDate] = useState(() => `${tashkentDateInputValue().slice(0, 7)}-01`);
+  const [toDate, setToDate] = useState(() => tashkentDateInputValue());
+  const from = fromDate ? tashkentDayBoundary(fromDate) : undefined;
+  const to = toDate ? tashkentDayBoundary(toDate, true) : undefined;
   const report = trpc.agents.commissionReport.useQuery({ from, to });
   const periodLabel = `${fromDate} — ${toDate}`;
 

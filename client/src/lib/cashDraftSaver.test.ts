@@ -35,6 +35,32 @@ function setup() {
 }
 
 describe("cash draft saves", () => {
+  it("retries the same request after a lost response without creating a second cash entry", async () => {
+    const row = { amount: 10_000, requestId: "same-operation", entryIds: { income: null as number | null } };
+    const stored = new Map<string, number>();
+    let loseResponse = true;
+    const save = createCashDraftSaver({
+      categories: ["income"],
+      getRow: () => row,
+      payload: () => ({ amount: row.amount, requestId: row.requestId }),
+      setEntryId: (_index, _category, id) => { row.entryIds.income = id; },
+      create: async payload => {
+        if (!stored.has(payload.requestId)) stored.set(payload.requestId, stored.size + 1);
+        if (loseResponse) { loseResponse = false; throw new Error("Response lost after commit"); }
+        return { id: stored.get(payload.requestId)! };
+      },
+      update: async () => {},
+      remove: async () => {},
+      refresh: async () => {},
+    });
+
+    await save(0);
+    expect(row.entryIds.income).toBeNull();
+    await save(0);
+    expect(stored.size).toBe(1);
+    expect(row.entryIds.income).toBe(1);
+  });
+
   it("creates once when autosave, blur and unmount overlap during a slow request", async () => {
     const state = setup();
     const started = deferred();

@@ -42,6 +42,26 @@ function makeWorkbook() {
 }
 
 describe("Excel import normalizatsiyasi", () => {
+  function cashWorkbook(rows: unknown[][]) {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ["Kassa"], [], [], [],
+      ["№", "Sana", "Turi", "Kategoriya", "Agent", "Izoh", "Naqd", "Terminal", "Click"],
+      ...rows,
+    ]), "Kassa");
+    return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  }
+
+  it("keeps the same cash identity when its amount changes, and rejects ambiguous row numbers", () => {
+    const row = [7, new Date("2026-09-10T00:00:00Z"), "Kirim", "Savdo", "Akmal", "Tushum", 100_000, 0, 0];
+    const original = parseDistributionWorkbook(cashWorkbook([row])).cashEntries[0];
+    const corrected = parseDistributionWorkbook(cashWorkbook([[...row.slice(0, 6), 120_000, 0, 0]])).cashEntries[0];
+    expect(original.sourceKey).toBe(corrected.sourceKey);
+    expect(corrected.cashAmount).toBe(120_000);
+    expect(() => parseDistributionWorkbook(cashWorkbook([[null, ...row.slice(1)]]))).toThrow("№ yo‘q");
+    expect(() => parseDistributionWorkbook(cashWorkbook([row, row]))).toThrow("takrorlangan №");
+  });
+
   it("barcha biznes varaqlarini to‘g‘ri parse qiladi va dublikat agentni birlashtiradi", () => {
     const parsed = parseDistributionWorkbook(makeWorkbook());
 

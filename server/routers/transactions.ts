@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, cashEntries, clientPayments, clients, products, transactions } from "../../drizzle/schema";
+import { agents, cashEntries, cashTransferLinks, clientPayments, clients, products, transactions } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure, requireOwnAgent, salesProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import {
@@ -682,6 +682,15 @@ export const transactionsRouter = router({
       await assertPeriodUnlocked(previous.transactionDate);
       await assertPeriodUnlocked(new Date(input.transactionDate));
       return db.transaction(async tx => {
+        const [lockedTransaction] = await tx.select().from(transactions)
+          .where(eq(transactions.id, input.id)).limit(1).for("update");
+        if (!lockedTransaction) throw new Error("Operatsiya topilmadi.");
+        if (lockedTransaction.transactionDate.getTime() !== input.transactionDate
+          || lockedTransaction.agentId !== input.agentId || lockedTransaction.transferPayment !== input.transferPayment) {
+          const [link] = await tx.select({ id: cashTransferLinks.id }).from(cashTransferLinks)
+            .where(eq(cashTransferLinks.transactionId, input.id)).limit(1);
+          if (link) throw new Error("Savdo o‘tkazmasi Kassa IDsi bilan bog‘langan. Sana, agent yoki o‘tkazma summasini o‘zgartirishdan oldin bog‘lanishni olib tashlang.");
+        }
         const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).limit(1);
         if (!product) throw new Error("Mahsulot topilmadi.");
         const totalAmount = Math.round(input.quantity * input.salePrice);
@@ -754,6 +763,11 @@ export const transactionsRouter = router({
       }
       await assertPeriodUnlocked(existing.transactionDate);
       return db.transaction(async tx => {
+        await tx.select({ id: transactions.id }).from(transactions)
+          .where(eq(transactions.id, input.id)).limit(1).for("update");
+        const [link] = await tx.select({ id: cashTransferLinks.id }).from(cashTransferLinks)
+          .where(eq(cashTransferLinks.transactionId, input.id)).limit(1);
+        if (link) throw new Error("Savdo o‘tkazmasi Kassa IDsi bilan bog‘langan. O‘chirishdan oldin bog‘lanishni olib tashlang.");
         await tx.delete(transactions).where(eq(transactions.id, input.id));
         await logAudit(tx, {
           tableName: "transactions",

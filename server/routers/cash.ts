@@ -1,21 +1,30 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gt, gte, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, cashEntries, employees } from "../../drizzle/schema";
+import { agents, cashEntries, cashTransferLinks, employees } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { requireDb } from "../db";
+import { tashkentDayRange, toMySqlDate } from "../businessDay";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
 import { cashJournalDebtRouter } from "./cashJournalDebt";
+import { cashTransferLinksRouter } from "./cashTransferLinks";
 import { createCashReportPageAccumulator, normalizeCashReportEntries, summarizeCashAccounting } from "../../shared/cashAccounting";
 
-function toMySqlDate(d: Date): string {
-  return d.toISOString().slice(0, 19).replace("T", " ");
+function isDuplicateKeyError(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; depth < 4 && current && typeof current === "object"; depth += 1) {
+    const item = current as { code?: string; errno?: number; cause?: unknown };
+    if (item.code === "ER_DUP_ENTRY" || item.errno === 1062) return true;
+    current = item.cause;
+  }
+  return false;
 }
 
 export const cashRouter = router({
   journalDebt: cashJournalDebtRouter,
+  transferLinks: cashTransferLinksRouter,
   /** Distinct category names previously used (optionally filtered to one type), most-recent
    * first — powers the "tur" dropdown on the quick Kassa entry form and report filters,
    * without a separate types table. */
@@ -33,10 +42,7 @@ export const cashRouter = router({
   /** All entries for one exact calendar day — used by the fast Kassa page (no pagination, a day is small). */
   byDate: businessProcedure.input(z.object({ date: z.number().int() })).query(async ({ input }) => {
     const db = await requireDb();
-    const dayStart = new Date(input.date);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setHours(23, 59, 59, 999);
+    const { start: dayStart, end: dayEnd } = tashkentDayRange(input.date);
     const rows = await db
       .select({
         id: cashEntries.id,
@@ -58,7 +64,26 @@ export const cashRouter = router({
       .leftJoin(employees, eq(cashEntries.employeeId, employees.id))
       .where(and(gte(cashEntries.entryDate, dayStart), lte(cashEntries.entryDate, dayEnd)))
       .orderBy(desc(cashEntries.id));
-    return rows;
+    const links = rows.length ? await db.select({
+      cashEntryId: cashTransferLinks.cashEntryId,
+      transactionId: cashTransferLinks.transactionId,
+      clientPaymentId: cashTransferLinks.clientPaymentId,
+    }).from(cashTransferLinks).where(inArray(cashTransferLinks.cashEntryId, rows.map(row => row.id))) : [];
+    const linksByEntry = new Map<number, Array<{ kind: "transaction" | "client_payment"; id: number }>>();
+    const independentEntries = new Set<number>();
+    for (const link of links) {
+      if (link.transactionId == null && link.clientPaymentId == null) independentEntries.add(link.cashEntryId);
+      const sources = linksByEntry.get(link.cashEntryId) ?? [];
+      if (link.transactionId != null) sources.push({ kind: "transaction", id: link.transactionId });
+      if (link.clientPaymentId != null) sources.push({ kind: "client_payment", id: link.clientPaymentId });
+      linksByEntry.set(link.cashEntryId, sources);
+    }
+    return rows.map(row => ({
+      ...row,
+      transferSourceIds: linksByEntry.get(row.id) ?? [],
+      transferLinkMode: (linksByEntry.get(row.id)?.length ? "linked"
+        : independentEntries.has(row.id) ? "independent" : "legacy") as "linked" | "independent" | "legacy",
+    }));
   }),
   delete: businessProcedure
     .input(z.object({ id: z.number().int().positive(), reason: z.string().trim().max(500).optional() }))
@@ -85,8 +110,7 @@ export const cashRouter = router({
    * boshlanadi va har kun avvalgi kunning yakuniy qoldig'i bilan davom etadi. */
   openingBalance: businessProcedure.input(z.object({ date: z.number().int() })).query(async ({ input }) => {
     const db = await requireDb();
-    const dayStart = new Date(input.date);
-    dayStart.setHours(0, 0, 0, 0);
+    const { start: dayStart } = tashkentDayRange(input.date);
     const [row] = await db
       .select({
         balance: sql<number>`coalesce(sum(case when ${cashEntries.type} = 'income' then ${cashEntries.cashAmount} else -${cashEntries.cashAmount} end), 0)`.mapWith(
@@ -249,6 +273,7 @@ export const cashRouter = router({
           terminalAmount: z.number().int().min(0).default(0),
           clickAmount: z.number().int().min(0).default(0),
           transferAmount: z.number().int().min(0).default(0),
+          requestId: z.string().uuid().optional(),
         })
         .refine(value => value.cashAmount + value.terminalAmount + value.clickAmount + value.transferAmount > 0, {
           message: "Kamida bitta to‘lov kanali summasi kiritilishi kerak.",
@@ -256,46 +281,63 @@ export const cashRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
+      const sourceKey = `manual:${ctx.user.id}:${input.requestId ?? randomUUID()}`;
+      if (input.requestId) {
+        const [existing] = await db.select({ id: cashEntries.id }).from(cashEntries)
+          .where(eq(cashEntries.sourceKey, sourceKey)).limit(1);
+        if (existing) return { success: true, id: existing.id };
+      }
       await assertPeriodUnlocked(new Date(input.entryDate));
-      return db.transaction(async tx => {
-        const [created] = await tx
-          .insert(cashEntries)
-          .values({
-            sourceKey: `manual:${randomUUID()}`,
-            entryDate: new Date(input.entryDate),
-            type: input.type,
-            category: input.category,
-            agentId: input.agentId ?? null,
-            employeeId: input.employeeId ?? null,
-            description: input.description,
-            cashAmount: input.cashAmount,
-            terminalAmount: input.terminalAmount,
-            clickAmount: input.clickAmount,
-            transferAmount: input.transferAmount,
-            source: "manual",
-            createdBy: ctx.user.id,
-          })
-          .$returningId();
-        await logAudit(tx, {
-          tableName: "cash_entries",
-          recordId: created.id,
-          action: "create",
-          userId: ctx.user.id,
-          after: {
-            entryDate: new Date(input.entryDate),
-            type: input.type,
-            category: input.category,
-            agentId: input.agentId ?? null,
-            employeeId: input.employeeId ?? null,
-            description: input.description ?? null,
-            cashAmount: input.cashAmount,
-            terminalAmount: input.terminalAmount,
-            clickAmount: input.clickAmount,
-            transferAmount: input.transferAmount,
-          },
+      try {
+        return await db.transaction(async tx => {
+          const [created] = await tx
+            .insert(cashEntries)
+            .values({
+              sourceKey,
+              entryDate: new Date(input.entryDate),
+              type: input.type,
+              category: input.category,
+              agentId: input.agentId ?? null,
+              employeeId: input.employeeId ?? null,
+              description: input.description,
+              cashAmount: input.cashAmount,
+              terminalAmount: input.terminalAmount,
+              clickAmount: input.clickAmount,
+              transferAmount: input.transferAmount,
+              source: "manual",
+              createdBy: ctx.user.id,
+            })
+            .$returningId();
+          await logAudit(tx, {
+            tableName: "cash_entries",
+            recordId: created.id,
+            action: "create",
+            userId: ctx.user.id,
+            after: {
+              entryDate: new Date(input.entryDate),
+              type: input.type,
+              category: input.category,
+              agentId: input.agentId ?? null,
+              employeeId: input.employeeId ?? null,
+              description: input.description ?? null,
+              cashAmount: input.cashAmount,
+              terminalAmount: input.terminalAmount,
+              clickAmount: input.clickAmount,
+              transferAmount: input.transferAmount,
+            },
+          });
+          return { success: true, id: created.id };
         });
-        return { success: true, id: created.id };
-      });
+      } catch (error) {
+        // Bir xil so'rov ikki brauzerdan bir vaqtda kelsa, yagona indeks
+        // ikkinchi INSERT'ni to'xtatadi. Mavjud yozuvning ID'sini qaytaramiz.
+        if (input.requestId && isDuplicateKeyError(error)) {
+          const [existing] = await db.select({ id: cashEntries.id }).from(cashEntries)
+            .where(eq(cashEntries.sourceKey, sourceKey)).limit(1);
+          if (existing) return { success: true, id: existing.id };
+        }
+        throw error;
+      }
     }),
   update: businessProcedure
     .input(
@@ -326,7 +368,31 @@ export const cashRouter = router({
       if (!previous) throw new Error("Kassa yozuvi topilmadi.");
       await assertPeriodUnlocked(previous.entryDate);
       await assertPeriodUnlocked(new Date(input.entryDate));
+      const nextEmployeeId = input.employeeId === undefined ? previous.employeeId : input.employeeId;
+      const nextDescription = input.description ?? null;
+      if (previous.entryDate.getTime() === input.entryDate
+        && previous.type === input.type && previous.category === input.category
+        && previous.agentId === (input.agentId ?? null)
+        && previous.employeeId === nextEmployeeId
+        && previous.description === nextDescription
+        && previous.cashAmount === input.cashAmount
+        && previous.terminalAmount === input.terminalAmount
+        && previous.clickAmount === input.clickAmount
+        && previous.transferAmount === input.transferAmount) {
+        return { success: true };
+      }
       return db.transaction(async tx => {
+        const [lockedEntry] = await tx.select().from(cashEntries).where(eq(cashEntries.id, input.id)).limit(1).for("update");
+        if (!lockedEntry) throw new Error("Kassa yozuvi topilmadi.");
+        const [sourceLink] = await tx.select({ id: cashTransferLinks.id }).from(cashTransferLinks)
+          .where(and(eq(cashTransferLinks.cashEntryId, input.id),
+            or(sql`${cashTransferLinks.transactionId} is not null`, sql`${cashTransferLinks.clientPaymentId} is not null`)))
+          .limit(1);
+        if (sourceLink && (lockedEntry.entryDate.getTime() !== input.entryDate
+          || lockedEntry.agentId !== (input.agentId ?? null) || lockedEntry.type !== input.type
+          || lockedEntry.transferAmount !== input.transferAmount)) {
+          throw new Error("O‘tkazma IDlari bog‘langan. Sana, agent yoki summani o‘zgartirishdan oldin ID bog‘lanishini olib tashlang.");
+        }
         await tx
           .update(cashEntries)
           .set({
@@ -334,8 +400,8 @@ export const cashRouter = router({
             type: input.type,
             category: input.category,
             agentId: input.agentId ?? null,
-            ...(input.employeeId !== undefined ? { employeeId: input.employeeId } : {}),
-            description: input.description ?? null,
+            ...(input.employeeId !== undefined ? { employeeId: nextEmployeeId } : {}),
+            description: nextDescription,
             cashAmount: input.cashAmount,
             terminalAmount: input.terminalAmount,
             clickAmount: input.clickAmount,

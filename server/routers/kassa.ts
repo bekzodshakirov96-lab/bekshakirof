@@ -5,6 +5,7 @@ import {
   agentTakingEntries,
   agents,
   cashEntries,
+  cashTransferLinks,
   cashMatrixLayouts,
   clientPayments,
   dailyProductPrices,
@@ -16,6 +17,8 @@ import { businessProcedure, skladProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { cashExpenseSql, physicalCashBalanceSql, realizedIncomeSql } from "../cashAccounting";
 import { requireDb } from "../db";
+import { tashkentDayRange, toMySqlDate } from "../businessDay";
+import { reconcileExpectedTransfers } from "../transferExpectation";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
 import { AGENT_SETTLEMENT_CASH_CATEGORIES } from "../../shared/cashAccounting";
@@ -68,11 +71,7 @@ function tashkentDateKey(value: number | Date) {
 }
 
 function dayRange(timestamp: number) {
-  const start = new Date(timestamp);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
+  return tashkentDayRange(timestamp);
 }
 
 const reportDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
@@ -110,35 +109,31 @@ async function computePendingByChannel(timestamp: number) {
 
   const [expected] = await db
     .select({
-      cashToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${todayStart} then ${transactions.cashPayment} else 0 end), 0)`,
-      terminalToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${todayStart} then ${transactions.terminalPayment} else 0 end), 0)`,
-      clickToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${todayStart} then ${transactions.clickPayment} else 0 end), 0)`,
-      transferToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${todayStart} then ${transactions.transferPayment} else 0 end), 0)`,
+      cashToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${toMySqlDate(todayStart)} then ${transactions.cashPayment} else 0 end), 0)`,
+      terminalToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${toMySqlDate(todayStart)} then ${transactions.terminalPayment} else 0 end), 0)`,
+      clickToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${toMySqlDate(todayStart)} then ${transactions.clickPayment} else 0 end), 0)`,
       cashCumulative: numberSql`coalesce(sum(${transactions.cashPayment}), 0)`,
       terminalCumulative: numberSql`coalesce(sum(${transactions.terminalPayment}), 0)`,
       clickCumulative: numberSql`coalesce(sum(${transactions.clickPayment}), 0)`,
-      transferCumulative: numberSql`coalesce(sum(${transactions.transferPayment}), 0)`,
     })
     .from(transactions)
-    .where(sql`${transactions.transactionDate} <= ${end}`);
+    .where(sql`${transactions.transactionDate} <= ${toMySqlDate(end)}`);
 
   const [expectedDebt] = await db
     .select({
-      cashToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${todayStart} then ${clientPayments.cashAmount} else 0 end), 0)`,
-      terminalToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${todayStart} then ${clientPayments.terminalAmount} else 0 end), 0)`,
-      clickToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${todayStart} then ${clientPayments.clickAmount} else 0 end), 0)`,
-      transferToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${todayStart} then ${clientPayments.transferAmount} else 0 end), 0)`,
+      cashToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${toMySqlDate(todayStart)} then ${clientPayments.cashAmount} else 0 end), 0)`,
+      terminalToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${toMySqlDate(todayStart)} then ${clientPayments.terminalAmount} else 0 end), 0)`,
+      clickToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${toMySqlDate(todayStart)} then ${clientPayments.clickAmount} else 0 end), 0)`,
       cashCumulative: numberSql`coalesce(sum(${clientPayments.cashAmount}), 0)`,
       terminalCumulative: numberSql`coalesce(sum(${clientPayments.terminalAmount}), 0)`,
       clickCumulative: numberSql`coalesce(sum(${clientPayments.clickAmount}), 0)`,
-      transferCumulative: numberSql`coalesce(sum(${clientPayments.transferAmount}), 0)`,
     })
     .from(clientPayments)
-    .where(sql`${clientPayments.paymentDate} <= ${end}`);
+    .where(sql`${clientPayments.paymentDate} <= ${toMySqlDate(end)}`);
 
   const [actualCash] = await db
     .select({
-      today: numberSql`coalesce(sum(case when ${cashEntries.entryDate} >= ${todayStart} then ${cashEntries.cashAmount} else 0 end), 0)`,
+      today: numberSql`coalesce(sum(case when ${cashEntries.entryDate} >= ${toMySqlDate(todayStart)} then ${cashEntries.cashAmount} else 0 end), 0)`,
       cumulative: numberSql`coalesce(sum(${cashEntries.cashAmount}), 0)`,
     })
     .from(cashEntries)
@@ -146,46 +141,71 @@ async function computePendingByChannel(timestamp: number) {
       and(
         eq(cashEntries.type, "income"),
         inArray(cashEntries.category, [...CASH_SUBMISSION_CATEGORIES]),
-        sql`${cashEntries.entryDate} <= ${end}`,
+        sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`,
       ),
     );
 
-  // Presel guruhi kabi — bu tizimdan tashqarida sotilib, Kunlik jurnalga Перечисление
-  // sifatida qo'lda yozib qo'yiladigan savdolar. Bu pul bankka darhol tushmagani uchun
-  // "haqiqatda tasdiqlangan" tomonga emas, aynan shu "kutilgan" tomonga qo'shiladi —
-  // tasdiqlanguncha (kassaDailyActuals.transferConfirmed) qoldiq sifatida ko'rinib turadi.
-  const [expectedTransferEntries] = await db
-    .select({
-      today: numberSql`coalesce(sum(case when ${cashEntries.entryDate} >= ${todayStart} then ${cashEntries.transferAmount} else 0 end), 0)`,
-      cumulative: numberSql`coalesce(sum(${cashEntries.transferAmount}), 0)`,
-    })
-    .from(cashEntries)
-    .where(and(eq(cashEntries.type, "income"), sql`${cashEntries.entryDate} <= ${end}`));
+  // Jurnaldagi Перечисление agentning kunlik jami o'tkazmasi. Savdo/qarz
+  // yozuvlaridagi summani unga ko'r-ko'rona qo'shish bir to'lovni ikki marta sanaydi.
+  // SQL'dagi sana Drizzle saqlagan UTC ko'rinishidan Toshkent biznes kuniga o'tadi.
+  const [saleTransfers, debtTransfers, journalTransfers] = await Promise.all([
+    db.select({
+      day: sql<string>`date_format(date_add(${transactions.transactionDate}, interval 5 hour), '%Y-%m-%d')`,
+      agentId: transactions.agentId,
+      amount: sql<number>`sum(${transactions.transferPayment})`.mapWith(Number),
+    }).from(transactions)
+      .where(and(gt(transactions.transferPayment, 0), sql`${transactions.transactionDate} <= ${toMySqlDate(end)}`))
+      .groupBy(sql`date_format(date_add(${transactions.transactionDate}, interval 5 hour), '%Y-%m-%d')`, transactions.agentId),
+    db.select({
+      day: sql<string>`date_format(date_add(${clientPayments.paymentDate}, interval 5 hour), '%Y-%m-%d')`,
+      agentId: clientPayments.agentId,
+      amount: sql<number>`sum(${clientPayments.transferAmount})`.mapWith(Number),
+    }).from(clientPayments)
+      .where(and(gt(clientPayments.transferAmount, 0), sql`${clientPayments.paymentDate} <= ${toMySqlDate(end)}`))
+      .groupBy(sql`date_format(date_add(${clientPayments.paymentDate}, interval 5 hour), '%Y-%m-%d')`, clientPayments.agentId),
+    db.select({
+      day: sql<string>`date_format(date_add(${cashEntries.entryDate}, interval 5 hour), '%Y-%m-%d')`,
+      agentId: cashEntries.agentId,
+      amount: cashEntries.transferAmount,
+      linkedAmount: sql<number>`coalesce(sum(coalesce(${transactions.transferPayment}, 0) + coalesce(${clientPayments.transferAmount}, 0)), 0)`.mapWith(Number),
+      linkedCount: sql<number>`coalesce(sum(case when ${cashTransferLinks.transactionId} is not null or ${cashTransferLinks.clientPaymentId} is not null then 1 else 0 end), 0)`.mapWith(Number),
+      independentCount: sql<number>`coalesce(sum(case when ${cashTransferLinks.id} is not null and ${cashTransferLinks.transactionId} is null and ${cashTransferLinks.clientPaymentId} is null then 1 else 0 end), 0)`.mapWith(Number),
+    }).from(cashEntries)
+      .leftJoin(cashTransferLinks, eq(cashTransferLinks.cashEntryId, cashEntries.id))
+      .leftJoin(transactions, eq(cashTransferLinks.transactionId, transactions.id))
+      .leftJoin(clientPayments, eq(cashTransferLinks.clientPaymentId, clientPayments.id))
+      .where(and(eq(cashEntries.type, "income"), gt(cashEntries.transferAmount, 0), sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`))
+      .groupBy(cashEntries.id, cashEntries.entryDate, cashEntries.agentId, cashEntries.transferAmount),
+  ]);
+  const expectedTransfer = reconcileExpectedTransfers(saleTransfers, debtTransfers,
+    journalTransfers.map(row => ({
+      day: row.day, agentId: row.agentId, amount: row.amount, linkedAmount: row.linkedAmount,
+      mode: row.linkedCount > 0 ? "linked" as const : row.independentCount > 0 ? "independent" as const : "legacy" as const,
+    })), tashkentDateKey(timestamp));
 
   const [actualConfirmed] = await db
     .select({
-      terminalToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${todayStart} then ${kassaDailyActuals.terminalConfirmed} else 0 end), 0)`,
-      clickToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${todayStart} then ${kassaDailyActuals.clickConfirmed} else 0 end), 0)`,
-      transferToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${todayStart} then ${kassaDailyActuals.transferConfirmed} else 0 end), 0)`,
+      terminalToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${toMySqlDate(todayStart)} then ${kassaDailyActuals.terminalConfirmed} else 0 end), 0)`,
+      clickToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${toMySqlDate(todayStart)} then ${kassaDailyActuals.clickConfirmed} else 0 end), 0)`,
+      transferToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${toMySqlDate(todayStart)} then ${kassaDailyActuals.transferConfirmed} else 0 end), 0)`,
       terminalCumulative: numberSql`coalesce(sum(${kassaDailyActuals.terminalConfirmed}), 0)`,
       clickCumulative: numberSql`coalesce(sum(${kassaDailyActuals.clickConfirmed}), 0)`,
       transferCumulative: numberSql`coalesce(sum(${kassaDailyActuals.transferConfirmed}), 0)`,
     })
     .from(kassaDailyActuals)
-    .where(sql`${kassaDailyActuals.entryDate} <= ${end}`);
+    .where(sql`${kassaDailyActuals.entryDate} <= ${toMySqlDate(end)}`);
 
   const channel = (name: "cash" | "terminal" | "click" | "transfer") => {
-    const key = name === "cash" ? "cash" : name;
-    let expectedToday = expected[`${key}Today` as keyof typeof expected] + expectedDebt[`${key}Today` as keyof typeof expectedDebt];
-    let expectedCumulative =
-      expected[`${key}Cumulative` as keyof typeof expected] + expectedDebt[`${key}Cumulative` as keyof typeof expectedDebt];
     if (name === "transfer") {
-      expectedToday += expectedTransferEntries.today;
-      expectedCumulative += expectedTransferEntries.cumulative;
+      return {
+        today: expectedTransfer.today - actualConfirmed.transferToday,
+        cumulative: expectedTransfer.cumulative - actualConfirmed.transferCumulative,
+      };
     }
-    const actualToday = name === "cash" ? actualCash.today : actualConfirmed[`${key}Today` as keyof typeof actualConfirmed];
-    const actualCumulative =
-      name === "cash" ? actualCash.cumulative : actualConfirmed[`${key}Cumulative` as keyof typeof actualConfirmed];
+    const expectedToday = expected[`${name}Today`] + expectedDebt[`${name}Today`];
+    const expectedCumulative = expected[`${name}Cumulative`] + expectedDebt[`${name}Cumulative`];
+    const actualToday = name === "cash" ? actualCash.today : actualConfirmed[`${name}Today`];
+    const actualCumulative = name === "cash" ? actualCash.cumulative : actualConfirmed[`${name}Cumulative`];
     return {
       today: expectedToday - actualToday,
       cumulative: expectedCumulative - actualCumulative,
@@ -200,10 +220,6 @@ async function computePendingByChannel(timestamp: number) {
   };
 }
 
-function toMySqlDate(d: Date): string {
-  return d.toISOString().slice(0, 19).replace("T", " ");
-}
-
 export const kassaRouter = router({
   /** Everything the fast Kassa page needs for one day, in a single round trip. */
   daySummary: businessProcedure.input(z.object({ date: z.number().int() })).query(async ({ input }) => {
@@ -216,19 +232,19 @@ export const kassaRouter = router({
         rasxod: cashExpenseSql(),
       })
       .from(cashEntries)
-      .where(and(sql`${cashEntries.entryDate} >= ${start}`, sql`${cashEntries.entryDate} <= ${end}`));
+      .where(and(sql`${cashEntries.entryDate} >= ${toMySqlDate(start)}`, sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`));
 
     // Haqiqiy sanalgan naqd kunlik oqim bilan emas, shu kun oxiridagi jami naqd
     // qoldiq bilan solishtiriladi. Oldingi kunlarning qoldig'i ham shu yerda bor.
     const [cashPosition] = await db
       .select({ balance: physicalCashBalanceSql() })
       .from(cashEntries)
-      .where(sql`${cashEntries.entryDate} <= ${end}`);
+      .where(sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`);
 
     const [actual] = await db
       .select()
       .from(kassaDailyActuals)
-      .where(and(sql`${kassaDailyActuals.entryDate} >= ${start}`, sql`${kassaDailyActuals.entryDate} <= ${end}`))
+      .where(and(sql`${kassaDailyActuals.entryDate} >= ${toMySqlDate(start)}`, sql`${kassaDailyActuals.entryDate} <= ${toMySqlDate(end)}`))
       .limit(1);
 
     const takingRows = await db
@@ -239,7 +255,7 @@ export const kassaRouter = router({
       })
       .from(agentTakingEntries)
       .innerJoin(agents, eq(agentTakingEntries.agentId, agents.id))
-      .where(and(sql`${agentTakingEntries.entryDate} >= ${start}`, sql`${agentTakingEntries.entryDate} <= ${end}`))
+      .where(and(sql`${agentTakingEntries.entryDate} >= ${toMySqlDate(start)}`, sql`${agentTakingEntries.entryDate} <= ${toMySqlDate(end)}`))
       .groupBy(agentTakingEntries.agentId, agents.name);
 
     // "Kassa" qo'lda kiritilmaydi — Kunlik jurnaldagi shu agentning Приход кег/пет
@@ -255,8 +271,8 @@ export const kassaRouter = router({
       .where(
         and(
           agentSettlementEntrySql(),
-          sql`${cashEntries.entryDate} >= ${start}`,
-          sql`${cashEntries.entryDate} <= ${end}`,
+          sql`${cashEntries.entryDate} >= ${toMySqlDate(start)}`,
+          sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`,
         ),
       )
       .groupBy(cashEntries.agentId, agents.name);
@@ -321,7 +337,7 @@ export const kassaRouter = router({
         const [existing] = await db
           .select({ id: kassaDailyActuals.id })
           .from(kassaDailyActuals)
-          .where(and(sql`${kassaDailyActuals.entryDate} >= ${start}`, sql`${kassaDailyActuals.entryDate} <= ${end}`))
+          .where(and(sql`${kassaDailyActuals.entryDate} >= ${toMySqlDate(start)}`, sql`${kassaDailyActuals.entryDate} <= ${toMySqlDate(end)}`))
           .limit(1);
         return db.transaction(async tx => {
           if (existing) {
@@ -379,7 +395,7 @@ export const kassaRouter = router({
         const [existing] = await db
           .select()
           .from(kassaDailyActuals)
-          .where(and(sql`${kassaDailyActuals.entryDate} >= ${start}`, sql`${kassaDailyActuals.entryDate} <= ${end}`))
+          .where(and(sql`${kassaDailyActuals.entryDate} >= ${toMySqlDate(start)}`, sql`${kassaDailyActuals.entryDate} <= ${toMySqlDate(end)}`))
           .limit(1);
         const note = input.note !== undefined ? input.note : existing?.note;
         return db.transaction(async tx => {
@@ -513,8 +529,8 @@ export const kassaRouter = router({
           .where(
             and(
               eq(agentTakingEntries.agentId, input.agentId),
-              sql`${agentTakingEntries.entryDate} >= ${start}`,
-              sql`${agentTakingEntries.entryDate} <= ${end}`,
+              sql`${agentTakingEntries.entryDate} >= ${toMySqlDate(start)}`,
+              sql`${agentTakingEntries.entryDate} <= ${toMySqlDate(end)}`,
             ),
           )
           .orderBy(agentTakingEntries.id);
@@ -526,7 +542,7 @@ export const kassaRouter = router({
       return db
         .select()
         .from(agentTakingEntries)
-        .where(and(sql`${agentTakingEntries.entryDate} >= ${start}`, sql`${agentTakingEntries.entryDate} <= ${end}`))
+        .where(and(sql`${agentTakingEntries.entryDate} >= ${toMySqlDate(start)}`, sql`${agentTakingEntries.entryDate} <= ${toMySqlDate(end)}`))
         .orderBy(agentTakingEntries.id);
     }),
     /** Omborchi tovarni agentga topshirgan payti shu yerga yozadi — sklad qoldig'iga
@@ -683,8 +699,8 @@ export const kassaRouter = router({
           .where(
             and(
               eq(agentCashSubmissions.agentId, input.agentId),
-              sql`${agentCashSubmissions.entryDate} >= ${start}`,
-              sql`${agentCashSubmissions.entryDate} <= ${end}`,
+              sql`${agentCashSubmissions.entryDate} >= ${toMySqlDate(start)}`,
+              sql`${agentCashSubmissions.entryDate} <= ${toMySqlDate(end)}`,
             ),
           )
           .limit(1);

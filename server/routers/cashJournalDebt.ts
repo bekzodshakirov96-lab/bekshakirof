@@ -5,6 +5,7 @@ import { agents, cashJournalDebts, employees } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { requireDb } from "../db";
+import { tashkentDayRange } from "../businessDay";
 import { router } from "../_core/trpc";
 
 const entrySchema = z.object({
@@ -55,10 +56,7 @@ export const cashJournalDebtRouter = router({
     .input(z.object({ date: entrySchema.shape.entryDate }))
     .query(async ({ input }) => {
       const db = await requireDb();
-      const dayStart = new Date(input.date);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setHours(23, 59, 59, 999);
+      const { start: dayStart, end: dayEnd } = tashkentDayRange(input.date);
       return db.select({
         id: cashJournalDebts.id,
         entryDate: cashJournalDebts.entryDate,

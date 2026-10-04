@@ -11,6 +11,7 @@ import {
   transactions,
 } from "../drizzle/schema";
 import { getDb } from "./db";
+import { getPeriodLockDate, logAudit } from "./auditLog";
 import {
   containerLabel,
   normalizeContainerType,
@@ -292,6 +293,11 @@ export function parseDistributionWorkbook(buffer: Buffer | Uint8Array): ParsedWo
       if (row.slice(0, 16).some(value => text(value)) && row[1]) result.skippedRows += 1;
       continue;
     }
+    // Naqd summa yoki izoh tahrirlansa ham ayni yozuvni topish uchun barqaror № shart.
+    // Tarkibdan hash yasash o'zgartirilgan qatorni yangi kassa yozuviga aylantiradi.
+    if (!text(row[0])) {
+      throw new Error(`Kassa varag‘ining ${index + 1}-qatorida № yo‘q. Dublikat bo‘lmasligi uchun qatorga raqam kiriting.`);
+    }
     result.cashEntries.push({
       sourceKey: numberedSourceKey("excel:cash", row[0], entryDate, [
         row[1], row[2], row[3], row[4], row[6], row[7], row[8],
@@ -305,6 +311,14 @@ export function parseDistributionWorkbook(buffer: Buffer | Uint8Array): ParsedWo
       terminalAmount: money(row[7]),
       clickAmount: money(row[8]),
     });
+  }
+
+  const cashKeys = new Set<string>();
+  for (const item of result.cashEntries) {
+    if (cashKeys.has(item.sourceKey)) {
+      throw new Error(`Kassa varag‘ida takrorlangan № bor: ${item.sourceKey}. Har bir yozuvga alohida raqam bering.`);
+    }
+    cashKeys.add(item.sourceKey);
   }
 
   const containerSheetRows = sheetRows(workbook, "Tara_harakati");
@@ -366,6 +380,15 @@ export async function importDistributionWorkbook(options: {
 
   try {
     const parsed = parseDistributionWorkbook(options.buffer);
+    const lockDate = await getPeriodLockDate();
+    const lockedRow = lockDate && [
+      ...parsed.cashEntries.map(item => item.entryDate),
+      ...parsed.transactions.map(item => item.transactionDate),
+      ...parsed.containerMovements.map(item => item.movementDate),
+    ].find(date => date.getTime() <= lockDate.getTime());
+    if (lockedRow) {
+      throw new Error("Excel faylida yopilgan davrga tegishli moliyaviy yozuv bor. Davr qulfini tekshiring.");
+    }
     let fileKey: string | null = null;
     let fileUrl: string | null = null;
 
@@ -551,32 +574,51 @@ export async function importDistributionWorkbook(options: {
           });
       }
 
-      const existingCashKeys = new Set(
-        (await tx.select({ key: cashEntries.sourceKey }).from(cashEntries)).map(item => item.key),
-      );
       for (const item of parsed.cashEntries) {
-        if (existingCashKeys.has(item.sourceKey)) updatedRows += 1;
-        else addedRows += 1;
-        await tx
-          .insert(cashEntries)
-          .values({
-            ...item,
-            agentId: item.agentName ? agentMap.get(keyPart(item.agentName)) ?? null : null,
-            source: "excel",
-            createdBy: options.userId ?? null,
-          })
-          .onDuplicateKeyUpdate({
-            set: {
-              entryDate: item.entryDate,
-              type: item.type,
-              category: item.category,
-              agentId: item.agentName ? agentMap.get(keyPart(item.agentName)) ?? null : null,
-              description: item.description,
-              cashAmount: item.cashAmount,
-              terminalAmount: item.terminalAmount,
-              clickAmount: item.clickAmount,
-            },
+        const agentId = item.agentName ? agentMap.get(keyPart(item.agentName)) ?? null : null;
+        const values = {
+          entryDate: item.entryDate,
+          type: item.type,
+          category: item.category,
+          agentId,
+          description: item.description,
+          cashAmount: item.cashAmount,
+          terminalAmount: item.terminalAmount,
+          clickAmount: item.clickAmount,
+        };
+        const [previous] = await tx.select().from(cashEntries)
+          .where(eq(cashEntries.sourceKey, item.sourceKey)).limit(1);
+        if (previous) {
+          if (lockDate && previous.entryDate.getTime() <= lockDate.getTime()) {
+            throw new Error("Excel importi yopilgan davrdagi kassa yozuvini o‘zgartira olmaydi.");
+          }
+          updatedRows += 1;
+          const changed = previous.entryDate.getTime() !== values.entryDate.getTime()
+            || previous.type !== values.type || previous.category !== values.category
+            || previous.agentId !== values.agentId || previous.description !== values.description
+            || previous.cashAmount !== values.cashAmount
+            || previous.terminalAmount !== values.terminalAmount
+            || previous.clickAmount !== values.clickAmount;
+          if (changed) {
+            await tx.update(cashEntries).set(values).where(eq(cashEntries.id, previous.id));
+            await logAudit(tx, {
+              tableName: "cash_entries", recordId: previous.id, action: "update",
+              userId: options.userId ?? null, before: previous,
+              after: { ...previous, ...values }, reason: `Excel import #${importId}`,
+            });
+          }
+        } else {
+          addedRows += 1;
+          const [created] = await tx.insert(cashEntries).values({
+            ...item, agentId, source: "excel", createdBy: options.userId ?? null,
+          }).$returningId();
+          await logAudit(tx, {
+            tableName: "cash_entries", recordId: created.id, action: "create",
+            userId: options.userId ?? null,
+            after: { sourceKey: item.sourceKey, ...values, source: "excel" },
+            reason: `Excel import #${importId}`,
           });
+        }
       }
 
       const existingContainerKeys = new Set(

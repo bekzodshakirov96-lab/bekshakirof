@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, gte, lt, lte } from "drizzle-orm";
 import { z } from "zod";
-import { agents, clientPayments, clients, containerMovements, transactions } from "../../drizzle/schema";
+import { agents, cashTransferLinks, clientPayments, clients, containerMovements, transactions } from "../../drizzle/schema";
 import { businessProcedure, debtsViewProcedure, requireOwnAgent, salesProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import {
@@ -206,6 +206,11 @@ export const debtsRouter = router({
         if (owner?.agentId != null) requireOwnAgent(ctx.user.role, ctx.user.agentId, owner.agentId);
         await assertPeriodUnlocked(existing.paymentDate);
         return db.transaction(async tx => {
+          await tx.select({ id: clientPayments.id }).from(clientPayments)
+            .where(eq(clientPayments.id, input.id)).limit(1).for("update");
+          const [link] = await tx.select({ id: cashTransferLinks.id }).from(cashTransferLinks)
+            .where(eq(cashTransferLinks.clientPaymentId, input.id)).limit(1);
+          if (link) throw new Error("Qarz to‘lovi Kassa IDsi bilan bog‘langan. O‘chirishdan oldin bog‘lanishni olib tashlang.");
           await tx.delete(clientPayments).where(eq(clientPayments.id, input.id));
           await logAudit(tx, {
             tableName: "client_payments",
