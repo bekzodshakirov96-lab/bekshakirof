@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
-import { CASH_DRAFT_ENTRY_CATEGORIES, cashDraftEntryAmounts } from "@/lib/cashDraftEntries";
+import { CASH_DRAFT_ENTRY_CATEGORIES, PAYMENT_CHANNEL_CATEGORY, cashDraftEntryAmounts } from "@/lib/cashDraftEntries";
 import { createCashDraftSaver } from "@/lib/cashDraftSaver";
 import { buildEmployeeOptions } from "@/lib/cashPayees";
 import { groupJournalEntries, journalCellTotal } from "@/lib/cashJournalGroups";
@@ -75,6 +75,8 @@ type CashEntryRow = {
   terminalAmount: number;
   clickAmount: number;
   transferAmount: number;
+  transferSourceIds?: TransferSource[];
+  transferLinkMode?: "legacy" | "linked" | "independent";
 };
 
 /** Qarz — faqat jurnal qaydi; pul harakati va mijoz qarziga kirmaydi. */
@@ -104,12 +106,15 @@ type DraftRow = {
   /** Har bir toifa uchun avtomatik saqlangandan keyingi cashEntries.id — bor bo'lsa,
    * keyingi o'zgarishlar yangi yozuv yaratmaydi, mavjudini yangilaydi. */
   entryIds: Record<string, number | null>;
+  /** So'rov javobi yo'qolsa ham ayni katakni qayta yaratib yubormaslik uchun. */
+  requestIds: Record<string, string>;
 };
 const emptyDraftRow = (): DraftRow => ({
   agentId: "", reason: "", terminal: "", click: "", transfer: "",
   debtAmount: "", debtReason: "", debtId: null,
   amounts: Object.fromEntries(CASH_COLUMNS.map(name => [name, ""])),
   entryIds: Object.fromEntries(CASH_DRAFT_ENTRY_CATEGORIES.map(name => [name, null])),
+  requestIds: Object.fromEntries(CASH_DRAFT_ENTRY_CATEGORIES.map(name => [name, crypto.randomUUID()])),
 });
 
 const cellInputClass =
@@ -135,6 +140,92 @@ function JournalDetails({ title, trigger, children }: { title: string; trigger: 
         <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>Yopish</Button>
       </div>
       <div className="max-h-[min(60vh,calc(var(--radix-popover-content-available-height)-5rem))] space-y-3 overflow-y-auto">{children}</div>
+    </PopoverContent>
+  </Popover>;
+}
+
+type TransferSource = { kind: "transaction" | "client_payment"; id: number };
+
+/** Aniq manba IDlari bilan jurnal o'tkazmasini bog'lash. Eski yozuvlar qo'lda tasdiqlanmaguncha o'zgarmaydi. */
+function TransferSourcePicker({ entryId, linkedSources = [], linkMode = "legacy", onChanged }: {
+  entryId: number; linkedSources?: TransferSource[]; linkMode?: "legacy" | "linked" | "independent"; onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"legacy" | "linked" | "independent">("legacy");
+  const [selected, setSelected] = useState<TransferSource[]>([]);
+  const utils = trpc.useUtils();
+  const options = trpc.cash.transferLinks.options.useQuery({ cashEntryId: entryId }, { enabled: open });
+  useEffect(() => {
+    if (!options.data) return;
+    setMode(options.data.mode);
+    setSelected(options.data.selected);
+  }, [options.data]);
+  const save = trpc.cash.transferLinks.save.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.cash.transferLinks.options.invalidate({ cashEntryId: entryId }),
+        utils.cash.byDate.invalidate(),
+        utils.kassa.daySummary.invalidate(),
+      ]);
+      setOpen(false);
+      onChanged();
+      toast.success("O‘tkazma manbasi saqlandi");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const selectedAmount = (options.data?.sources ?? [])
+    .filter(source => selected.some(item => item.kind === source.kind && item.id === source.id))
+    .reduce((sum, source) => sum + source.amount, 0);
+  const sourceLabel = linkedSources.map(source => `${source.kind === "transaction" ? "S" : "Q"}${source.id}`).join(", ");
+  return <Popover open={open} onOpenChange={setOpen}>
+    <PopoverTrigger asChild>
+      <button type="button" aria-label={`O‘tkazma #${entryId} manba IDlarini tanlash`}
+        title={sourceLabel || (linkMode === "independent" ? "Mustaqil o‘tkazma" : "Manba IDsi kiritilmagan")}
+        className="max-w-28 shrink-0 truncate rounded border border-border px-1.5 py-1 text-[10px] font-semibold text-primary hover:bg-muted">
+        {sourceLabel || (linkMode === "independent" ? "Alohida" : "ID")}
+      </button>
+    </PopoverTrigger>
+    <PopoverContent align="end" className="w-[min(25rem,calc(100vw-2rem))] bg-card p-4" aria-label="O‘tkazma manba IDlari">
+      <p className="mb-2 text-sm font-semibold">O‘tkazma #{entryId} manbasi</p>
+      <p className="mb-3 text-xs text-muted-foreground">Jurnaldagi {formatMoney(options.data?.entryAmount ?? 0)} qaysi savdo yoki qarz to‘loviga tegishli ekanini belgilang.</p>
+      <p className="mb-2 text-xs text-muted-foreground">S — savdo IDsi, Q — qarz to‘lovi IDsi.</p>
+      {options.isLoading && <p className="text-sm">Yuklanmoqda…</p>}
+      {options.error && <p className="text-sm text-destructive">{options.error.message}</p>}
+      {options.data && <div className="space-y-3">
+        <label className="flex cursor-pointer items-start gap-2 text-sm">
+          <input type="radio" name={`transfer-mode-${entryId}`} checked={mode === "linked"} onChange={() => setMode("linked")} />
+          <span>Savdo yoki qarz to‘lovi IDlariga bog‘lash</span>
+        </label>
+        {mode === "linked" && <div className="max-h-52 space-y-1 overflow-y-auto rounded-md border p-2">
+          {options.data.sources.length === 0 && <p className="text-xs text-muted-foreground">Shu sana va agent uchun manba topilmadi.</p>}
+          {options.data.sources.map(source => {
+            const checked = selected.some(item => item.kind === source.kind && item.id === source.id);
+            return <label key={`${source.kind}:${source.id}`} className={`flex items-center gap-2 rounded px-1 py-1 text-xs ${source.available ? "cursor-pointer hover:bg-muted" : "opacity-50"}`}>
+              <Checkbox checked={checked} disabled={!source.available}
+                onCheckedChange={value => setSelected(current => value
+                  ? [...current, { kind: source.kind, id: source.id }]
+                  : current.filter(item => item.kind !== source.kind || item.id !== source.id))} />
+              <span className="min-w-0 flex-1 truncate" title={source.label}>{source.label}</span>
+              <span className="shrink-0 tabular-nums">{formatMoney(source.amount)}</span>
+            </label>;
+          })}
+          <p className="border-t pt-2 text-xs">Tanlangan: {formatMoney(selectedAmount)}</p>
+        </div>}
+        <label className="flex cursor-pointer items-start gap-2 text-sm">
+          <input type="radio" name={`transfer-mode-${entryId}`} checked={mode === "independent"} onChange={() => setMode("independent")} />
+          <span>Mustaqil o‘tkazma (savdo/qarz to‘lovida qayd etilmagan)</span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-2 text-sm">
+          <input type="radio" name={`transfer-mode-${entryId}`} checked={mode === "legacy"} onChange={() => setMode("legacy")} />
+          <span>Eski yozuv — manba aniqlanmagan</span>
+        </label>
+        <p className="text-xs text-muted-foreground">Bog‘langan summadan ortiq qismi mustaqil o‘tkazma deb hisoblanadi. Eski yozuvlar faqat siz tanlasangiz yangilanadi.</p>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>Bekor qilish</Button>
+          <Button type="button" size="sm" disabled={save.isPending || (mode === "linked" && (selected.length === 0 || selectedAmount > options.data.entryAmount))}
+            onClick={() => save.mutate({ cashEntryId: entryId, mode, sources: mode === "linked" ? selected : [] })}>Saqlash</Button>
+        </div>
+      </div>}
     </PopoverContent>
   </Popover>;
 }
@@ -387,7 +478,13 @@ function DailyJournalGrid({
     getRow: (index: number) => draftsRef.current[index],
     setEntryId: (index, category, id) => {
       const current = draftsRef.current[index];
-      if (current) updateDraft(index, { entryIds: { ...current.entryIds, [category]: id } });
+      if (current) updateDraft(index, {
+        entryIds: { ...current.entryIds, [category]: id },
+        // O'chirilgan katakka keyin yangi summa yozilsa, bu yangi amal bo'ladi.
+        requestIds: id === null
+          ? { ...current.requestIds, [category]: crypto.randomUUID() }
+          : current.requestIds,
+      });
     },
     payload: (draft, category) => {
       const amounts = cashDraftEntryAmounts(draft, category);
@@ -396,6 +493,7 @@ function DailyJournalGrid({
       return {
         entryDate: timestamp,
         ...amounts,
+        requestId: draft.requestIds[category],
         agentId: payee.agentId ?? undefined, employeeId: payee.employeeId ?? undefined,
         description: draft.reason.trim() || undefined,
       };
@@ -537,7 +635,7 @@ function DailyJournalGrid({
             {JOURNAL_COLUMNS.map(name => <th key={name} title={name === DEBT_COLUMN ? "Faqat qayd — kassa qoldig‘iga ta’sir qilmaydi" : undefined} className={`whitespace-nowrap px-3 py-2.5 text-right ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" : ""}`}>{name}</th>)}
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Терминал</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-right">Click</th>
-            <th className="whitespace-nowrap px-3 py-2.5 text-right">Перечисление</th>
+            <th className="whitespace-nowrap px-3 py-2.5 text-right" title="Agentning shu kundagi jami bank o'tkazmalari">Перечисление</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-left">Qarz izohi</th>
             <th className="whitespace-nowrap px-3 py-2.5 text-left">Izoh</th>
             <th className="w-11" />
@@ -557,7 +655,7 @@ function DailyJournalGrid({
               const numberInput = (item: JournalRow, field: "amount" | "terminal" | "click" | "transfer", col?: number) => {
                 const value = field === "amount" ? (item.type === "memo" ? item.amount : item.cashAmount)
                   : item[`${field}Amount`];
-                return <input
+                const input = <input
                   key={`${journalRowKey(item)}-${field}-${value}`}
                   type="text" inputMode="numeric" defaultValue={String(value)}
                   aria-label={`${item.category} — ${field === "amount" ? "summa" : field} #${item.id}`}
@@ -571,6 +669,10 @@ function DailyJournalGrid({
                     else if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
                   }}
                 />;
+                return field === "transfer" && item.type !== "memo" && item.transferAmount > 0
+                  ? <div className="flex items-center gap-1">{input}<TransferSourcePicker entryId={item.id}
+                    linkedSources={item.transferSourceIds} linkMode={item.transferLinkMode} onChanged={onChanged} /></div>
+                  : input;
               };
               const amountCell = (items: JournalRow[], field: "amount" | "terminal" | "click" | "transfer", title: string, col: number) => {
                 if (!items.length) return <span className={emptyCellClass}>—</span>;
@@ -717,7 +819,7 @@ function DailyJournalGrid({
                   />}
                 </td>
                 <td className="px-1.5 py-1">
-                  {entry.type === "memo" ? <span className={emptyCellClass}>—</span> : <input
+                  {entry.type === "memo" ? <span className={emptyCellClass}>—</span> : <div className="flex items-center gap-1"><input
                     key={`transfer-${entry.id}-${entry.transferAmount}`}
                     type="text" inputMode="numeric"
                     data-journal-cell={`${rowIndex}-${TRANSFER_COL}`}
@@ -727,7 +829,8 @@ function DailyJournalGrid({
                     onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
                     onBlur={event => commitExistingChannel(entry, "transfer", event.target.value)}
                     onKeyDown={event => onAmountKeyDown(event, rowIndex, TRANSFER_COL)}
-                  />}
+                  />{entry.transferAmount > 0 && <TransferSourcePicker entryId={entry.id}
+                    linkedSources={entry.transferSourceIds} linkMode={entry.transferLinkMode} onChanged={onChanged} />}</div>}
                 </td>
                 <td className="px-1.5 py-1">
                   {entry.type === "memo" ? <input
@@ -849,6 +952,7 @@ function DailyJournalGrid({
                 />
               </td>
               <td className="px-1.5 py-1">
+                <div className="flex items-center gap-1">
                 <input
                   type="text" inputMode="numeric"
                   data-journal-cell={`${rowIndex}-${TRANSFER_COL}`}
@@ -858,6 +962,12 @@ function DailyJournalGrid({
                   onChange={event => { updateDraft(index, { transfer: sanitizeIntegerInput(event.target.value) }); scheduleAutoSave(index); }}
                   onKeyDown={event => onAmountKeyDown(event, rowIndex, TRANSFER_COL)}
                 />
+                {draft.entryIds[PAYMENT_CHANNEL_CATEGORY] && Number(draft.transfer) > 0 &&
+                  <TransferSourcePicker entryId={draft.entryIds[PAYMENT_CHANNEL_CATEGORY]}
+                    linkedSources={entries.find(entry => entry.id === draft.entryIds[PAYMENT_CHANNEL_CATEGORY])?.transferSourceIds}
+                    linkMode={entries.find(entry => entry.id === draft.entryIds[PAYMENT_CHANNEL_CATEGORY])?.transferLinkMode}
+                    onChanged={onChanged} />}
+                </div>
               </td>
               <td className="px-1.5 py-1" data-debt-cell="true">
                 <input
@@ -1527,7 +1637,8 @@ function PendingKassaPanel({
     <div className="mt-5 rounded-2xl border border-border bg-card p-5">
       <div className="mb-1 flex items-center gap-2"><AlertTriangle className="size-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Kutilayotgan kassa</h3></div>
       <p className="mb-3 text-xs text-muted-foreground">
-        Savdo/qarz to'lovlarida yozilgan summa bilan kassaga haqiqatda tasdiqlangan summa orasidagi farq — kanal qanday yozilishidan qat'i nazar darhol ko'rinadi.
+        Savdo/qarz to'lovlarida yozilgan summa bilan kassaga haqiqatda tasdiqlangan summa orasidagi farq — kanal qanday yozilishidan qat'i nazar darhol ko'rinadi.{" "}
+        Перечисление ustuniga agentning shu kundagi jami o'tkazmasini yozing; savdo yoki qarz to'lovidagi ayni summa qayta qo'shilmaydi.
       </p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {PENDING_CHANNELS.map(({ key, label, icon: Icon }) => {

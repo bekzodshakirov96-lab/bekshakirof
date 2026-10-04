@@ -127,6 +127,13 @@
       "when": 1789122360228,
       "tag": "0017_curly_lily_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1791128065237,
+      "tag": "0018_cash_transfer_links",
+      "breakpoints": true
     }
   ]
 }

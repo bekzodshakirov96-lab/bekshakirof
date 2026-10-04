@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
+import { and, asc, eq, like, not, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, cashEntries, clientPayments, positions, transactions, users } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure, productsViewProcedure } from "../access";
-import { logAudit } from "../auditLog";
+import { assertPeriodUnlocked, logAudit } from "../auditLog";
+import { tashkentBusinessDate } from "../../shared/agentReconciliation";
 import {
   enrichClientFinancialRows,
   getClientFinancialRows,
@@ -25,6 +26,19 @@ function toMySqlDate(d: Date): string {
  * "allaqachon olingan" summa aynan shu yerdan olinadi.
  */
 const SALARY_CATEGORY = "Ойлик";
+
+export function commissionPeriod(label: string) {
+  const match = /^(\d{4}-\d{2}-\d{2}) — (\d{4}-\d{2}-\d{2})$/.exec(label);
+  if (!match) throw new TRPCError({ code: "BAD_REQUEST", message: "Komissiya davri noto‘g‘ri." });
+  const from = new Date(`${match[1]}T00:00:00+05:00`);
+  const to = new Date(`${match[2]}T23:59:59.999+05:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())
+    || tashkentBusinessDate(from) !== match[1] || tashkentBusinessDate(to) !== match[2]
+    || from > to) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Komissiya davri noto‘g‘ri." });
+  }
+  return { from, to, fromDate: match[1], toDate: match[2] };
+}
 
 const agentFilterFields = {
   search: z.string().max(120).optional(),
@@ -273,11 +287,26 @@ export const agentsRouter = router({
         input.from ? sql`${clientPayments.paymentDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
         input.to ? sql`${clientPayments.paymentDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
       ].filter(Boolean);
+      const periodLabel = input.from && input.to
+        ? `${tashkentBusinessDate(new Date(input.from))} — ${tashkentBusinessDate(new Date(input.to))}`
+        : null;
       const salaryPeriodConditions = [
         eq(cashEntries.type, "expense"),
         eq(cashEntries.category, SALARY_CATEGORY),
-        input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
-        input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+        periodLabel ? or(
+          and(
+            input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
+            input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+            not(like(cashEntries.sourceKey, "agent-commission:%")),
+          ),
+          and(
+            like(cashEntries.sourceKey, "agent-commission:%"),
+            eq(cashEntries.description, `Komissiya (${periodLabel})`),
+          ),
+        ) : and(
+          input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
+          input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+        ),
       ].filter(Boolean);
 
       const agentRows = await db.select().from(agents).orderBy(asc(agents.name));
@@ -352,14 +381,59 @@ export const agentsRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
+      const period = commissionPeriod(input.periodLabel);
+      const entryDate = new Date();
+      await assertPeriodUnlocked(entryDate);
       return db.transaction(async tx => {
+        // Agent qatori to'lovlar uchun mutex: ikki brauzer bir vaqtda bosganda
+        // ikkinchisi birinchining yozuvi saqlangandan keyin qayta hisoblaydi.
+        const [agent] = await tx.select().from(agents)
+          .where(eq(agents.id, input.agentId)).limit(1).for("update");
+        if (!agent?.isActive) throw new TRPCError({ code: "NOT_FOUND", message: "Faol agent topilmadi." });
+        const sourceKey = `agent-commission:${input.agentId}:${period.fromDate}:${period.toDate}`;
+        const description = `Komissiya (${input.periodLabel})`;
+        const [alreadyPaid] = await tx.select({ id: cashEntries.id }).from(cashEntries).where(and(
+          eq(cashEntries.agentId, input.agentId),
+          or(
+            eq(cashEntries.sourceKey, sourceKey),
+            and(like(cashEntries.sourceKey, "agent-commission:%"), eq(cashEntries.description, description)),
+          ),
+        )).limit(1);
+        if (alreadyPaid) return { success: true };
+
+        const [sales] = await tx.select({ amount: sql<number>`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment} + ${transactions.transferPayment}), 0)`.mapWith(Number) })
+          .from(transactions).where(and(
+            eq(transactions.agentId, input.agentId),
+            sql`${transactions.transactionDate} >= ${toMySqlDate(period.from)}`,
+            sql`${transactions.transactionDate} <= ${toMySqlDate(period.to)}`,
+          ));
+        const [debts] = await tx.select({ amount: sql<number>`coalesce(sum(${clientPayments.cashAmount} + ${clientPayments.terminalAmount} + ${clientPayments.clickAmount} + ${clientPayments.transferAmount}), 0)`.mapWith(Number) })
+          .from(clientPayments).where(and(
+            eq(clientPayments.agentId, input.agentId),
+            sql`${clientPayments.paymentDate} >= ${toMySqlDate(period.from)}`,
+            sql`${clientPayments.paymentDate} <= ${toMySqlDate(period.to)}`,
+          ));
+        const [taken] = await tx.select({ amount: sql<number>`coalesce(sum(${cashEntries.cashAmount}), 0)`.mapWith(Number) })
+          .from(cashEntries).where(and(
+            eq(cashEntries.agentId, input.agentId),
+            eq(cashEntries.type, "expense"),
+            eq(cashEntries.category, SALARY_CATEGORY),
+            not(like(cashEntries.sourceKey, "agent-commission:%")),
+            sql`${cashEntries.entryDate} >= ${toMySqlDate(period.from)}`,
+            sql`${cashEntries.entryDate} <= ${toMySqlDate(period.to)}`,
+          ));
+        const commission = Math.round(((sales?.amount ?? 0) + (debts?.amount ?? 0)) * Number(agent.commissionPercent) / 100);
+        const remaining = commission - (taken?.amount ?? 0);
+        if (remaining <= 0 || input.amount !== remaining) {
+          throw new TRPCError({ code: "CONFLICT", message: "Komissiya summasi o‘zgargan. Hisobotni yangilab qayta tekshiring." });
+        }
         const [created] = await tx.insert(cashEntries).values({
-          sourceKey: `agent-commission:${randomUUID()}`,
-          entryDate: new Date(),
+          sourceKey,
+          entryDate,
           type: "expense",
           category: "Ойлик",
           agentId: input.agentId,
-          description: `Komissiya (${input.periodLabel})`,
+          description,
           cashAmount: input.amount,
           terminalAmount: 0,
           clickAmount: 0,
