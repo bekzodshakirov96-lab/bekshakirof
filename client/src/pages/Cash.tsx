@@ -669,7 +669,7 @@ function DailyJournalGrid({
                     else if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
                   }}
                 />;
-                return field === "transfer" && item.type !== "memo" && item.transferAmount > 0
+                return field === "transfer" && item.type === "income" && item.transferAmount > 0
                   ? <div className="flex items-center gap-1">{input}<TransferSourcePicker entryId={item.id}
                     linkedSources={item.transferSourceIds} linkMode={item.transferLinkMode} onChanged={onChanged} /></div>
                   : input;
@@ -829,7 +829,7 @@ function DailyJournalGrid({
                     onChange={event => { event.target.value = sanitizeIntegerInput(event.target.value); }}
                     onBlur={event => commitExistingChannel(entry, "transfer", event.target.value)}
                     onKeyDown={event => onAmountKeyDown(event, rowIndex, TRANSFER_COL)}
-                  />{entry.transferAmount > 0 && <TransferSourcePicker entryId={entry.id}
+                  />{entry.type === "income" && entry.transferAmount > 0 && <TransferSourcePicker entryId={entry.id}
                     linkedSources={entry.transferSourceIds} linkMode={entry.transferLinkMode} onChanged={onChanged} />}</div>}
                 </td>
                 <td className="px-1.5 py-1">
