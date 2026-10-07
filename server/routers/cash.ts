@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, gt, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, cashEntries, cashTransferLinks, employees } from "../../drizzle/schema";
+import { agents, cashEntries, cashJournalDebtRepayments, cashTransferLinks, employees } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { requireDb } from "../db";
@@ -69,6 +69,12 @@ export const cashRouter = router({
       transactionId: cashTransferLinks.transactionId,
       clientPaymentId: cashTransferLinks.clientPaymentId,
     }).from(cashTransferLinks).where(inArray(cashTransferLinks.cashEntryId, rows.map(row => row.id))) : [];
+    const repayments = rows.length ? await db.select({
+      id: cashJournalDebtRepayments.id,
+      cashEntryId: cashJournalDebtRepayments.cashEntryId,
+    }).from(cashJournalDebtRepayments)
+      .where(inArray(cashJournalDebtRepayments.cashEntryId, rows.map(row => row.id))) : [];
+    const repaymentByEntry = new Map(repayments.map(row => [row.cashEntryId, row.id]));
     const linksByEntry = new Map<number, Array<{ kind: "transaction" | "client_payment"; id: number }>>();
     const independentEntries = new Set<number>();
     for (const link of links) {
@@ -80,6 +86,7 @@ export const cashRouter = router({
     }
     return rows.map(row => ({
       ...row,
+      debtRepaymentId: repaymentByEntry.get(row.id) ?? null,
       transferSourceIds: linksByEntry.get(row.id) ?? [],
       transferLinkMode: (linksByEntry.get(row.id)?.length ? "linked"
         : independentEntries.has(row.id) ? "independent" : "legacy") as "linked" | "independent" | "legacy",
@@ -91,8 +98,16 @@ export const cashRouter = router({
       const db = await requireDb();
       const [existing] = await db.select().from(cashEntries).where(eq(cashEntries.id, input.id)).limit(1);
       if (!existing) throw new Error("Kassa yozuvi topilmadi yoki allaqachon o‘chirilgan.");
+      const [repayment] = await db.select({ id: cashJournalDebtRepayments.id }).from(cashJournalDebtRepayments)
+        .where(eq(cashJournalDebtRepayments.cashEntryId, input.id)).limit(1);
+      if (repayment) throw new Error("Qarz qaytimiga bog‘langan kirimni bu yerdan o‘chirib bo‘lmaydi.");
       await assertPeriodUnlocked(existing.entryDate);
       return db.transaction(async tx => {
+        const [lockedEntry] = await tx.select().from(cashEntries).where(eq(cashEntries.id, input.id)).limit(1).for("update");
+        if (!lockedEntry) throw new Error("Kassa yozuvi topilmadi.");
+        const [linkedRepayment] = await tx.select({ id: cashJournalDebtRepayments.id }).from(cashJournalDebtRepayments)
+          .where(eq(cashJournalDebtRepayments.cashEntryId, input.id)).limit(1);
+        if (linkedRepayment) throw new Error("Qarz qaytimiga bog‘langan kirimni bu yerdan o‘chirib bo‘lmaydi.");
         await tx.delete(cashEntries).where(eq(cashEntries.id, input.id));
         await logAudit(tx, {
           tableName: "cash_entries",
@@ -366,6 +381,9 @@ export const cashRouter = router({
       const db = await requireDb();
       const [previous] = await db.select().from(cashEntries).where(eq(cashEntries.id, input.id)).limit(1);
       if (!previous) throw new Error("Kassa yozuvi topilmadi.");
+      const [repayment] = await db.select({ id: cashJournalDebtRepayments.id }).from(cashJournalDebtRepayments)
+        .where(eq(cashJournalDebtRepayments.cashEntryId, input.id)).limit(1);
+      if (repayment) throw new Error("Qarz qaytimiga bog‘langan kirimni bu yerdan o‘zgartirib bo‘lmaydi.");
       await assertPeriodUnlocked(previous.entryDate);
       await assertPeriodUnlocked(new Date(input.entryDate));
       const nextEmployeeId = input.employeeId === undefined ? previous.employeeId : input.employeeId;
@@ -384,6 +402,9 @@ export const cashRouter = router({
       return db.transaction(async tx => {
         const [lockedEntry] = await tx.select().from(cashEntries).where(eq(cashEntries.id, input.id)).limit(1).for("update");
         if (!lockedEntry) throw new Error("Kassa yozuvi topilmadi.");
+        const [linkedRepayment] = await tx.select({ id: cashJournalDebtRepayments.id }).from(cashJournalDebtRepayments)
+          .where(eq(cashJournalDebtRepayments.cashEntryId, input.id)).limit(1);
+        if (linkedRepayment) throw new Error("Qarz qaytimiga bog‘langan kirimni bu yerdan o‘zgartirib bo‘lmaydi.");
         const [sourceLink] = await tx.select({ id: cashTransferLinks.id }).from(cashTransferLinks)
           .where(and(eq(cashTransferLinks.cashEntryId, input.id),
             or(sql`${cashTransferLinks.transactionId} is not null`, sql`${cashTransferLinks.clientPaymentId} is not null`)))
