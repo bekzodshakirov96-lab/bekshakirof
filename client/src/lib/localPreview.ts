@@ -104,9 +104,12 @@ function previewResult(path: string, input?: unknown) {
     case "cash.byDate": return cashEntries;
     case "cash.journalDebt.byDate": return [{ id: 1, entryDate: new Date(), agentId: 6, agentName: "Suxrob", employeeId: null, employeeName: null, amount: 300_000, description: "Mahalliy preview uchun qarz qaydi" }];
     case "cash.journalDebt.repayments.report": {
-      const query = (input ?? {}) as { agentId?: number; status?: "all" | "active" | "open" | "partial" | "closed"; page?: number; pageSize?: number };
+      const query = (input ?? {}) as { agentId?: number; status?: "all" | "active" | "open" | "partial" | "closed"; fromDate?: string; toDate?: string; noteSearch?: string; page?: number; pageSize?: number };
       const filtered = previewCashDebts.filter(row =>
         (!query.agentId || row.agentId === query.agentId) &&
+        (!query.fromDate || tashkentDateInputValue(row.entryDate) >= query.fromDate) &&
+        (!query.toDate || tashkentDateInputValue(row.entryDate) <= query.toDate) &&
+        (!query.noteSearch || (row.description ?? "").toLocaleLowerCase("uz-UZ").includes(query.noteSearch.toLocaleLowerCase("uz-UZ"))) &&
         (!query.status || query.status === "all" ||
           (query.status === "active" && row.paidAmount < row.amount) ||
           (query.status === "open" && row.paidAmount === 0) ||

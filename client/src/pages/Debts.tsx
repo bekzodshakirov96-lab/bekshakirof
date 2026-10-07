@@ -235,13 +235,19 @@ function CashJournalDebtReport() {
   const [archivePage, setArchivePage] = useState(1);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveAgentId, setArchiveAgentId] = useState("");
+  const [archiveFromDate, setArchiveFromDate] = useState("");
+  const [archiveToDate, setArchiveToDate] = useState("");
+  const [archiveNote, setArchiveNote] = useState("");
+  const [archiveFilters, setArchiveFilters] = useState({ fromDate: "", toDate: "", noteSearch: "" });
   const [agentId, setAgentId] = useState("");
   const [status, setStatus] = useState<"active" | "open" | "partial">("active");
   const [selected, setSelected] = useState<CashDebt | null>(null);
   const agents = trpc.agents.options.useQuery();
   const report = trpc.cash.journalDebt.repayments.report.useQuery({ page, pageSize: 25, agentId: agentId ? Number(agentId) : undefined, status });
   const archive = trpc.cash.journalDebt.repayments.report.useQuery(
-    { page: archivePage, pageSize: 25, agentId: archiveAgentId ? Number(archiveAgentId) : undefined, status: "closed" },
+    { page: archivePage, pageSize: 25, agentId: archiveAgentId ? Number(archiveAgentId) : undefined, status: "closed",
+      fromDate: archiveFilters.fromDate || undefined, toDate: archiveFilters.toDate || undefined,
+      noteSearch: archiveFilters.noteSearch || undefined },
     { enabled: archiveOpen },
   );
   return (
@@ -299,6 +305,21 @@ function CashJournalDebtReport() {
             </select>
             <span className="text-xs text-muted-foreground">Yopilgan qarzlar: <strong className="text-foreground">{archive.data?.total ?? "—"}</strong></span>
           </div>
+          <form className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-2 lg:grid-cols-[160px_160px_minmax(180px,1fr)_auto_auto] lg:items-end" onSubmit={event => {
+            event.preventDefault();
+            if (archiveFromDate && archiveToDate && archiveFromDate > archiveToDate) {
+              toast.error("Boshlanish sanasi tugash sanasidan keyin bo‘lmasligi kerak.");
+              return;
+            }
+            setArchiveFilters({ fromDate: archiveFromDate, toDate: archiveToDate, noteSearch: archiveNote.trim() });
+            setArchivePage(1);
+          }}>
+            <div className="space-y-1"><label htmlFor="archive-from-date" className="text-xs font-medium">Qarz sanasi: dan</label><Input id="archive-from-date" type="date" className="finance-input" value={archiveFromDate} onChange={event => setArchiveFromDate(event.target.value)} /></div>
+            <div className="space-y-1"><label htmlFor="archive-to-date" className="text-xs font-medium">Gacha</label><Input id="archive-to-date" type="date" className="finance-input" value={archiveToDate} onChange={event => setArchiveToDate(event.target.value)} /></div>
+            <div className="space-y-1"><label htmlFor="archive-note-search" className="text-xs font-medium">Izoh matni</label><Input id="archive-note-search" className="finance-input" placeholder="Izohdan qidirish" maxLength={200} value={archiveNote} onChange={event => setArchiveNote(event.target.value)} /></div>
+            <Button type="submit" size="sm">Filtrlash</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => { setArchiveFromDate(""); setArchiveToDate(""); setArchiveNote(""); setArchiveFilters({ fromDate: "", toDate: "", noteSearch: "" }); setArchivePage(1); }}>Tozalash</Button>
+          </form>
           {archive.error ? <QueryError description={archive.error.message} onRetry={() => archive.refetch()} /> : archive.isLoading ? <TableLoading columns={7} /> : !archive.data?.items?.length ? (
             <EmptyState description="To‘liq yopilgan kassa qarzi topilmadi." />
           ) : <>
