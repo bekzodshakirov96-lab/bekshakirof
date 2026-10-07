@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CASH_DEBT_REPAYMENT_CATEGORY,
   ELECTRONIC_PAYMENT_CATEGORY,
   agentSettlementAmount,
   createCashReportPageAccumulator,
@@ -28,6 +29,13 @@ describe("cash accounting", () => {
       clickAmount: 300_000,
       transferAmount: 400_000,
     })).toBe(900_000);
+  });
+
+  it("keeps cash-debt repayments out of Agent x Tovar settlement", () => {
+    expect(agentSettlementAmount({
+      type: "income", category: CASH_DEBT_REPAYMENT_CATEGORY,
+      cashAmount: 100_000, terminalAmount: 200_000, clickAmount: 300_000, transferAmount: 400_000,
+    })).toBe(0);
   });
 
   it("treats Terminal and Click as income even when legacy data attached them to an expense row", () => {
