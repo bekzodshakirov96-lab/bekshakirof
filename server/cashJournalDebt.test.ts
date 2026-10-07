@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { getTableName, type SQL } from "drizzle-orm";
 import { MySqlDialect } from "drizzle-orm/mysql-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { appSettings, auditLog, cashJournalDebts } from "../drizzle/schema";
+import { appSettings, auditLog, cashJournalDebts, cashJournalDebtRepayments } from "../drizzle/schema";
 import type { TrpcContext } from "./_core/context";
 
 type Row = Record<string, unknown>;
@@ -32,6 +32,7 @@ function createDbDouble() {
         from: (table: unknown) => {
           if (table === appSettings) selected = state.lockDate ? [{ value: state.lockDate }] : [];
           else if (table === cashJournalDebts) { selected = state.rows.map(row => ({ ...row })); isMemo = true; }
+          else if (table === cashJournalDebtRepayments) selected = [];
           else throw new Error("Unexpected read outside debt memos and period settings");
           return chain;
         },
@@ -173,6 +174,15 @@ describe("cash.journalDebt", () => {
     expect(JSON.parse(String(state.audits[1].beforeData)).amount).toBe(150000);
     expect(JSON.parse(String(state.audits[1].afterData)).amount).toBe(175000);
     expect(new Set(state.writes.map(row => row.table))).toEqual(new Set(["cash_journal_debts", "audit_log"]));
+  });
+
+  it("keeps the borrower name separate from the free-text note", async () => {
+    const api = caller();
+    const { id } = await api.create({ entryDate, amount: 125_000, agentId: 2,
+      borrowerName: "Ali", description: "3-oktabr kuni berildi" });
+    expect(state.rows[0]).toMatchObject({ id, borrowerName: "Ali", description: "3-oktabr kuni berildi" });
+    await api.update({ id, entryDate, amount: 125_000, borrowerName: "Vali" });
+    expect(state.rows[0]).toMatchObject({ borrowerName: "Vali", description: "3-oktabr kuni berildi" });
   });
 
   it("loads only the selected day's memos", async () => {

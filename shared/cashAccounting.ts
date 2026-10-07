@@ -7,6 +7,7 @@ export type CashAccountingEntry = {
 };
 
 export const ELECTRONIC_PAYMENT_CATEGORY = "Elektron to‘lovlar";
+export const CASH_DEBT_REPAYMENT_CATEGORY = "Qarz qaytimi";
 export const AGENT_SETTLEMENT_CASH_CATEGORIES = ["Приход кег", "Приход пет"] as const;
 
 export type CashReportEntry = CashAccountingEntry & {
@@ -25,6 +26,7 @@ export type NormalizedCashReportEntry<T extends CashReportEntry> = T & {
  * elektron to'lov ham to'lov hisoblanadi, ammo rasxodning naqd qismi hisoblanmaydi.
  */
 export function agentSettlementAmount(entry: CashAccountingEntry & { category: string }) {
+  if (entry.category === CASH_DEBT_REPAYMENT_CATEGORY) return 0;
   const submittedCash = entry.type === "income"
     && AGENT_SETTLEMENT_CASH_CATEGORIES.includes(entry.category as typeof AGENT_SETTLEMENT_CASH_CATEGORIES[number])
     ? entry.cashAmount

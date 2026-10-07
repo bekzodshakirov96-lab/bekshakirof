@@ -1,16 +1,18 @@
 import { TRPCError } from "@trpc/server";
-import { and, count, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, cashJournalDebts, employees } from "../../drizzle/schema";
+import { agents, cashJournalDebts, cashJournalDebtRepayments, employees } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { requireDb } from "../db";
 import { tashkentDayRange } from "../businessDay";
 import { router } from "../_core/trpc";
+import { cashDebtRepaymentsRouter } from "./cashDebtRepayments";
 
 const entrySchema = z.object({
   entryDate: z.number().int().refine(value => Number.isFinite(new Date(value).getTime()), "Sana noto'g'ri."),
   amount: z.number().int().positive().max(2_147_483_647),
+  borrowerName: z.string().trim().max(255).nullable().optional(),
   agentId: z.number().int().positive().nullable().optional(),
   employeeId: z.number().int().positive().nullable().optional(),
   description: z.string().trim().max(1_000).nullable().optional(),
@@ -24,6 +26,7 @@ const payeeMessage = "Qarz eslatmasida agent yoki xodimdan faqat bittasini tanla
 
 /** Mustaqil eslatmalar: ushbu router kassa, savdo va mijoz to'lovlari jadvallariga yozmaydi. */
 export const cashJournalDebtRouter = router({
+  repayments: cashDebtRepaymentsRouter,
   report: businessProcedure
     .input(z.object({
       agentId: z.number().int().positive().optional(),
@@ -43,7 +46,7 @@ export const cashJournalDebtRouter = router({
         id: cashJournalDebts.id, entryDate: cashJournalDebts.entryDate,
         agentId: cashJournalDebts.agentId, agentName: agents.name,
         employeeId: cashJournalDebts.employeeId, employeeName: employees.name,
-        amount: cashJournalDebts.amount, description: cashJournalDebts.description,
+        amount: cashJournalDebts.amount, borrowerName: cashJournalDebts.borrowerName, description: cashJournalDebts.description,
       }).from(cashJournalDebts)
         .leftJoin(agents, eq(cashJournalDebts.agentId, agents.id))
         .leftJoin(employees, eq(cashJournalDebts.employeeId, employees.id))
@@ -57,14 +60,14 @@ export const cashJournalDebtRouter = router({
     .query(async ({ input }) => {
       const db = await requireDb();
       const { start: dayStart, end: dayEnd } = tashkentDayRange(input.date);
-      return db.select({
+      const rows = await db.select({
         id: cashJournalDebts.id,
         entryDate: cashJournalDebts.entryDate,
         agentId: cashJournalDebts.agentId,
         agentName: agents.name,
         employeeId: cashJournalDebts.employeeId,
         employeeName: employees.name,
-        amount: cashJournalDebts.amount,
+        amount: cashJournalDebts.amount, borrowerName: cashJournalDebts.borrowerName,
         description: cashJournalDebts.description,
       })
         .from(cashJournalDebts)
@@ -72,6 +75,11 @@ export const cashJournalDebtRouter = router({
         .leftJoin(employees, eq(cashJournalDebts.employeeId, employees.id))
         .where(and(gte(cashJournalDebts.entryDate, dayStart), lte(cashJournalDebts.entryDate, dayEnd)))
         .orderBy(desc(cashJournalDebts.id));
+      const repayments = rows.length ? await db.select({ debtId: cashJournalDebtRepayments.debtId })
+        .from(cashJournalDebtRepayments)
+        .where(inArray(cashJournalDebtRepayments.debtId, rows.map(row => row.id))) : [];
+      const linked = new Set(repayments.map(row => row.debtId));
+      return rows.map(row => ({ ...row, hasRepayment: linked.has(row.id) }));
     }),
 
   create: businessProcedure
@@ -86,6 +94,7 @@ export const cashJournalDebtRouter = router({
           agentId: input.agentId ?? null,
           employeeId: input.employeeId ?? null,
           amount: input.amount,
+          borrowerName: input.borrowerName || null,
           description: input.description || null,
           createdBy: ctx.user.id,
         };
@@ -105,6 +114,9 @@ export const cashJournalDebtRouter = router({
       return db.transaction(async tx => {
         const [previous] = await tx.select().from(cashJournalDebts).where(eq(cashJournalDebts.id, input.id)).limit(1).for("update");
         if (!previous) throw new TRPCError({ code: "NOT_FOUND", message: "Qarz eslatmasi topilmadi." });
+        const [repayment] = await tx.select({ id: cashJournalDebtRepayments.id }).from(cashJournalDebtRepayments)
+          .where(eq(cashJournalDebtRepayments.debtId, input.id)).limit(1);
+        if (repayment) throw new TRPCError({ code: "BAD_REQUEST", message: "Qaytim mavjud qarzning summasi yoki sanasini o‘zgartirib bo‘lmaydi." });
         const entryDate = new Date(input.entryDate);
         await assertPeriodUnlocked(previous.entryDate);
         await assertPeriodUnlocked(entryDate);
@@ -113,6 +125,7 @@ export const cashJournalDebtRouter = router({
           agentId: input.agentId === undefined ? previous.agentId : input.agentId,
           employeeId: input.employeeId === undefined ? previous.employeeId : input.employeeId,
           amount: input.amount,
+          borrowerName: input.borrowerName === undefined ? previous.borrowerName : input.borrowerName || null,
           description: input.description === undefined ? previous.description : input.description || null,
           updatedAt: new Date(),
         };
@@ -133,6 +146,9 @@ export const cashJournalDebtRouter = router({
       return db.transaction(async tx => {
         const [previous] = await tx.select().from(cashJournalDebts).where(eq(cashJournalDebts.id, input.id)).limit(1).for("update");
         if (!previous) throw new TRPCError({ code: "NOT_FOUND", message: "Qarz eslatmasi topilmadi." });
+        const [repayment] = await tx.select({ id: cashJournalDebtRepayments.id }).from(cashJournalDebtRepayments)
+          .where(eq(cashJournalDebtRepayments.debtId, input.id)).limit(1);
+        if (repayment) throw new TRPCError({ code: "BAD_REQUEST", message: "Qaytim tarixi mavjud qarzni o‘chirib bo‘lmaydi." });
         await assertPeriodUnlocked(previous.entryDate);
         await tx.delete(cashJournalDebts).where(eq(cashJournalDebts.id, input.id));
         await logAudit(tx, {
