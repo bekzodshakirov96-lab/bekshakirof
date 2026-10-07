@@ -43,6 +43,12 @@ const cashEntries = [
   { id: 4, type: "expense", category: "Расход", agentId: 2, agentName: "Doston", cashAmount: 125_000, terminalAmount: 0, clickAmount: 0, transferAmount: 0, description: "Yetkazib berish xarajati" },
 ].map(row => ({ ...row, entryDate: new Date(), employeeId: null, employeeName: null }));
 
+const previewCashDebts = [
+  { id: 1, agentId: 2, agentName: "Doston", employeeId: null, employeeName: null, amount: 250_000, paidAmount: 0, borrowerName: "Mahalliy namuna — ochiq qarz", description: "To‘lov oynasini ko‘rish uchun namuna" },
+  { id: 2, agentId: 6, agentName: "Suxrob", employeeId: null, employeeName: null, amount: 400_000, paidAmount: 150_000, borrowerName: "Mahalliy namuna — qisman qaytgan", description: "Qisman qaytim namunasi" },
+  { id: 3, agentId: 1, agentName: "Dilshod", employeeId: null, employeeName: null, amount: 300_000, paidAmount: 300_000, borrowerName: "Mahalliy namuna — yopilgan", description: "Yopilgan qarz namunasi" },
+].map(row => ({ ...row, entryDate: new Date() }));
+
 const takingRows = [
   { id: 1, agentId: 1, productId: 1, productName: "Buchinger 1.5", unitPrice: 123_000, quantity: "20.000", amount: 2_460_000, entryDate: new Date(), createdBy: 1 },
   { id: 2, agentId: 2, productId: 2, productName: "BUCHINGER 130000", unitPrice: 130_000, quantity: "12.000", amount: 1_560_000, entryDate: new Date(), createdBy: 1 },
@@ -97,6 +103,22 @@ function previewResult(path: string, input?: unknown) {
     case "products.list": return products;
     case "cash.byDate": return cashEntries;
     case "cash.journalDebt.byDate": return [{ id: 1, entryDate: new Date(), agentId: 6, agentName: "Suxrob", employeeId: null, employeeName: null, amount: 300_000, description: "Mahalliy preview uchun qarz qaydi" }];
+    case "cash.journalDebt.repayments.report": {
+      const query = (input ?? {}) as { agentId?: number; status?: "all" | "open" | "partial" | "closed"; page?: number; pageSize?: number };
+      const filtered = previewCashDebts.filter(row =>
+        (!query.agentId || row.agentId === query.agentId) &&
+        (!query.status || query.status === "all" ||
+          (query.status === "open" && row.paidAmount === 0) ||
+          (query.status === "partial" && row.paidAmount > 0 && row.paidAmount < row.amount) ||
+          (query.status === "closed" && row.paidAmount >= row.amount)));
+      const pageSize = query.pageSize ?? 25;
+      const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+      const page = Math.min(query.page ?? 1, pageCount);
+      const originalAmount = filtered.reduce((sum, row) => sum + row.amount, 0);
+      const repaidAmount = filtered.reduce((sum, row) => sum + row.paidAmount, 0);
+      return { items: filtered.slice((page - 1) * pageSize, page * pageSize), total: filtered.length, originalAmount, repaidAmount, remainingAmount: originalAmount - repaidAmount, page, pageCount };
+    }
+    case "cash.journalDebt.repayments.history": return [];
     case "cash.openingBalance": return { openingBalance: 37_701_000 };
     case "cash.categories": return [];
     case "cash.list": {

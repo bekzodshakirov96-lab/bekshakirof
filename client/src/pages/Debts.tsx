@@ -257,7 +257,7 @@ function CashJournalDebtReport() {
         </div>
       </div>
       <p className="mb-3 text-xs text-muted-foreground">Qarzni qisman yoki to‘liq yopish uchun “To‘lov qabul qilish”ni oching. Saqlangan qaytim qarz qoldig‘ini kamaytiradi va tanlangan usulda kassaga kirim yozadi.</p>
-      {report.error ? <QueryError description={report.error.message} onRetry={() => report.refetch()} /> : report.isLoading ? <TableLoading columns={4} /> : !report.data?.items.length ? (
+      {report.error ? <QueryError description={report.error.message} onRetry={() => report.refetch()} /> : report.isLoading ? <TableLoading columns={4} /> : !report.data?.items?.length ? (
         <EmptyState description="Kassada qarz qaydi topilmadi." />
       ) : (
         <>
