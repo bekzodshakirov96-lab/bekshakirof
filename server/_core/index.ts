@@ -13,6 +13,7 @@ import { serveStatic, setupVite } from "./vite";
 import { ensureCashJournalDebtTable } from "../cashJournalDebtSchema";
 import { ensureCashMatrixLayoutTable } from "../cashMatrixLayoutSchema";
 import { ensureCashTransferLinkTable } from "../cashTransferLinkSchema";
+import { ensureCashDebtRepaymentSchema } from "../cashDebtRepaymentSchema";
 
 // Kun chegaralari (Kassa, hisobotlar) server jarayonining LOKAL vaqt mintaqasiga tayanadi
 // (masalan, `new Date(...).setHours(0,0,0,0)`). Biznes doim Toshkentda ishlaydi, shuning
@@ -47,6 +48,7 @@ async function startServer() {
     await ensureCashJournalDebtTable();
     await ensureCashMatrixLayoutTable();
     await ensureCashTransferLinkTable();
+    await ensureCashDebtRepaymentSchema();
   }
   const app = express();
   const server = createServer(app);
