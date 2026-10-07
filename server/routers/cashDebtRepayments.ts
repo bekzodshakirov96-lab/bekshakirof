@@ -45,7 +45,7 @@ function paidSubquery(db: Awaited<ReturnType<typeof requireDb>>) {
 export const cashDebtRepaymentsRouter = router({
   report: businessProcedure.input(z.object({
     agentId: z.number().int().positive().optional(),
-    status: z.enum(["all", "open", "partial", "closed"]).default("all"),
+    status: z.enum(["all", "active", "open", "partial", "closed"]).default("all"),
     page: z.number().int().positive().default(1),
     pageSize: z.number().int().min(1).max(100).default(25),
   })).query(async ({ input }) => {
@@ -54,6 +54,7 @@ export const cashDebtRepaymentsRouter = router({
     const paidAmount = sql<number>`coalesce(${paid.paidAmount}, 0)`;
     const where = and(
       input.agentId ? eq(cashJournalDebts.agentId, input.agentId) : undefined,
+      input.status === "active" ? sql`${paidAmount} < ${cashJournalDebts.amount}` : undefined,
       input.status === "open" ? sql`${paidAmount} = 0` : undefined,
       input.status === "partial" ? sql`${paidAmount} > 0 and ${paidAmount} < ${cashJournalDebts.amount}` : undefined,
       input.status === "closed" ? sql`${paidAmount} >= ${cashJournalDebts.amount}` : undefined,

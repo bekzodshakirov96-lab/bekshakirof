@@ -104,10 +104,11 @@ function previewResult(path: string, input?: unknown) {
     case "cash.byDate": return cashEntries;
     case "cash.journalDebt.byDate": return [{ id: 1, entryDate: new Date(), agentId: 6, agentName: "Suxrob", employeeId: null, employeeName: null, amount: 300_000, description: "Mahalliy preview uchun qarz qaydi" }];
     case "cash.journalDebt.repayments.report": {
-      const query = (input ?? {}) as { agentId?: number; status?: "all" | "open" | "partial" | "closed"; page?: number; pageSize?: number };
+      const query = (input ?? {}) as { agentId?: number; status?: "all" | "active" | "open" | "partial" | "closed"; page?: number; pageSize?: number };
       const filtered = previewCashDebts.filter(row =>
         (!query.agentId || row.agentId === query.agentId) &&
         (!query.status || query.status === "all" ||
+          (query.status === "active" && row.paidAmount < row.amount) ||
           (query.status === "open" && row.paidAmount === 0) ||
           (query.status === "partial" && row.paidAmount > 0 && row.paidAmount < row.amount) ||
           (query.status === "closed" && row.paidAmount >= row.amount)));
@@ -118,7 +119,12 @@ function previewResult(path: string, input?: unknown) {
       const repaidAmount = filtered.reduce((sum, row) => sum + row.paidAmount, 0);
       return { items: filtered.slice((page - 1) * pageSize, page * pageSize), total: filtered.length, originalAmount, repaidAmount, remainingAmount: originalAmount - repaidAmount, page, pageCount };
     }
-    case "cash.journalDebt.repayments.history": return [];
+    case "cash.journalDebt.repayments.history": {
+      const debtId = (input as { debtId?: number } | undefined)?.debtId;
+      if (debtId === 2) return [{ id: 1, debtId, paymentDate: new Date(), amount: 150_000, method: "cash", cashEntryId: 2, note: "Mahalliy namuna qaytimi", voidedAt: null, voidReason: null }];
+      if (debtId === 3) return [{ id: 2, debtId, paymentDate: new Date(), amount: 300_000, method: "terminal", cashEntryId: 3, note: "Mahalliy namuna — to‘liq yopilgan", voidedAt: null, voidReason: null }];
+      return [];
+    }
     case "cash.openingBalance": return { openingBalance: 37_701_000 };
     case "cash.categories": return [];
     case "cash.list": {

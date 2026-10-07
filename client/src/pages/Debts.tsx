@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatDate, formatMoney, localDateInputValue, sanitizeIntegerInput, tashkentDateInputValue, tashkentDateToTimestamp, formatTashkentDate } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
-import { ArrowDown, ArrowUp, ArrowUpDown, Banknote, CircleDollarSign, FileText, HandCoins, RotateCcw, Search, Trash2, UsersRound } from "lucide-react";
+import { Archive, ArrowDown, ArrowUp, ArrowUpDown, Banknote, CircleDollarSign, FileText, HandCoins, RotateCcw, Search, Trash2, UsersRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -232,13 +232,21 @@ export default function Debts() {
 
 function CashJournalDebtReport() {
   const [page, setPage] = useState(1);
+  const [archivePage, setArchivePage] = useState(1);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveAgentId, setArchiveAgentId] = useState("");
   const [agentId, setAgentId] = useState("");
-  const [status, setStatus] = useState<"all" | "open" | "partial" | "closed">("all");
+  const [status, setStatus] = useState<"active" | "open" | "partial">("active");
   const [selected, setSelected] = useState<CashDebt | null>(null);
   const agents = trpc.agents.options.useQuery();
   const report = trpc.cash.journalDebt.repayments.report.useQuery({ page, pageSize: 25, agentId: agentId ? Number(agentId) : undefined, status });
+  const archive = trpc.cash.journalDebt.repayments.report.useQuery(
+    { page: archivePage, pageSize: 25, agentId: archiveAgentId ? Number(archiveAgentId) : undefined, status: "closed" },
+    { enabled: archiveOpen },
+  );
   return (
-    <SectionCard title="Kassadagi qarz qaydlari" description="Kassa jurnalidagi qarzlar alohida yuritiladi. Qarz qaydi pul harakati emas; qaytim tegishli kassa kirimiga bog‘lanadi." className="mt-5">
+    <SectionCard title="Kassadagi qarz qaydlari" description="Kassa jurnalidagi yopilmagan qarzlar. To‘liq yopilganlari arxivda saqlanadi." className="mt-5"
+      action={<Button type="button" size="sm" variant="outline" className="gap-2" onClick={() => { setArchivePage(1); setArchiveOpen(true); }}><Archive className="size-4" />Arxiv</Button>}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <select aria-label="Kassa qarzlari bo‘yicha agent" value={agentId} onChange={event => { setAgentId(event.target.value); setPage(1); }} className="finance-input border px-3 text-sm">
@@ -246,7 +254,7 @@ function CashJournalDebtReport() {
             {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
           </select>
           <select aria-label="Kassa qarzi holati" value={status} onChange={event => { setStatus(event.target.value as typeof status); setPage(1); }} className="finance-input border px-3 text-sm">
-            <option value="all">Barcha holatlar</option><option value="open">Qaytim qayd etilmagan</option><option value="partial">Qisman qaytgan</option><option value="closed">Yopilgan</option>
+            <option value="active">Barcha qarzdorlar</option><option value="open">Qaytim qayd etilmagan</option><option value="partial">Qisman qaytgan</option>
           </select>
           <Button type="button" variant="outline" disabled={report.isFetching} onClick={() => report.refetch()}>Yangilash</Button>
         </div>
@@ -258,14 +266,12 @@ function CashJournalDebtReport() {
       </div>
       <p className="mb-3 text-xs text-muted-foreground">Qarzni qisman yoki to‘liq yopish uchun “To‘lov qabul qilish”ni oching. Saqlangan qaytim qarz qoldig‘ini kamaytiradi va tanlangan usulda kassaga kirim yozadi.</p>
       {report.error ? <QueryError description={report.error.message} onRetry={() => report.refetch()} /> : report.isLoading ? <TableLoading columns={4} /> : !report.data?.items?.length ? (
-        <EmptyState description="Kassada qarz qaydi topilmadi." />
+        <EmptyState description="Yopilmagan kassa qarzi topilmadi. To‘liq yopilganlarni Arxivdan ko‘ring." />
       ) : (
         <>
           <Table className="finance-table min-w-[1150px]">
             <TableHeader><TableRow><TableHead>ID / sana</TableHead><TableHead>Agent / xodim</TableHead><TableHead>Kimga berilgan</TableHead><TableHead>Izoh</TableHead><TableHead className="text-right">Berilgan</TableHead><TableHead className="text-right">Qaytgan</TableHead><TableHead className="text-right">Qoldiq</TableHead><TableHead>Holat</TableHead><TableHead>Amal</TableHead></TableRow></TableHeader>
-            <TableBody>{report.data.items.map(item => <TableRow key={item.id} className={item.paidAmount >= item.amount
-              ? "bg-emerald-500/10 hover:bg-emerald-500/15 dark:bg-emerald-500/15 dark:hover:bg-emerald-500/20"
-              : "bg-rose-500/10 hover:bg-rose-500/15 dark:bg-rose-500/10 dark:hover:bg-rose-500/20"}>
+            <TableBody>{report.data.items.map(item => <TableRow key={item.id} className="bg-rose-500/10 hover:bg-rose-500/15 dark:bg-rose-500/10 dark:hover:bg-rose-500/20">
               <TableCell className="whitespace-nowrap align-top"><span className="text-xs text-muted-foreground">#{item.id}</span><br />{formatTashkentDate(item.entryDate)}</TableCell>
               <TableCell className="align-top font-medium">{item.agentName || (item.employeeName ? `${item.employeeName} (xodim)` : "Agent tanlanmagan")}</TableCell>
               <TableCell className="align-top font-medium">{item.borrowerName || <span className="text-muted-foreground">Aniqlanmagan</span>}</TableCell>
@@ -273,13 +279,47 @@ function CashJournalDebtReport() {
               <TableCell className="whitespace-nowrap text-right align-top tabular-nums">{formatMoney(item.amount)}</TableCell>
               <TableCell className="whitespace-nowrap text-right align-top tabular-nums">{formatMoney(item.paidAmount)}</TableCell>
               <TableCell className="whitespace-nowrap text-right align-top font-semibold tabular-nums">{formatMoney(item.amount - item.paidAmount)}</TableCell>
-              <TableCell className="whitespace-nowrap align-top">{item.paidAmount === 0 ? "Qaytim qayd etilmagan" : item.paidAmount >= item.amount ? "Yopilgan" : "Qisman qaytgan"}</TableCell>
-              <TableCell className="whitespace-nowrap align-top"><Button type="button" size="sm" variant="outline" className="h-8" onClick={() => setSelected(item)}>{item.paidAmount >= item.amount ? "Batafsil" : "To‘lov qabul qilish"}</Button></TableCell>
+              <TableCell className="whitespace-nowrap align-top">{item.paidAmount === 0 ? "Qaytim qayd etilmagan" : "Qisman qaytgan"}</TableCell>
+              <TableCell className="whitespace-nowrap align-top"><Button type="button" size="sm" variant="outline" className="h-8" onClick={() => setSelected(item)}>To‘lov qabul qilish</Button></TableCell>
             </TableRow>)}</TableBody>
           </Table>
           <PaginationBar page={report.data.page} pageCount={report.data.pageCount} total={report.data.total} onChange={setPage} />
         </>
       )}
+      <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Kassa qarzlari arxivi</DialogTitle>
+            <DialogDescription>To‘liq yopilgan qarzlar va ularning qaytim tarixini ko‘ring. Yozuvlar bazada saqlanadi.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <select aria-label="Arxiv bo‘yicha agent" value={archiveAgentId} onChange={event => { setArchiveAgentId(event.target.value); setArchivePage(1); }} className="finance-input border px-3 text-sm">
+              <option value="">Barcha agentlar</option>
+              {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+            </select>
+            <span className="text-xs text-muted-foreground">Yopilgan qarzlar: <strong className="text-foreground">{archive.data?.total ?? "—"}</strong></span>
+          </div>
+          {archive.error ? <QueryError description={archive.error.message} onRetry={() => archive.refetch()} /> : archive.isLoading ? <TableLoading columns={7} /> : !archive.data?.items?.length ? (
+            <EmptyState description="To‘liq yopilgan kassa qarzi topilmadi." />
+          ) : <>
+            <div className="overflow-x-auto rounded-lg border">
+              <Table className="finance-table min-w-[850px]">
+                <TableHeader><TableRow><TableHead>ID / sana</TableHead><TableHead>Agent / xodim</TableHead><TableHead>Kimga berilgan</TableHead><TableHead>Izoh</TableHead><TableHead className="text-right">Berilgan</TableHead><TableHead className="text-right">Qaytgan</TableHead><TableHead>Amal</TableHead></TableRow></TableHeader>
+                <TableBody>{archive.data.items.map(item => <TableRow key={item.id} className="bg-emerald-500/10 hover:bg-emerald-500/15 dark:bg-emerald-500/15 dark:hover:bg-emerald-500/20">
+                  <TableCell className="whitespace-nowrap"><span className="text-xs text-muted-foreground">#{item.id}</span><br />{formatTashkentDate(item.entryDate)}</TableCell>
+                  <TableCell className="font-medium">{item.agentName || (item.employeeName ? `${item.employeeName} (xodim)` : "Agent tanlanmagan")}</TableCell>
+                  <TableCell className="font-medium">{item.borrowerName || <span className="text-muted-foreground">Aniqlanmagan</span>}</TableCell>
+                  <TableCell className="max-w-xs whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{item.description || "—"}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">{formatMoney(item.amount)}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">{formatMoney(item.paidAmount)}</TableCell>
+                  <TableCell><Button type="button" size="sm" variant="outline" onClick={() => { setArchiveOpen(false); setSelected(item); }}>Batafsil</Button></TableCell>
+                </TableRow>)}</TableBody>
+              </Table>
+            </div>
+            <PaginationBar page={archive.data.page} pageCount={archive.data.pageCount} total={archive.data.total} onChange={setArchivePage} />
+          </>}
+        </DialogContent>
+      </Dialog>
       <CashDebtRepaymentDialog key={selected?.id ?? "closed"} debt={selected} onClose={() => setSelected(null)} />
     </SectionCard>
   );
