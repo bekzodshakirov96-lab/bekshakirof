@@ -259,6 +259,7 @@ export const cashJournalDebts = mysqlTable(
     agentId: int("agentId").references(() => agents.id, { onDelete: "set null" }),
     employeeId: int("employeeId").references(() => employees.id, { onDelete: "set null" }),
     amount: int("amount").notNull(),
+    borrowerName: varchar("borrowerName", { length: 255 }),
     description: text("description"),
     createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -268,6 +269,31 @@ export const cashJournalDebts = mysqlTable(
     index("cash_journal_debts_date_idx").on(table.entryDate),
     index("cash_journal_debts_agent_idx").on(table.agentId),
     index("cash_journal_debts_employee_idx").on(table.employeeId),
+  ],
+);
+
+/** Kassa qarzining mustaqil qaytimlari; savdo va tezkor KEG qarzlariga bog'lanmaydi. */
+export const cashJournalDebtRepayments = mysqlTable(
+  "cash_journal_debt_repayments",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    debtId: int("debtId").notNull().references(() => cashJournalDebts.id, { onDelete: "restrict" }),
+    paymentDate: timestamp("paymentDate").notNull(),
+    amount: int("amount").notNull(),
+    method: mysqlEnum("method", ["cash", "terminal", "click", "transfer"]).notNull(),
+    note: text("note"),
+    cashEntryId: int("cashEntryId").notNull().references(() => cashEntries.id, { onDelete: "restrict" }),
+    cashEntryCreated: boolean("cashEntryCreated").default(false).notNull(),
+    createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    voidedAt: timestamp("voidedAt"),
+    voidedBy: int("voidedBy").references(() => users.id, { onDelete: "set null" }),
+    voidReason: varchar("voidReason", { length: 500 }),
+  },
+  table => [
+    index("cash_debt_repayments_debt_idx").on(table.debtId),
+    uniqueIndex("cash_debt_repayments_cash_entry_unique").on(table.cashEntryId),
+    index("cash_debt_repayments_date_idx").on(table.paymentDate),
   ],
 );
 
