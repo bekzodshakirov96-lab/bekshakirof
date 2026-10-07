@@ -263,7 +263,9 @@ function CashJournalDebtReport() {
         <>
           <Table className="finance-table min-w-[1150px]">
             <TableHeader><TableRow><TableHead>ID / sana</TableHead><TableHead>Agent / xodim</TableHead><TableHead>Kimga berilgan</TableHead><TableHead>Izoh</TableHead><TableHead className="text-right">Berilgan</TableHead><TableHead className="text-right">Qaytgan</TableHead><TableHead className="text-right">Qoldiq</TableHead><TableHead>Holat</TableHead><TableHead>Qaytim kiritish</TableHead></TableRow></TableHeader>
-            <TableBody>{report.data.items.map(item => <TableRow key={item.id}>
+            <TableBody>{report.data.items.map(item => <TableRow key={item.id} className={item.paidAmount >= item.amount
+              ? "bg-emerald-500/10 hover:bg-emerald-500/15 dark:bg-emerald-500/15 dark:hover:bg-emerald-500/20"
+              : "bg-rose-500/10 hover:bg-rose-500/15 dark:bg-rose-500/10 dark:hover:bg-rose-500/20"}>
               <TableCell className="whitespace-nowrap align-top"><span className="text-xs text-muted-foreground">#{item.id}</span><br />{formatTashkentDate(item.entryDate)}</TableCell>
               <TableCell className="align-top font-medium">{item.agentName || (item.employeeName ? `${item.employeeName} (xodim)` : "Agent tanlanmagan")}</TableCell>
               <TableCell className="align-top font-medium">{item.borrowerName || <span className="text-muted-foreground">Aniqlanmagan</span>}</TableCell>
