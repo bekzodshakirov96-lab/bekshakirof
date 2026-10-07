@@ -21,7 +21,7 @@ import { tashkentDayRange, toMySqlDate } from "../businessDay";
 import { reconcileExpectedTransfers } from "../transferExpectation";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
-import { AGENT_SETTLEMENT_CASH_CATEGORIES } from "../../shared/cashAccounting";
+import { AGENT_SETTLEMENT_CASH_CATEGORIES, CASH_DEBT_REPAYMENT_CATEGORY } from "../../shared/cashAccounting";
 import { buildAgentDifferenceSummary } from "../../shared/agentDifference";
 import { buildDailyReconciliation, tashkentBusinessDate } from "../../shared/agentReconciliation";
 
@@ -41,9 +41,8 @@ const agentSettlementAmountSql = () =>
       eq(cashEntries.type, "income"),
       inArray(cashEntries.category, [...AGENT_SETTLEMENT_CASH_CATEGORIES]),
     )} then ${cashEntries.cashAmount} else 0 end
-    + ${cashEntries.terminalAmount}
-    + ${cashEntries.clickAmount}
-    + ${cashEntries.transferAmount}
+    + case when ${cashEntries.category} <> ${CASH_DEBT_REPAYMENT_CATEGORY}
+      then ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} + ${cashEntries.transferAmount} else 0 end
   ), 0)`.mapWith(Number);
 
 const agentSettlementEntrySql = () =>
@@ -52,9 +51,8 @@ const agentSettlementEntrySql = () =>
       eq(cashEntries.type, "income"),
       inArray(cashEntries.category, [...AGENT_SETTLEMENT_CASH_CATEGORIES]),
     ),
-    gt(cashEntries.terminalAmount, 0),
-    gt(cashEntries.clickAmount, 0),
-    gt(cashEntries.transferAmount, 0),
+    and(sql`${cashEntries.category} <> ${CASH_DEBT_REPAYMENT_CATEGORY}`, or(
+      gt(cashEntries.terminalAmount, 0), gt(cashEntries.clickAmount, 0), gt(cashEntries.transferAmount, 0))),
   );
 const matrixLayoutValueSchema = z.object({
   productOrder: z.array(z.number().int().positive()).max(2_000),
@@ -174,7 +172,9 @@ async function computePendingByChannel(timestamp: number) {
       .leftJoin(cashTransferLinks, eq(cashTransferLinks.cashEntryId, cashEntries.id))
       .leftJoin(transactions, eq(cashTransferLinks.transactionId, transactions.id))
       .leftJoin(clientPayments, eq(cashTransferLinks.clientPaymentId, clientPayments.id))
-      .where(and(eq(cashEntries.type, "income"), gt(cashEntries.transferAmount, 0), sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`))
+      .where(and(eq(cashEntries.type, "income"), gt(cashEntries.transferAmount, 0),
+        sql`${cashEntries.category} <> ${CASH_DEBT_REPAYMENT_CATEGORY}`,
+        sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`))
       .groupBy(cashEntries.id, cashEntries.entryDate, cashEntries.agentId, cashEntries.transferAmount),
   ]);
   const expectedTransfer = reconcileExpectedTransfers(saleTransfers, debtTransfers,
