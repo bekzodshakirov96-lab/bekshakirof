@@ -4,12 +4,16 @@ import { z } from "zod";
 import { agents, cashEntries, cashJournalDebts, cashJournalDebtRepayments, cashTransferLinks, employees } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
-import { tashkentDayRange } from "../businessDay";
+import { tashkentDayRange, toMySqlDate } from "../businessDay";
 import { requireDb } from "../db";
 import { router } from "../_core/trpc";
 import { CASH_DEBT_REPAYMENT_CATEGORY } from "../../shared/cashAccounting";
 
 const methodSchema = z.enum(["cash", "terminal", "click", "transfer"]);
+const archiveDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === value;
+}, "Sana noto‘g‘ri.");
 const paymentFields = {
   debtId: z.number().int().positive(),
   paymentDate: z.number().int().refine(value => Number.isFinite(new Date(value).getTime())),
@@ -45,18 +49,29 @@ function paidSubquery(db: Awaited<ReturnType<typeof requireDb>>) {
 export const cashDebtRepaymentsRouter = router({
   report: businessProcedure.input(z.object({
     agentId: z.number().int().positive().optional(),
-    status: z.enum(["all", "open", "partial", "closed"]).default("all"),
+    status: z.enum(["all", "active", "open", "partial", "closed"]).default("all"),
+    fromDate: archiveDateSchema.optional(),
+    toDate: archiveDateSchema.optional(),
+    noteSearch: z.string().trim().max(200).optional(),
     page: z.number().int().positive().default(1),
     pageSize: z.number().int().min(1).max(100).default(25),
+  }).refine(value => !value.fromDate || !value.toDate || value.fromDate <= value.toDate, {
+    message: "Boshlanish sanasi tugash sanasidan keyin bo‘lmasligi kerak.", path: ["fromDate"],
   })).query(async ({ input }) => {
     const db = await requireDb();
     const paid = paidSubquery(db);
     const paidAmount = sql<number>`coalesce(${paid.paidAmount}, 0)`;
+    const fromDate = input.fromDate ? tashkentDayRange(Date.parse(`${input.fromDate}T12:00:00+05:00`)).start : undefined;
+    const toDate = input.toDate ? tashkentDayRange(Date.parse(`${input.toDate}T12:00:00+05:00`)).end : undefined;
     const where = and(
       input.agentId ? eq(cashJournalDebts.agentId, input.agentId) : undefined,
+      input.status === "active" ? sql`${paidAmount} < ${cashJournalDebts.amount}` : undefined,
       input.status === "open" ? sql`${paidAmount} = 0` : undefined,
       input.status === "partial" ? sql`${paidAmount} > 0 and ${paidAmount} < ${cashJournalDebts.amount}` : undefined,
       input.status === "closed" ? sql`${paidAmount} >= ${cashJournalDebts.amount}` : undefined,
+      fromDate ? sql`${cashJournalDebts.entryDate} >= ${toMySqlDate(fromDate)}` : undefined,
+      toDate ? sql`${cashJournalDebts.entryDate} <= ${toMySqlDate(toDate)}` : undefined,
+      input.noteSearch ? sql`locate(lower(${input.noteSearch}), lower(coalesce(${cashJournalDebts.description}, ''))) > 0` : undefined,
     );
     const [summary] = await db.select(summaryColumns(paid)).from(cashJournalDebts)
       .leftJoin(paid, eq(paid.debtId, cashJournalDebts.id)).where(where);

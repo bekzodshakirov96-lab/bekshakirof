@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatDate, formatMoney, localDateInputValue, sanitizeIntegerInput, tashkentDateInputValue, tashkentDateToTimestamp, formatTashkentDate } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
-import { ArrowDown, ArrowUp, ArrowUpDown, Banknote, CircleDollarSign, FileText, HandCoins, RotateCcw, Search, Trash2, UsersRound } from "lucide-react";
+import { Archive, ArrowDown, ArrowUp, ArrowUpDown, Banknote, CircleDollarSign, FileText, HandCoins, RotateCcw, Search, Trash2, UsersRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -232,13 +232,27 @@ export default function Debts() {
 
 function CashJournalDebtReport() {
   const [page, setPage] = useState(1);
+  const [archivePage, setArchivePage] = useState(1);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveAgentId, setArchiveAgentId] = useState("");
+  const [archiveFromDate, setArchiveFromDate] = useState("");
+  const [archiveToDate, setArchiveToDate] = useState("");
+  const [archiveNote, setArchiveNote] = useState("");
+  const [archiveFilters, setArchiveFilters] = useState({ fromDate: "", toDate: "", noteSearch: "" });
   const [agentId, setAgentId] = useState("");
-  const [status, setStatus] = useState<"all" | "open" | "partial" | "closed">("all");
+  const [status, setStatus] = useState<"active" | "open" | "partial">("active");
   const [selected, setSelected] = useState<CashDebt | null>(null);
   const agents = trpc.agents.options.useQuery();
   const report = trpc.cash.journalDebt.repayments.report.useQuery({ page, pageSize: 25, agentId: agentId ? Number(agentId) : undefined, status });
+  const archive = trpc.cash.journalDebt.repayments.report.useQuery(
+    { page: archivePage, pageSize: 25, agentId: archiveAgentId ? Number(archiveAgentId) : undefined, status: "closed",
+      fromDate: archiveFilters.fromDate || undefined, toDate: archiveFilters.toDate || undefined,
+      noteSearch: archiveFilters.noteSearch || undefined },
+    { enabled: archiveOpen },
+  );
   return (
-    <SectionCard title="Kassadagi qarz qaydlari" description="Kassa jurnalidagi qarzlar alohida yuritiladi. Qarz qaydi pul harakati emas; qaytim tegishli kassa kirimiga bog‘lanadi." className="mt-5">
+    <SectionCard title="Kassadagi qarz qaydlari" description="Kassa jurnalidagi yopilmagan qarzlar. To‘liq yopilganlari arxivda saqlanadi." className="mt-5"
+      action={<Button type="button" size="sm" variant="outline" className="gap-2" onClick={() => { setArchivePage(1); setArchiveOpen(true); }}><Archive className="size-4" />Arxiv</Button>}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <select aria-label="Kassa qarzlari bo‘yicha agent" value={agentId} onChange={event => { setAgentId(event.target.value); setPage(1); }} className="finance-input border px-3 text-sm">
@@ -246,7 +260,7 @@ function CashJournalDebtReport() {
             {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
           </select>
           <select aria-label="Kassa qarzi holati" value={status} onChange={event => { setStatus(event.target.value as typeof status); setPage(1); }} className="finance-input border px-3 text-sm">
-            <option value="all">Barcha holatlar</option><option value="open">Qaytim qayd etilmagan</option><option value="partial">Qisman qaytgan</option><option value="closed">Yopilgan</option>
+            <option value="active">Barcha qarzdorlar</option><option value="open">Qaytim qayd etilmagan</option><option value="partial">Qisman qaytgan</option>
           </select>
           <Button type="button" variant="outline" disabled={report.isFetching} onClick={() => report.refetch()}>Yangilash</Button>
         </div>
@@ -256,16 +270,14 @@ function CashJournalDebtReport() {
           <span>Qoldiq: <strong className="text-foreground tabular-nums">{report.data ? formatMoney(report.data.remainingAmount) : "—"}</strong></span>
         </div>
       </div>
-      <p className="mb-3 text-xs text-muted-foreground">Qaytgan summani, sanani va to‘lov usulini qarzning o‘z qatorida kiriting. “Saqlash” qarz qoldig‘ini kamaytiradi va kassaga shu usul bo‘yicha kirim yozadi. Qaytimlar tarixi, qarz oluvchi ismi va kassaga oldin yozilgan kirimlar uchun “Batafsil”ni oching.</p>
-      {report.error ? <QueryError description={report.error.message} onRetry={() => report.refetch()} /> : report.isLoading ? <TableLoading columns={4} /> : !report.data?.items.length ? (
-        <EmptyState description="Kassada qarz qaydi topilmadi." />
+      <p className="mb-3 text-xs text-muted-foreground">Qarzni qisman yoki to‘liq yopish uchun “To‘lov qabul qilish”ni oching. Saqlangan qaytim qarz qoldig‘ini kamaytiradi va tanlangan usulda kassaga kirim yozadi.</p>
+      {report.error ? <QueryError description={report.error.message} onRetry={() => report.refetch()} /> : report.isLoading ? <TableLoading columns={4} /> : !report.data?.items?.length ? (
+        <EmptyState description="Yopilmagan kassa qarzi topilmadi. To‘liq yopilganlarni Arxivdan ko‘ring." />
       ) : (
         <>
           <Table className="finance-table min-w-[1150px]">
-            <TableHeader><TableRow><TableHead>ID / sana</TableHead><TableHead>Agent / xodim</TableHead><TableHead>Kimga berilgan</TableHead><TableHead>Izoh</TableHead><TableHead className="text-right">Berilgan</TableHead><TableHead className="text-right">Qaytgan</TableHead><TableHead className="text-right">Qoldiq</TableHead><TableHead>Holat</TableHead><TableHead>Qaytim kiritish</TableHead></TableRow></TableHeader>
-            <TableBody>{report.data.items.map(item => <TableRow key={item.id} className={item.paidAmount >= item.amount
-              ? "bg-emerald-500/10 hover:bg-emerald-500/15 dark:bg-emerald-500/15 dark:hover:bg-emerald-500/20"
-              : "bg-rose-500/10 hover:bg-rose-500/15 dark:bg-rose-500/10 dark:hover:bg-rose-500/20"}>
+            <TableHeader><TableRow><TableHead>ID / sana</TableHead><TableHead>Agent / xodim</TableHead><TableHead>Kimga berilgan</TableHead><TableHead>Izoh</TableHead><TableHead className="text-right">Berilgan</TableHead><TableHead className="text-right">Qaytgan</TableHead><TableHead className="text-right">Qoldiq</TableHead><TableHead>Holat</TableHead><TableHead>Amal</TableHead></TableRow></TableHeader>
+            <TableBody>{report.data.items.map(item => <TableRow key={item.id} className="bg-rose-500/10 hover:bg-rose-500/15 dark:bg-rose-500/10 dark:hover:bg-rose-500/20">
               <TableCell className="whitespace-nowrap align-top"><span className="text-xs text-muted-foreground">#{item.id}</span><br />{formatTashkentDate(item.entryDate)}</TableCell>
               <TableCell className="align-top font-medium">{item.agentName || (item.employeeName ? `${item.employeeName} (xodim)` : "Agent tanlanmagan")}</TableCell>
               <TableCell className="align-top font-medium">{item.borrowerName || <span className="text-muted-foreground">Aniqlanmagan</span>}</TableCell>
@@ -273,61 +285,68 @@ function CashJournalDebtReport() {
               <TableCell className="whitespace-nowrap text-right align-top tabular-nums">{formatMoney(item.amount)}</TableCell>
               <TableCell className="whitespace-nowrap text-right align-top tabular-nums">{formatMoney(item.paidAmount)}</TableCell>
               <TableCell className="whitespace-nowrap text-right align-top font-semibold tabular-nums">{formatMoney(item.amount - item.paidAmount)}</TableCell>
-              <TableCell className="whitespace-nowrap align-top">{item.paidAmount === 0 ? "Qaytim qayd etilmagan" : item.paidAmount >= item.amount ? "Yopilgan" : "Qisman qaytgan"}</TableCell>
-              <TableCell className="min-w-[230px] align-top"><CashDebtQuickRepayment debt={item} onDetails={() => setSelected(item)} /></TableCell>
+              <TableCell className="whitespace-nowrap align-top">{item.paidAmount === 0 ? "Qaytim qayd etilmagan" : "Qisman qaytgan"}</TableCell>
+              <TableCell className="whitespace-nowrap align-top"><Button type="button" size="sm" variant="outline" className="h-8" onClick={() => setSelected(item)}>To‘lov qabul qilish</Button></TableCell>
             </TableRow>)}</TableBody>
           </Table>
           <PaginationBar page={report.data.page} pageCount={report.data.pageCount} total={report.data.total} onChange={setPage} />
         </>
       )}
+      <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Kassa qarzlari arxivi</DialogTitle>
+            <DialogDescription>To‘liq yopilgan qarzlar va ularning qaytim tarixini ko‘ring. Yozuvlar bazada saqlanadi.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <select aria-label="Arxiv bo‘yicha agent" value={archiveAgentId} onChange={event => { setArchiveAgentId(event.target.value); setArchivePage(1); }} className="finance-input border px-3 text-sm">
+              <option value="">Barcha agentlar</option>
+              {(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+            </select>
+            <span className="text-xs text-muted-foreground">Yopilgan qarzlar: <strong className="text-foreground">{archive.data?.total ?? "—"}</strong></span>
+          </div>
+          <form className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-2 lg:grid-cols-[160px_160px_minmax(180px,1fr)_auto_auto] lg:items-end" onSubmit={event => {
+            event.preventDefault();
+            if (archiveFromDate && archiveToDate && archiveFromDate > archiveToDate) {
+              toast.error("Boshlanish sanasi tugash sanasidan keyin bo‘lmasligi kerak.");
+              return;
+            }
+            setArchiveFilters({ fromDate: archiveFromDate, toDate: archiveToDate, noteSearch: archiveNote.trim() });
+            setArchivePage(1);
+          }}>
+            <div className="space-y-1"><label htmlFor="archive-from-date" className="text-xs font-medium">Qarz sanasi: dan</label><Input id="archive-from-date" type="date" className="finance-input" value={archiveFromDate} onChange={event => setArchiveFromDate(event.target.value)} /></div>
+            <div className="space-y-1"><label htmlFor="archive-to-date" className="text-xs font-medium">Gacha</label><Input id="archive-to-date" type="date" className="finance-input" value={archiveToDate} onChange={event => setArchiveToDate(event.target.value)} /></div>
+            <div className="space-y-1"><label htmlFor="archive-note-search" className="text-xs font-medium">Izoh matni</label><Input id="archive-note-search" className="finance-input" placeholder="Izohdan qidirish" maxLength={200} value={archiveNote} onChange={event => setArchiveNote(event.target.value)} /></div>
+            <Button type="submit" size="sm">Filtrlash</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => { setArchiveFromDate(""); setArchiveToDate(""); setArchiveNote(""); setArchiveFilters({ fromDate: "", toDate: "", noteSearch: "" }); setArchivePage(1); }}>Tozalash</Button>
+          </form>
+          {archive.error ? <QueryError description={archive.error.message} onRetry={() => archive.refetch()} /> : archive.isLoading ? <TableLoading columns={7} /> : !archive.data?.items?.length ? (
+            <EmptyState description="To‘liq yopilgan kassa qarzi topilmadi." />
+          ) : <>
+            <div className="overflow-x-auto rounded-lg border">
+              <Table className="finance-table min-w-[850px]">
+                <TableHeader><TableRow><TableHead>ID / sana</TableHead><TableHead>Agent / xodim</TableHead><TableHead>Kimga berilgan</TableHead><TableHead>Izoh</TableHead><TableHead className="text-right">Berilgan</TableHead><TableHead className="text-right">Qaytgan</TableHead><TableHead>Amal</TableHead></TableRow></TableHeader>
+                <TableBody>{archive.data.items.map(item => <TableRow key={item.id} className="bg-emerald-500/10 hover:bg-emerald-500/15 dark:bg-emerald-500/15 dark:hover:bg-emerald-500/20">
+                  <TableCell className="whitespace-nowrap"><span className="text-xs text-muted-foreground">#{item.id}</span><br />{formatTashkentDate(item.entryDate)}</TableCell>
+                  <TableCell className="font-medium">{item.agentName || (item.employeeName ? `${item.employeeName} (xodim)` : "Agent tanlanmagan")}</TableCell>
+                  <TableCell className="font-medium">{item.borrowerName || <span className="text-muted-foreground">Aniqlanmagan</span>}</TableCell>
+                  <TableCell className="max-w-xs whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{item.description || "—"}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">{formatMoney(item.amount)}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">{formatMoney(item.paidAmount)}</TableCell>
+                  <TableCell><Button type="button" size="sm" variant="outline" onClick={() => { setArchiveOpen(false); setSelected(item); }}>Batafsil</Button></TableCell>
+                </TableRow>)}</TableBody>
+              </Table>
+            </div>
+            <PaginationBar page={archive.data.page} pageCount={archive.data.pageCount} total={archive.data.total} onChange={setArchivePage} />
+          </>}
+        </DialogContent>
+      </Dialog>
       <CashDebtRepaymentDialog key={selected?.id ?? "closed"} debt={selected} onClose={() => setSelected(null)} />
     </SectionCard>
   );
 }
 
 type CashDebt = { id: number; agentId: number | null; employeeId: number | null; amount: number; paidAmount: number; borrowerName: string | null; description: string | null };
-
-function CashDebtQuickRepayment({ debt, onDetails }: { debt: CashDebt; onDetails: () => void }) {
-  const utils = trpc.useUtils();
-  const [date, setDate] = useState(() => tashkentDateInputValue());
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<"cash" | "terminal" | "click" | "transfer">("cash");
-  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
-  const remaining = debt.amount - debt.paidAmount;
-  const numericAmount = Number(amount);
-  const create = trpc.cash.journalDebt.repayments.create.useMutation({
-    onSuccess: async () => {
-      setAmount("");
-      setRequestId(crypto.randomUUID());
-      await Promise.all([
-        utils.cash.journalDebt.repayments.report.invalidate(),
-        utils.cash.journalDebt.repayments.history.invalidate(),
-        utils.cash.byDate.invalidate(),
-        utils.cash.openingBalance.invalidate(),
-        utils.dashboard.overview.invalidate(),
-      ]);
-      toast.success("Qaytim saqlandi, qarz qoldig‘i kamaydi");
-    },
-    onError: error => toast.error(error.message),
-  });
-  const canSave = amount !== "" && Number.isInteger(numericAmount) && numericAmount > 0 && numericAmount <= remaining && Number.isFinite(tashkentDateToTimestamp(date)) && !create.isPending;
-
-  return <div className="flex flex-col items-start gap-1.5">
-    {remaining > 0 && <form className="flex flex-wrap items-center gap-1.5" onSubmit={event => {
-      event.preventDefault();
-      if (!canSave) return;
-      create.mutate({ debtId: debt.id, paymentDate: tashkentDateToTimestamp(date), amount: numericAmount, method, note: "", requestId, mode: "new" });
-    }}>
-      <Input aria-label={`Qarz #${debt.id} qaytgan summa`} inputMode="numeric" className="finance-input h-8 w-28" value={amount} onChange={event => setAmount(sanitizeIntegerInput(event.target.value))} placeholder="Summa" />
-      <Input aria-label={`Qarz #${debt.id} qaytim sanasi`} type="date" className="finance-input h-8 w-36" value={date} onChange={event => setDate(event.target.value)} />
-      <select aria-label={`Qarz #${debt.id} to‘lov usuli`} className="finance-input h-8 w-24 border px-1 text-xs" value={method} onChange={event => setMethod(event.target.value as typeof method)}>
-        <option value="cash">Naqd</option><option value="terminal">Terminal</option><option value="click">Click</option><option value="transfer">O‘tkazma</option>
-      </select>
-      <Button type="submit" size="sm" aria-label={`Qarz #${debt.id} qaytimni saqlash`} disabled={!canSave}>Saqlash</Button>
-    </form>}
-    <Button type="button" size="sm" variant="outline" onClick={onDetails}>Batafsil</Button>
-  </div>;
-}
 
 function CashDebtRepaymentDialog({ debt, onClose }: { debt: CashDebt | null; onClose: () => void }) {
   const utils = trpc.useUtils();
@@ -338,7 +357,7 @@ function CashDebtRepaymentDialog({ debt, onClose }: { debt: CashDebt | null; onC
   const [showExisting, setShowExisting] = useState(false);
   const [cashEntryId, setCashEntryId] = useState("");
   const [note, setNote] = useState("");
-  const [requestId] = useState(() => crypto.randomUUID());
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const history = trpc.cash.journalDebt.repayments.history.useQuery({ debtId: debt?.id ?? 0 }, { enabled: Boolean(debt) });
   const cashDay = trpc.cash.byDate.useQuery({ date: tashkentDateToTimestamp(date) || 0 }, { enabled: Boolean(debt) && showExisting && Number.isFinite(tashkentDateToTimestamp(date)) });
   const remaining = debt ? debt.amount - (debt.paidAmount ?? 0) : 0;
@@ -363,7 +382,8 @@ function CashDebtRepaymentDialog({ debt, onClose }: { debt: CashDebt | null; onC
   });
   const create = trpc.cash.journalDebt.repayments.create.useMutation({
     onSuccess: async () => {
-      toast.success("Oldingi kirim qarzga bog‘landi"); setAmount(""); setNote(""); setCashEntryId("");
+      toast.success(showExisting ? "Oldingi kirim qarzga bog‘landi" : "To‘lov saqlandi, qarz qoldig‘i kamaydi");
+      setAmount(""); setNote(""); setCashEntryId(""); setRequestId(crypto.randomUUID());
       await refresh(); onClose();
     },
     onError: error => toast.error(error.message),
@@ -373,31 +393,37 @@ function CashDebtRepaymentDialog({ debt, onClose }: { debt: CashDebt | null; onC
     onError: error => toast.error(error.message),
   });
   const numericAmount = Number(amount);
-  const canSave = debt && Number.isInteger(numericAmount) && numericAmount > 0 && numericAmount <= remaining &&
-    Number.isFinite(tashkentDateToTimestamp(date)) && Number(cashEntryId) > 0 && !create.isPending;
+  const canSave = debt && amount !== "" && Number.isInteger(numericAmount) && numericAmount > 0 && numericAmount <= remaining &&
+    Number.isFinite(tashkentDateToTimestamp(date)) && (!showExisting || Number(cashEntryId) > 0) && !create.isPending;
   return <Dialog open={Boolean(debt)} onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
-      <DialogHeader><DialogTitle>Kassa qarzi #{debt?.id} — tarix</DialogTitle><DialogDescription>
+      <DialogHeader><DialogTitle>Kassa qarzi #{debt?.id} — {remaining > 0 ? "to‘lov qabul qilish" : "batafsil"}</DialogTitle><DialogDescription>
         {debt?.borrowerName || debt?.description || "Qarz oluvchi aniqlanmagan"} · Berilgan: {formatMoney(debt?.amount)} · Qaytgan: {formatMoney(debt?.paidAmount)} · Qoldiq: {formatMoney(remaining)}
       </DialogDescription></DialogHeader>
-      <div className="space-y-3">
+      <div className="space-y-4">
+        {remaining > 0 && <form className="space-y-3 rounded-xl border bg-muted/20 p-4" onSubmit={event => {
+          event.preventDefault();
+          if (!canSave || !debt) return;
+          const payment = { debtId: debt.id, paymentDate: tashkentDateToTimestamp(date), amount: numericAmount, method, note: note.trim(), requestId };
+          create.mutate(showExisting ? { ...payment, mode: "existing", cashEntryId: Number(cashEntryId) } : { ...payment, mode: "new" });
+        }}>
+          <h4 className="text-sm font-semibold">Qaytimni kiritish</h4>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5"><label htmlFor="cash-debt-payment-amount" className="text-xs font-semibold">Qaytgan summa</label><Input id="cash-debt-payment-amount" inputMode="numeric" className="finance-input" value={amount} onChange={event => { setAmount(sanitizeIntegerInput(event.target.value)); setCashEntryId(""); }} placeholder="0" /><p className="text-xs text-muted-foreground">Qoldiq: {formatMoney(remaining)}</p></div>
+            <div className="space-y-1.5"><label htmlFor="cash-debt-payment-date" className="text-xs font-semibold">Qaytim sanasi</label><Input id="cash-debt-payment-date" type="date" className="finance-input" value={date} onChange={event => { setDate(event.target.value); setCashEntryId(""); }} /></div>
+            <div className="space-y-1.5"><label htmlFor="cash-debt-payment-method" className="text-xs font-semibold">To‘lov usuli</label><select id="cash-debt-payment-method" className="finance-input w-full border px-3" value={method} onChange={event => { setMethod(event.target.value as typeof method); setCashEntryId(""); }}><option value="cash">Naqd</option><option value="terminal">Terminal</option><option value="click">Click</option><option value="transfer">O‘tkazma</option></select></div>
+            <div className="space-y-1.5"><label htmlFor="cash-debt-payment-note" className="text-xs font-semibold">Izoh</label><Input id="cash-debt-payment-note" className="finance-input" value={note} onChange={event => setNote(event.target.value)} placeholder="Ixtiyoriy" /></div>
+            {showExisting && <div className="space-y-1.5 sm:col-span-2"><label htmlFor="cash-debt-payment-existing" className="text-xs font-semibold">Oldingi kassa kirimi</label><select id="cash-debt-payment-existing" className="finance-input w-full border px-3" value={cashEntryId} onChange={event => setCashEntryId(event.target.value)}><option value="">Kirimni tanlang</option>{matchingEntries.map(entry => <option key={entry.id} value={entry.id}>#{entry.id} · {formatMoney(numericAmount)} · {entry.description || "Izohsiz"}</option>)}</select><p className="text-xs text-muted-foreground">Faqat shu sanadagi “Qarz qaytimi” turi va aynan shu summadagi kirim tanlanadi. Ikkinchi kassa kirimi yaratilmaydi.</p></div>}
+          </div>
+          <div className="flex flex-wrap items-center gap-2"><Button type="submit" disabled={!canSave}>{showExisting ? "Oldingi kirimni bog‘lash" : "To‘lovni saqlash"}</Button><Button type="button" variant="ghost" onClick={() => { setShowExisting(value => !value); setCashEntryId(""); }}>{showExisting ? "Yangi kirim yaratish" : "Kassaga oldin yozilgan kirimni bog‘lash"}</Button></div>
+          {!showExisting && <p className="text-xs text-muted-foreground">Naqd qaytim naqd qoldiqqa qo‘shiladi. Terminal, Click va o‘tkazma naqd qoldiqni o‘zgartirmaydi.</p>}
+        </form>}
         <div><h4 className="mb-2 text-sm font-semibold">Qaytimlar tarixi</h4>{history.isLoading ? <p className="text-xs text-muted-foreground">Yuklanmoqda...</p> : !history.data?.length ? <p className="text-xs text-muted-foreground">Hali qaytim qayd etilmagan.</p> : <div className="space-y-2">{history.data.map(payment => <div key={payment.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2 text-sm"><div><strong>{formatMoney(payment.amount)}</strong> · {formatTashkentDate(payment.paymentDate)} · {{ cash: "Naqd", terminal: "Terminal", click: "Click", transfer: "O‘tkazma" }[payment.method]} · kassa #{payment.cashEntryId}{payment.note ? ` · ${payment.note}` : ""}{payment.voidedAt && <span className="ml-2 text-rose-500">Bekor qilingan: {payment.voidReason}</span>}</div>{!payment.voidedAt && <Button type="button" size="sm" variant="outline" disabled={voidPayment.isPending} onClick={() => { const reason = window.prompt("Bekor qilish sababi (kamida 3 belgi):"); if (reason?.trim() && reason.trim().length >= 3) voidPayment.mutate({ id: payment.id, reason: reason.trim() }); }}>Bekor qilish</Button>}</div>)}</div>}</div>
         <div className="space-y-1.5"><label className="text-xs font-semibold">Qarz oluvchi ismini tuzatish</label>
           <div className="flex gap-2"><Input className="finance-input" value={borrower} onChange={event => setBorrower(event.target.value)} placeholder={debt?.borrowerName || "Qarz oluvchi ismi"} />
             <Button type="button" variant="outline" disabled={!debt || borrower.trim().length < 2 || saveBorrower.isPending} onClick={() => debt && saveBorrower.mutate({ debtId: debt.id, borrowerName: borrower.trim() })}>Saqlash</Button></div>
           {!debt?.borrowerName && <p className="text-xs text-muted-foreground">Eski qaydlarda ism izohdan avtomatik ajratilmaydi. Uni tekshirib kiriting.</p>}
         </div>
-        {remaining > 0 && <div className="space-y-3 border-t pt-3">
-          <Button type="button" variant="outline" onClick={() => setShowExisting(value => !value)}>{showExisting ? "Oldingi kirimni yopish" : "Kassaga oldin yozilgan qaytimni bog‘lash"}</Button>
-          {showExisting && <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5"><label className="text-xs font-semibold">Qaytim sanasi</label><Input type="date" className="finance-input" value={date} onChange={event => setDate(event.target.value)} /></div>
-          <div className="space-y-1.5"><label className="text-xs font-semibold">Summa</label><Input inputMode="numeric" className="finance-input" value={amount} onChange={event => setAmount(sanitizeIntegerInput(event.target.value))} placeholder="0" /></div>
-          <div className="space-y-1.5"><label className="text-xs font-semibold">To‘lov usuli</label><select className="finance-input w-full border px-3" value={method} onChange={event => { setMethod(event.target.value as typeof method); setCashEntryId(""); }}><option value="cash">Naqd</option><option value="terminal">Terminal</option><option value="click">Click</option><option value="transfer">O‘tkazma</option></select></div>
-          <div className="space-y-1.5 sm:col-span-2"><label className="text-xs font-semibold">Oldingi kassa kirimi</label><select className="finance-input w-full border px-3" value={cashEntryId} onChange={event => setCashEntryId(event.target.value)}><option value="">Kirimni tanlang</option>{matchingEntries.map(entry => <option key={entry.id} value={entry.id}>#{entry.id} · {formatMoney(numericAmount)} · {entry.description || "Izohsiz"}</option>)}</select><p className="text-xs text-muted-foreground">Faqat shu sanadagi “Qarz qaytimi” turi va aynan shu summadagi kirim tanlanadi. Bu amal ikkinchi marta kassa kirimi yaratmaydi.</p></div>
-          <div className="space-y-1.5 sm:col-span-2"><label className="text-xs font-semibold">Izoh</label><Input className="finance-input" value={note} onChange={event => setNote(event.target.value)} placeholder="Ixtiyoriy" /></div>
-          <div className="sm:col-span-2"><Button type="button" disabled={!canSave} onClick={() => debt && create.mutate({ debtId: debt.id, paymentDate: tashkentDateToTimestamp(date), amount: numericAmount, method, note, requestId, mode: "existing", cashEntryId: Number(cashEntryId) })}>Oldingi kirimni bog‘lash</Button></div>
-          </div>}
-        </div>}
       </div>
       <DialogFooter><Button type="button" variant="outline" onClick={onClose}>Yopish</Button></DialogFooter>
     </DialogContent>
