@@ -85,6 +85,8 @@ type JournalDebtRow = Omit<CashEntryRow, "type"> & { type: "memo"; amount: numbe
 type JournalRow = CashEntryRow | JournalDebtRow;
 const journalRowKey = (entry: JournalRow) => `${entry.type === "memo" ? "debt" : "cash"}:${entry.id}`;
 const isSettlementLocked = (entry: JournalRow) => entry.type === "memo" ? Boolean(entry.hasRepayment) : Boolean(entry.debtRepaymentId);
+const debtNoteText = (entry: Pick<JournalDebtRow, "borrowerName" | "description">) =>
+  [entry.borrowerName, entry.description].filter(Boolean).join(" — ");
 
 /**
  * "Ойлик" qatorida pul agentga ham, oylik oladigan xodimga ham berilishi mumkin.
@@ -103,7 +105,7 @@ function payeeFromValue(value: string): Payee {
 
 type DraftRow = {
   agentId: string; reason: string; terminal: string; click: string; transfer: string;
-  debtAmount: string; debtBorrower: string; debtReason: string; debtId: number | null;
+  debtAmount: string; debtReason: string; debtId: number | null;
   amounts: Record<string, string>;
   /** Har bir toifa uchun avtomatik saqlangandan keyingi cashEntries.id — bor bo'lsa,
    * keyingi o'zgarishlar yangi yozuv yaratmaydi, mavjudini yangilaydi. */
@@ -113,7 +115,7 @@ type DraftRow = {
 };
 const emptyDraftRow = (): DraftRow => ({
   agentId: "", reason: "", terminal: "", click: "", transfer: "",
-  debtAmount: "", debtBorrower: "", debtReason: "", debtId: null,
+  debtAmount: "", debtReason: "", debtId: null,
   amounts: Object.fromEntries(CASH_COLUMNS.map(name => [name, ""])),
   entryIds: Object.fromEntries(CASH_DRAFT_ENTRY_CATEGORIES.map(name => [name, null])),
   requestIds: Object.fromEntries(CASH_DRAFT_ENTRY_CATEGORIES.map(name => [name, crypto.randomUUID()])),
@@ -440,10 +442,12 @@ function DailyJournalGrid({
     });
   }
 
-  function commitExistingBorrower(entry: JournalDebtRow, value: string) {
-    const borrowerName = value.trim();
-    if ((entry.borrowerName ?? "") === borrowerName || isSettlementLocked(entry)) return;
-    saveExistingDebt(entry, { borrowerName: borrowerName || null });
+  function commitExistingDebtNote(entry: JournalDebtRow, value: string) {
+    const note = value.trim();
+    if (debtNoteText(entry) === note || isSettlementLocked(entry)) return;
+    if (note.length > 1000) { toast.error("Qarz izohi 1000 belgidan oshmasligi kerak."); return; }
+    // Eski ikki maydonli qayd tahrirlangandagina yagona izohga birlashtiriladi.
+    saveExistingDebt(entry, { borrowerName: null, description: note || null });
   }
 
   function commitExistingCash(entry: JournalRow, value: string) {
@@ -527,7 +531,7 @@ function DailyJournalGrid({
         return;
       }
       const payload = { entryDate: timestamp, amount, ...payeeFromValue(draft.agentId),
-        borrowerName: draft.debtBorrower.trim() || null, description: draft.debtReason.trim() || null };
+        description: draft.debtReason.trim() || null };
       if (draft.debtId) await updateDebt.mutateAsync({ id: draft.debtId, ...payload });
       else {
         const result = await createDebt.mutateAsync(payload);
@@ -710,23 +714,18 @@ function DailyJournalGrid({
                   <button type="button" data-journal-cell={`${rowIndex}-${col}`}
                     className={`${textInputClass} block max-w-[180px] truncate text-left`} aria-label={`${title} — to‘liq izoh`}>
                     {items.map(item => item.type === "memo"
-                      ? [item.borrowerName, item.description].filter(Boolean).join(" — ") : item.description).filter(Boolean).join("; ") || title}
+                      ? debtNoteText(item) : item.description).filter(Boolean).join("; ") || title}
                   </button>
                 }>
                   {items.map(item => <div key={journalRowKey(item)} className="space-y-2 border-b border-border pb-3 last:border-0">
                     <span className="text-xs text-muted-foreground">{item.category} · #{item.id} · {formatMoney(item.type === "memo" ? item.amount : item.cashAmount)}</span>
-                    {item.type === "memo" && <input key={`borrower-${item.id}-${item.borrowerName ?? ""}`}
-                      defaultValue={item.borrowerName ?? ""} placeholder="Kimga berilgan?"
-                      aria-label={`Qarz oluvchi #${item.id}`} maxLength={255}
-                      readOnly={isSettlementLocked(item)} className={textInputClass}
-                      onBlur={event => commitExistingBorrower(item, event.target.value)} />}
-                    <p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{item.description || "Izoh kiritilmagan."}</p>
+                    <p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{item.type === "memo" ? debtNoteText(item) || "Izoh kiritilmagan." : item.description || "Izoh kiritilmagan."}</p>
                     {!isSettlementLocked(item) ? <details>
                       <summary className="cursor-pointer text-xs text-primary">Izohni tahrirlash</summary>
-                      <textarea key={`${journalRowKey(item)}-${item.description}`} rows={3}
-                        aria-label={`${title} #${item.id}`} defaultValue={item.description ?? ""}
+                      <textarea key={`${journalRowKey(item)}-${item.description}-${item.type === "memo" ? item.borrowerName : ""}`} rows={3}
+                        aria-label={`${title} #${item.id}`} defaultValue={item.type === "memo" ? debtNoteText(item) : item.description ?? ""}
                         maxLength={1000} className={`${textInputClass} mt-2 resize-y whitespace-pre-wrap`}
-                        onBlur={event => commitExistingReason(item, event.target.value)} />
+                        onBlur={event => item.type === "memo" ? commitExistingDebtNote(item, event.target.value) : commitExistingReason(item, event.target.value)} />
                     </details> : null}
                   </div>)}
                 </JournalDetails>;
@@ -859,27 +858,18 @@ function DailyJournalGrid({
                     linkedSources={entry.transferSourceIds} linkMode={entry.transferLinkMode} onChanged={onChanged} />}</div>}
                 </td>
                 <td className="px-1.5 py-1">
-                  {entry.type === "memo" ? <div className="space-y-1"><input
-                    key={`debt-borrower-${entry.id}-${entry.borrowerName ?? ""}`}
-                    defaultValue={entry.borrowerName ?? ""}
-                    placeholder="Kimga berilgan?"
-                    aria-label="Qarz oluvchi"
-                    maxLength={255}
-                    readOnly={isSettlementLocked(entry)}
-                    className={textInputClass}
-                    onBlur={event => commitExistingBorrower(entry, event.target.value)}
-                  /><input
-                    key={`debt-reason-${entry.id}`}
+                  {entry.type === "memo" ? <ExpandableJournalNote><input
+                    key={`debt-reason-${entry.id}-${entry.borrowerName ?? ""}-${entry.description ?? ""}`}
                     data-journal-cell={`${rowIndex}-${DEBT_REASON_COL}`}
-                    defaultValue={entry.description ?? ""}
+                    defaultValue={debtNoteText(entry)}
                     placeholder="Qarz izohi"
                     readOnly={isSettlementLocked(entry)}
                     aria-label="Qarz izohi"
                     maxLength={1000}
                     className={textInputClass}
-                    onBlur={event => commitExistingReason(entry, event.target.value)}
+                    onBlur={event => commitExistingDebtNote(entry, event.target.value)}
                     onKeyDown={event => onAmountKeyDown(event, rowIndex, DEBT_REASON_COL)}
-                  /></div> : <span className={emptyCellClassLeft}>—</span>}
+                  /></ExpandableJournalNote> : <span className={emptyCellClassLeft}>—</span>}
                 </td>
                 <td className="px-1.5 py-1">
                   {entry.type !== "memo" ? (
@@ -1007,15 +997,8 @@ function DailyJournalGrid({
                     onChanged={onChanged} />}
                 </div>
               </td>
-              <td className="space-y-1 px-1.5 py-1" data-debt-cell="true">
-                <input
-                  value={draft.debtBorrower}
-                  placeholder="Kimga berilgan?"
-                  aria-label="Qarz oluvchi"
-                  maxLength={255}
-                  className={textInputClass}
-                  onChange={event => { updateDraft(index, { debtBorrower: event.target.value }); scheduleDebtSave(index); }}
-                />
+              <td className="px-1.5 py-1" data-debt-cell="true">
+                <ExpandableJournalNote>
                 <input
                   value={draft.debtReason}
                   data-journal-cell={`${rowIndex}-${DEBT_REASON_COL}`}
@@ -1026,6 +1009,7 @@ function DailyJournalGrid({
                   onChange={event => { updateDraft(index, { debtReason: event.target.value }); scheduleDebtSave(index); }}
                   onKeyDown={event => onAmountKeyDown(event, rowIndex, DEBT_REASON_COL)}
                 />
+                </ExpandableJournalNote>
               </td>
               <td className="px-1.5 py-1">
                 <ExpandableJournalNote>
