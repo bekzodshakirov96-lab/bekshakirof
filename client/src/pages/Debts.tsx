@@ -271,17 +271,16 @@ function CashJournalDebtReport() {
         </div>
       </div>
       <p className="mb-3 text-xs text-muted-foreground">Qarzni qisman yoki to‘liq yopish uchun “To‘lov qabul qilish”ni oching. Saqlangan qaytim qarz qoldig‘ini kamaytiradi va tanlangan usulda kassaga kirim yozadi.</p>
-      {report.error ? <QueryError description={report.error.message} onRetry={() => report.refetch()} /> : report.isLoading ? <TableLoading columns={4} /> : !report.data?.items?.length ? (
+      {report.error ? <QueryError description={report.error.message} onRetry={() => report.refetch()} /> : report.isLoading ? <TableLoading columns={8} /> : !report.data?.items?.length ? (
         <EmptyState description="Yopilmagan kassa qarzi topilmadi. To‘liq yopilganlarni Arxivdan ko‘ring." />
       ) : (
         <>
-          <Table className="finance-table min-w-[1150px]">
-            <TableHeader><TableRow><TableHead>ID / sana</TableHead><TableHead>Agent / xodim</TableHead><TableHead>Kimga berilgan</TableHead><TableHead>Izoh</TableHead><TableHead className="text-right">Berilgan</TableHead><TableHead className="text-right">Qaytgan</TableHead><TableHead className="text-right">Qoldiq</TableHead><TableHead>Holat</TableHead><TableHead>Amal</TableHead></TableRow></TableHeader>
+          <Table className="finance-table min-w-[1050px]">
+            <TableHeader><TableRow><TableHead>ID / sana</TableHead><TableHead>Agent / xodim</TableHead><TableHead>Qarz izohi</TableHead><TableHead className="text-right">Berilgan</TableHead><TableHead className="text-right">Qaytgan</TableHead><TableHead className="text-right">Qoldiq</TableHead><TableHead>Holat</TableHead><TableHead>Amal</TableHead></TableRow></TableHeader>
             <TableBody>{report.data.items.map(item => <TableRow key={item.id} className="bg-rose-500/10 hover:bg-rose-500/15 dark:bg-rose-500/10 dark:hover:bg-rose-500/20">
               <TableCell className="whitespace-nowrap align-top"><span className="text-xs text-muted-foreground">#{item.id}</span><br />{formatTashkentDate(item.entryDate)}</TableCell>
               <TableCell className="align-top font-medium">{item.agentName || (item.employeeName ? `${item.employeeName} (xodim)` : "Agent tanlanmagan")}</TableCell>
-              <TableCell className="align-top font-medium">{item.borrowerName || <span className="text-muted-foreground">Aniqlanmagan</span>}</TableCell>
-              <TableCell className="min-w-[180px] max-w-xs whitespace-pre-wrap break-words align-top [overflow-wrap:anywhere]">{item.description || "—"}</TableCell>
+              <TableCell className="min-w-[180px] max-w-xs whitespace-pre-wrap break-words align-top [overflow-wrap:anywhere]">{[item.borrowerName, item.description].filter(Boolean).join(" — ") || "—"}</TableCell>
               <TableCell className="whitespace-nowrap text-right align-top tabular-nums">{formatMoney(item.amount)}</TableCell>
               <TableCell className="whitespace-nowrap text-right align-top tabular-nums">{formatMoney(item.paidAmount)}</TableCell>
               <TableCell className="whitespace-nowrap text-right align-top font-semibold tabular-nums">{formatMoney(item.amount - item.paidAmount)}</TableCell>
@@ -320,17 +319,16 @@ function CashJournalDebtReport() {
             <Button type="submit" size="sm">Filtrlash</Button>
             <Button type="button" size="sm" variant="outline" onClick={() => { setArchiveFromDate(""); setArchiveToDate(""); setArchiveNote(""); setArchiveFilters({ fromDate: "", toDate: "", noteSearch: "" }); setArchivePage(1); }}>Tozalash</Button>
           </form>
-          {archive.error ? <QueryError description={archive.error.message} onRetry={() => archive.refetch()} /> : archive.isLoading ? <TableLoading columns={7} /> : !archive.data?.items?.length ? (
+          {archive.error ? <QueryError description={archive.error.message} onRetry={() => archive.refetch()} /> : archive.isLoading ? <TableLoading columns={6} /> : !archive.data?.items?.length ? (
             <EmptyState description="To‘liq yopilgan kassa qarzi topilmadi." />
           ) : <>
             <div className="overflow-x-auto rounded-lg border">
-              <Table className="finance-table min-w-[850px]">
-                <TableHeader><TableRow><TableHead>ID / sana</TableHead><TableHead>Agent / xodim</TableHead><TableHead>Kimga berilgan</TableHead><TableHead>Izoh</TableHead><TableHead className="text-right">Berilgan</TableHead><TableHead className="text-right">Qaytgan</TableHead><TableHead>Amal</TableHead></TableRow></TableHeader>
+              <Table className="finance-table min-w-[750px]">
+                <TableHeader><TableRow><TableHead>ID / sana</TableHead><TableHead>Agent / xodim</TableHead><TableHead>Qarz izohi</TableHead><TableHead className="text-right">Berilgan</TableHead><TableHead className="text-right">Qaytgan</TableHead><TableHead>Amal</TableHead></TableRow></TableHeader>
                 <TableBody>{archive.data.items.map(item => <TableRow key={item.id} className="bg-emerald-500/10 hover:bg-emerald-500/15 dark:bg-emerald-500/15 dark:hover:bg-emerald-500/20">
                   <TableCell className="whitespace-nowrap"><span className="text-xs text-muted-foreground">#{item.id}</span><br />{formatTashkentDate(item.entryDate)}</TableCell>
                   <TableCell className="font-medium">{item.agentName || (item.employeeName ? `${item.employeeName} (xodim)` : "Agent tanlanmagan")}</TableCell>
-                  <TableCell className="font-medium">{item.borrowerName || <span className="text-muted-foreground">Aniqlanmagan</span>}</TableCell>
-                  <TableCell className="max-w-xs whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{item.description || "—"}</TableCell>
+                  <TableCell className="min-w-[180px] max-w-xs whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{[item.borrowerName, item.description].filter(Boolean).join(" — ") || "—"}</TableCell>
                   <TableCell className="whitespace-nowrap text-right tabular-nums">{formatMoney(item.amount)}</TableCell>
                   <TableCell className="whitespace-nowrap text-right tabular-nums">{formatMoney(item.paidAmount)}</TableCell>
                   <TableCell><Button type="button" size="sm" variant="outline" onClick={() => { setArchiveOpen(false); setSelected(item); }}>Batafsil</Button></TableCell>
