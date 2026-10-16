@@ -2,6 +2,9 @@ import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { appSettings, InsertUser, users } from "../drizzle/schema";
+import { runtimeTenant } from "./tenancy/config";
+import { assertTenantDatabase } from "./tenancy/database";
+const databaseUrl = process.env.DATABASE_URL;
 
 // MySQL TIMESTAMP columns (entryDate, transactionDate, etc.) are stored as UTC
 // internally and converted using the CONNECTION'S session time_zone on every
@@ -11,8 +14,9 @@ import { appSettings, InsertUser, users } from "../drizzle/schema";
 // shift every existing Kassa/report timestamp by hours the moment the database
 // itself moves. Pin every connection to Tashkent's fixed offset (Uzbekistan has
 // no DST) so this stays correct no matter where the database is hosted.
-function connect() {
-  const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, timezone: "+05:00" });
+async function connect() {
+  if (!databaseUrl) throw new Error("DATABASE_URL is required.");
+  const pool = mysql.createPool({ uri: databaseUrl, timezone: "+05:00" });
   // Despite the promise-wrapper types, this event hands back the underlying
   // callback-style connection, so `.query()` here takes a callback, not a promise.
   pool.on("connection", connection => {
@@ -24,18 +28,28 @@ function connect() {
       if (error) console.warn("[Database] Failed to set session time_zone:", error);
     });
   });
-  return drizzle(pool);
+  try {
+    await assertTenantDatabase(pool, runtimeTenant);
+    return drizzle(pool);
+  } catch (error) {
+    await pool.end();
+    throw error;
+  }
 }
 
-let _db: ReturnType<typeof connect> | null = null;
+let _db: Awaited<ReturnType<typeof connect>> | null = null;
+let connecting: Promise<Awaited<ReturnType<typeof connect>>> | null = null;
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db) {
     try {
-      _db = connect();
+      connecting ??= connect();
+      _db = await connecting;
     } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
+      connecting = null;
+      if (runtimeTenant.mode === "isolated") throw error;
+      console.warn("[Database] Failed to connect.");
       _db = null;
     }
   }
@@ -48,6 +62,14 @@ export async function requireDb() {
     throw new Error("Ma'lumotlar bazasiga ulanish mavjud emas.");
   }
   return db;
+}
+
+/** Release this runtime's pool (used by shutdown/integration test tooling). */
+export async function closeDb() {
+  const db = _db ?? await connecting?.catch(() => null);
+  _db = null;
+  connecting = null;
+  if (db) await db.$client.end();
 }
 
 /** True when this is the very first account ever created (the permanent owner). */

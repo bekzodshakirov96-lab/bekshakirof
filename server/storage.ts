@@ -4,13 +4,16 @@
 import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
+import { runtimeTenant, tenantUploadsDirectory } from "./tenancy/config";
+import { validateStorageKey } from "./tenancy/files";
 
-const UPLOADS_DIR = process.env.UPLOADS_DIR
+const baseUploadsDir = process.env.UPLOADS_DIR
   ? path.resolve(process.env.UPLOADS_DIR)
   : path.resolve(process.cwd(), "uploads");
+const UPLOADS_DIR = tenantUploadsDirectory(baseUploadsDir, runtimeTenant);
 
 function normalizeKey(relKey: string): string {
-  return relKey.replace(/^\/+/, "");
+  return validateStorageKey(relKey);
 }
 
 function appendHashSuffix(relKey: string): string {

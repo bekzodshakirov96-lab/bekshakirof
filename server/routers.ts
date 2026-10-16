@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { COOKIE_NAME, SESSION_TTL_MS } from "@shared/const";
+import { SESSION_TTL_MS } from "@shared/const";
+import { SESSION_COOKIE_NAME as COOKIE_NAME } from "./tenancy/config";
 import type { User } from "../drizzle/schema";
 import * as db from "./db";
 import { hashPassword, signSession, verifyPassword } from "./_core/localAuth";

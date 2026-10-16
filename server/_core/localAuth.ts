@@ -1,7 +1,7 @@
 // Self-hosted authentication: email + password, sessions signed as JWTs and
 // stored in an httpOnly cookie. Replaces the Manus-hosted OAuth flow that
 // previously lived in sdk.ts / oauth.ts so this app can run on any server.
-import { COOKIE_NAME, SESSION_TTL_MS } from "@shared/const";
+import { SESSION_TTL_MS } from "@shared/const";
 import bcrypt from "bcryptjs";
 import { parse as parseCookieHeader } from "cookie";
 import type { Request } from "express";
@@ -9,6 +9,7 @@ import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
 import { ENV } from "./env";
+import { runtimeTenant, SESSION_AUDIENCE, SESSION_COOKIE_NAME, sessionIssuer } from "../tenancy/config";
 
 const BCRYPT_ROUNDS = 10;
 
@@ -51,6 +52,8 @@ export async function signSession(
 
   return new SignJWT({ userId, tokenVersion })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setIssuer(sessionIssuer)
+    .setAudience(SESSION_AUDIENCE)
     .setExpirationTime(expirationSeconds)
     .sign(secretKey);
 }
@@ -63,6 +66,10 @@ export async function verifySession(
   try {
     const secretKey = getSessionSecret();
     const { payload } = await jwtVerify(cookieValue, secretKey, { algorithms: ["HS256"] });
+    const scoped = payload.iss === sessionIssuer && payload.aud === SESSION_AUDIENCE;
+    // Only the original, unconverted installation accepts its pre-SaaS sessions.
+    const legacy = runtimeTenant.mode === "legacy" && payload.iss === undefined && payload.aud === undefined;
+    if (!scoped && !legacy) return null;
     const { userId, tokenVersion } = payload as Record<string, unknown>;
     if (typeof userId !== "number" || typeof tokenVersion !== "number") return null;
     return { userId, tokenVersion };
@@ -80,7 +87,7 @@ function parseCookies(cookieHeader: string | undefined) {
 /** Resolves the logged-in user (or null) from the session cookie / bearer header. */
 export async function authenticateRequest(req: Request): Promise<User | null> {
   const cookies = parseCookies(req.headers.cookie);
-  let sessionToken = cookies.get(COOKIE_NAME);
+  let sessionToken = cookies.get(SESSION_COOKIE_NAME);
 
   if (!sessionToken) {
     const authHeader = req.headers.authorization;
