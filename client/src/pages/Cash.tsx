@@ -2,6 +2,7 @@ import { MetricCard, PageHeader, QueryError } from "@/components/finance-ui";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { MatrixReceiptCell, useMatrixInventory } from "@/components/MatrixInventory";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
@@ -11,6 +12,7 @@ import { buildEmployeeOptions } from "@/lib/cashPayees";
 import { groupJournalEntries, journalCellTotal } from "@/lib/cashJournalGroups";
 import {
   formatMoney,
+  formatNumber,
   sanitizeDecimalInput,
   sanitizeIntegerInput,
   shiftDateInputValue,
@@ -1074,6 +1076,7 @@ function AgentProductMatrix() {
   const agents = trpc.agents.options.useQuery();
   const products = trpc.products.list.useQuery({});
   const takingRows = trpc.kassa.agentTaking.listForDay.useQuery({ date: timestamp });
+  const cellVersions = trpc.matrixInventory.cellVersions.useQuery({ date: timestamp });
   const daySummary = trpc.kassa.daySummary.useQuery({ date: timestamp });
   const dayPriceQuery = trpc.kassa.dayPrice.listForDay.useQuery({ date: timestamp });
   const matrixLayoutQuery = trpc.kassa.matrixLayout.forDate.useQuery({ date: timestamp });
@@ -1083,19 +1086,15 @@ function AgentProductMatrix() {
       utils.kassa.agentTaking.listForDay.invalidate({ date: timestamp }),
       utils.kassa.daySummary.invalidate({ date: timestamp }),
       utils.dashboard.overview.invalidate(),
+      utils.matrixInventory.invalidate(),
+      utils.stock.invalidate(),
     ]);
 
-  const addProduct = trpc.kassa.agentTaking.addProduct.useMutation({
+  const inventory = useMatrixInventory(date, invalidateMatrix);
+  const [matrixEditRevision, setMatrixEditRevision] = useState(0);
+  const setCell = trpc.matrixInventory.setCell.useMutation({
     onSuccess: invalidateMatrix,
-    onError: error => toast.error(error.message),
-  });
-  const updateQuantity = trpc.kassa.agentTaking.updateQuantity.useMutation({
-    onSuccess: invalidateMatrix,
-    onError: error => toast.error(error.message),
-  });
-  const removeProduct = trpc.kassa.agentTaking.remove.useMutation({
-    onSuccess: invalidateMatrix,
-    onError: error => toast.error(error.message),
+    onError: async error => { toast.error(error.message); await invalidateMatrix(); setMatrixEditRevision(value => value + 1); },
   });
   const setDayPrice = trpc.kassa.dayPrice.upsert.useMutation({
     onSuccess: () => Promise.all([invalidateMatrix(), utils.kassa.dayPrice.listForDay.invalidate({ date: timestamp })]),
@@ -1262,7 +1261,11 @@ function AgentProductMatrix() {
   ].filter((value): value is string => Boolean(value));
   const entryMap = useMemo(() => {
     const map = new Map<string, { id: number; quantity: string; amount: number }>();
-    for (const row of takingRows.data ?? []) map.set(`${row.agentId}:${row.productId}`, row);
+    for (const row of takingRows.data ?? []) {
+      const key = `${row.agentId}:${row.productId}`;
+      const prior = map.get(key);
+      map.set(key, prior ? { id: prior.id, quantity: String(Number(prior.quantity) + Number(row.quantity)), amount: prior.amount + row.amount } : row);
+    }
     return map;
   }, [takingRows.data]);
   const dayPriceByProduct = useMemo(() => new Map((dayPriceQuery.data ?? []).map(row => [row.productId, row.unitPrice])), [dayPriceQuery.data]);
@@ -1281,16 +1284,12 @@ function AgentProductMatrix() {
   function onCellBlur(agentId: number, productId: number, rawValue: string) {
     const key = `${agentId}:${productId}`;
     const existing = entryMap.get(key);
-    const quantity = Number(rawValue);
-    if (!rawValue || Number.isNaN(quantity) || quantity <= 0) {
-      if (existing) removeProduct.mutate({ id: existing.id });
-      return;
-    }
-    if (existing) {
-      if (quantity !== Number(existing.quantity)) updateQuantity.mutate({ id: existing.id, quantity });
-    } else {
-      addProduct.mutate({ date: timestamp, agentId, productId, quantity });
-    }
+    const quantity = rawValue.trim() === "" ? 0 : Number(rawValue);
+    const current = Number(existing?.quantity ?? 0);
+    if (!Number.isFinite(quantity) || quantity < 0 || quantity === current) return;
+    if (setCell.isPending || cellVersions.isPending || cellVersions.isError) return;
+    const expectedVersion = cellVersions.data?.find(row => row.agentId === agentId && row.productId === productId)?.version ?? 0;
+    setCell.mutate({ date: timestamp, agentId, productId, quantity, expectedQuantity: current, expectedVersion, requestKey: crypto.randomUUID() });
   }
 
   function onCellKeyDown(event: React.KeyboardEvent<HTMLInputElement>, rowIndex: number, columnIndex: number) {
@@ -1353,6 +1352,9 @@ function AgentProductMatrix() {
   return (
     <div>
       {header}
+      {inventory.dialog}
+      <p className="mb-3 text-xs text-muted-foreground">Ostatka — tanlangan kun yakunidagi ombor qoldig'i. Prixod katagiga yangi kelgan miqdorni yozib, Enter yoki Tab bosing; kunlik jami katak ostida ko'rinadi. Agent kataklari — omborchi bergan tayyor miqdor.</p>
+      {inventory.query.isError && <div role="alert" className="mb-3 flex items-center gap-2 text-sm text-destructive">Ombor qoldig'ini yuklab bo'lmadi.<Button size="sm" variant="outline" onClick={() => void inventory.query.refetch()}>Qayta urinish</Button></div>}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative" ref={agentPickerRef}>
           <Button
@@ -1476,6 +1478,8 @@ function AgentProductMatrix() {
         <thead>
           <tr className="bg-muted text-xs font-semibold text-muted-foreground">
             <th className="sticky left-0 whitespace-nowrap bg-muted px-3 py-2 text-left">Товар</th>
+            <th className="whitespace-nowrap px-3 py-2 text-right">Ostatka</th>
+            <th className="whitespace-nowrap px-3 py-2 text-right">Prixod</th>
             <th className="whitespace-nowrap px-3 py-2 text-right">Narxi</th>
             <th className="whitespace-nowrap px-3 py-2 text-right">Kunlik narx</th>
             {visibleAgents.map(agent => (
@@ -1495,9 +1499,11 @@ function AgentProductMatrix() {
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {visibleProducts.length === 0 && <tr><td colSpan={3 + visibleAgents.length} className="p-6 text-center text-sm text-muted-foreground">Mahsulotlar yashirilgan. “Mahsulotlar” tugmasidan keraklisini yoqing.</td></tr>}
+          {visibleProducts.length === 0 && <tr><td colSpan={5 + visibleAgents.length} className="p-6 text-center text-sm text-muted-foreground">Mahsulotlar yashirilgan. “Mahsulotlar” tugmasidan keraklisini yoqing.</td></tr>}
           {visibleProducts.map((product, rowIndex) => {
             const dayPrice = dayPriceByProduct.get(product.id) ?? null;
+            const stock = inventory.query.data?.find(row => row.productId === product.id);
+            const stockReady = !inventory.query.isError && !inventory.query.isFetching;
             return (
             <tr key={product.id}
               className={`${draggedProduct === product.id ? "opacity-40" : ""} ${dropTarget?.id === product.id ? (dropTarget.placement === "before" ? "[&>td]:border-t-2 [&>td]:border-t-primary" : "[&>td]:border-b-2 [&>td]:border-b-primary") : ""}`}
@@ -1543,6 +1549,10 @@ function AgentProductMatrix() {
                   {product.name}
                 </div>
               </td>
+              <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums">
+                {!stockReady ? "—" : !stock ? <button type="button" className="text-xs font-medium text-primary hover:underline" onClick={() => inventory.open(product)}>Sozlash</button> : !stock.active ? <span className="text-xs text-muted-foreground">Hisob boshlanmagan</span> : <span className={stock.closing < 0 ? "font-semibold text-destructive" : "font-semibold text-emerald-600 dark:text-emerald-400"}>{formatNumber(stock.closing, 3)} <span className="text-xs font-normal text-muted-foreground">{product.unit}</span></span>}
+              </td>
+              <td className="px-2 py-1 text-right"><MatrixReceiptCell key={`${date}:${product.id}`} product={product} date={date} active={Boolean(stock?.active)} ready={!inventory.query.isPending && !inventory.query.isError} received={stock?.received ?? 0} onSaved={invalidateMatrix} onHistory={() => inventory.open(product)} /></td>
               <td className="whitespace-nowrap px-3 py-1.5 text-right text-muted-foreground">{formatMoney(product.price)}</td>
               <td className="px-2 py-1 text-right">
                 <Input
@@ -1564,7 +1574,8 @@ function AgentProductMatrix() {
                       className="finance-input h-10 w-20 text-right"
                       type="text" inputMode="decimal"
                       defaultValue={existing ? String(Number(existing.quantity)) : ""}
-                      key={`${agent.id}:${product.id}:${existing?.quantity ?? ""}`}
+                      key={`${agent.id}:${product.id}:${existing?.quantity ?? ""}:${matrixEditRevision}`}
+                      disabled={setCell.isPending || takingRows.isPending || takingRows.isError || cellVersions.isPending || cellVersions.isError}
                       data-cash-matrix-cell={`${rowIndex}-${columnIndex}`}
                       onChange={event => { event.target.value = sanitizeDecimalInput(event.target.value); }}
                       onBlur={event => onCellBlur(agent.id, product.id, event.target.value)}
@@ -1579,7 +1590,7 @@ function AgentProductMatrix() {
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-border bg-muted/80 text-xs font-bold text-foreground">
-            <td className="sticky left-0 whitespace-nowrap bg-muted/80 px-3 py-2" colSpan={3}>Умумий</td>
+            <td className="sticky left-0 whitespace-nowrap bg-muted/80 px-3 py-2" colSpan={5}>Умумий</td>
             {visibleAgents.map(agent => (
               <td key={agent.id} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
                 {formatMoney(summaryByAgent.get(agent.id)?.computedAmount ?? 0)}
@@ -1587,7 +1598,7 @@ function AgentProductMatrix() {
             ))}
           </tr>
           <tr className="bg-muted/80 text-xs font-bold text-foreground">
-            <td className="sticky left-0 whitespace-nowrap bg-muted/80 px-3 py-2" colSpan={3}>
+            <td className="sticky left-0 whitespace-nowrap bg-muted/80 px-3 py-2" colSpan={5}>
               Касса
               <span className="ml-1.5 font-normal text-muted-foreground">(Приход кег + Приход пет + Terminal + Click + Перечисление)</span>
             </td>
@@ -1598,7 +1609,7 @@ function AgentProductMatrix() {
             ))}
           </tr>
           <tr className="text-xs font-bold">
-            <td className="sticky left-0 whitespace-nowrap bg-card px-3 py-2" colSpan={3}>Разница</td>
+            <td className="sticky left-0 whitespace-nowrap bg-card px-3 py-2" colSpan={5}>Разница</td>
             {visibleAgents.map(agent => {
               const row = summaryByAgent.get(agent.id);
               const farq = row?.farq ?? 0;

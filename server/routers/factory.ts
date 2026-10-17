@@ -1,3 +1,4 @@
+import { assertInventoryHistoryMutable } from "../inventoryBoundary";
 import { and, asc, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { bottleMovements, containerMovements, factoryOperations, products, stockMovements } from "../../drizzle/schema";
@@ -197,6 +198,7 @@ export const factoryRouter = router({
       await db.transaction(async tx => {
         let stockMovementId: number | null = null;
         if (impact) {
+          await assertInventoryHistoryMutable(tx, [{ productId: input.productId, movementDate: operationDate }]);
           const [movement] = await tx
             .insert(stockMovements)
             .values({
@@ -241,6 +243,10 @@ export const factoryRouter = router({
       .limit(1);
     if (!existing) throw new Error("Yozuv topilmadi yoki allaqachon o'chirilgan.");
     await db.transaction(async tx => {
+      if (existing.stockMovementId) {
+        const movements = await tx.select().from(stockMovements).where(eq(stockMovements.id, existing.stockMovementId));
+        await assertInventoryHistoryMutable(tx, movements);
+      }
       await tx.delete(factoryOperations).where(eq(factoryOperations.id, input.id));
       if (existing.stockMovementId) await tx.delete(stockMovements).where(eq(stockMovements.id, existing.stockMovementId));
       await logAudit(tx, {

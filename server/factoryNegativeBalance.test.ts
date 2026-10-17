@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { bottleMovements, containerMovements, factoryOperations, products, stockMovements } from "../drizzle/schema";
+import { bottleMovements, containerMovements, factoryOperations, matrixStockConfigs, products, stockMovements } from "../drizzle/schema";
 import type { TrpcContext } from "./_core/context";
 
 type Row = Record<string, unknown>;
@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
 function selectRows(table: unknown): Row[] {
   if (table === products) return [{ id: 1, name: "KEG 30", containerType: "keg_30" }];
   if (table === containerMovements) return state.containerRows;
+  if (table === matrixStockConfigs) return [];
   if (table === factoryOperations) {
     const totals = new Map<string, Row>();
     for (const row of state.factoryRows) {
@@ -52,6 +53,7 @@ function createDbDouble() {
       const chain = {
         from: (table: unknown) => { rows = selectRows(table); return chain; },
         where: () => chain,
+        for: () => chain,
         groupBy: () => chain,
         limit: (limit: number) => { rows = rows.slice(0, limit); return chain; },
         then: (resolve: (value: Row[]) => unknown, reject: (reason: unknown) => unknown) =>

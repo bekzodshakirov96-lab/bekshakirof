@@ -499,11 +499,63 @@ export const kassaDailyActuals = mysqlTable(
  * sale). unitPrice is snapshotted at entry time so later price changes don't rewrite
  * history — mirrors transactions.currentPrice/salePrice.
  */
+export const matrixStockConfigs = mysqlTable("matrix_stock_configs", {
+  tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("productId").notNull().references(() => products.id),
+  effectiveDate: timestamp("effectiveDate").notNull(),
+  openingQuantity: decimal("openingQuantity", { precision: 12, scale: 3 }).notNull(),
+  createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [uniqueIndex("matrix_stock_product_unique").on(table.tenantId, table.productId)]);
+
+/** Immutable explanations for matrix-generated stock movements. Taking source IDs
+ * intentionally survive removal of the editable financial source row. */
+export const matrixStockEvents = mysqlTable("matrix_stock_events", {
+  tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("productId").notNull().references(() => products.id),
+  kind: mysqlEnum("kind", ["opening", "receipt", "receipt_reversal", "taking"]).notNull(),
+  quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull(),
+  movementDate: timestamp("movementDate").notNull(),
+  sourceEntryId: int("sourceEntryId"),
+  reversesId: int("reversesId"),
+  requestKey: varchar("requestKey", { length: 100 }).notNull(),
+  stockMovementId: int("stockMovementId").references(() => stockMovements.id),
+  note: varchar("note", { length: 1000 }),
+  createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("matrix_stock_request_unique").on(table.tenantId, table.requestKey),
+  uniqueIndex("matrix_stock_reversal_unique").on(table.tenantId, table.reversesId),
+  index("matrix_stock_event_date_idx").on(table.tenantId, table.productId, table.movementDate),
+  index("matrix_stock_event_source_idx").on(table.tenantId, table.sourceEntryId),
+]);
+
+/** Durable cell edits, including deletions. IDs are monotonic edit versions;
+ * request IDs survive retries and quantity cycles (40 -> 10 -> 40). */
+export const matrixCellWrites = mysqlTable("matrix_cell_writes", {
+  tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
+  id: int("id").autoincrement().primaryKey(),
+  entryDate: timestamp("entryDate").defaultNow().notNull(),
+  productId: int("productId").notNull().references(() => products.id),
+  agentId: int("agentId").notNull().references(() => agents.id),
+  requestKey: varchar("requestKey", { length: 100 }).notNull(),
+  expectedVersion: int("expectedVersion").notNull(),
+  expectedQuantity: decimal("expectedQuantity", { precision: 12, scale: 3 }).notNull(),
+  quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull(),
+  createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("matrix_cell_request_unique").on(table.tenantId, table.requestKey),
+  index("matrix_cell_version_idx").on(table.tenantId, table.entryDate, table.productId, table.agentId, table.id),
+]);
+
 export const agentTakingEntries = mysqlTable(
   "agent_taking_entries",
   {
     id: int("id").autoincrement().primaryKey(),
-    entryDate: timestamp("entryDate").notNull(),
+    entryDate: timestamp("entryDate").defaultNow().notNull(),
     agentId: int("agentId")
       .notNull()
       .references(() => agents.id, { onDelete: "cascade" }),
