@@ -1,7 +1,8 @@
+import { assertInventoryHistoryMutable } from "../inventoryBoundary";
 import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, cashEntries, cashTransferLinks, clientPayments, clients, products, transactions } from "../../drizzle/schema";
+import { agents, cashEntries, cashTransferLinks, clientPayments, clients, products, stockMovements, transactions } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure, requireOwnAgent, salesProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import {
@@ -768,6 +769,8 @@ export const transactionsRouter = router({
         const [link] = await tx.select({ id: cashTransferLinks.id }).from(cashTransferLinks)
           .where(eq(cashTransferLinks.transactionId, input.id)).limit(1);
         if (link) throw new Error("Savdo o‘tkazmasi Kassa IDsi bilan bog‘langan. O‘chirishdan oldin bog‘lanishni olib tashlang.");
+        const stockHistory = await tx.select().from(stockMovements).where(eq(stockMovements.transactionId, input.id));
+        await assertInventoryHistoryMutable(tx, stockHistory);
         await tx.delete(transactions).where(eq(transactions.id, input.id));
         await logAudit(tx, {
           tableName: "transactions",

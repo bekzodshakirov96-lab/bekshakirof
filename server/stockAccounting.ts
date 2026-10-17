@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { stockMovements } from "../drizzle/schema";
 import type { getDb } from "./db";
+import { assertInventoryHistoryMutable } from "./inventoryBoundary";
 
 type Database = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 export type DatabaseTransaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -20,6 +21,15 @@ export async function reconcileTransactionStock(
     createdBy: number | null;
   },
 ): Promise<void> {
+  const previous = await tx.select().from(stockMovements)
+    .where(and(eq(stockMovements.transactionId, input.transactionId), eq(stockMovements.isAutomatic, true)));
+  // Price/name-only sale edits do not rewrite protected warehouse history.
+  if (previous.length === 1 && previous[0].productId === input.productId &&
+      previous[0].movementType === "out" && Number(previous[0].quantity) === input.quantity &&
+      +previous[0].movementDate === +input.movementDate) return;
+  await assertInventoryHistoryMutable(tx, [...previous,
+    ...(input.productId && input.quantity > 0 ? [{ productId: input.productId, movementDate: input.movementDate }] : []),
+  ]);
   await tx
     .delete(stockMovements)
     .where(and(eq(stockMovements.transactionId, input.transactionId), eq(stockMovements.isAutomatic, true)));

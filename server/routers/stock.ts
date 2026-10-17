@@ -4,6 +4,7 @@ import { agents, products, stockMovements, transactions } from "../../drizzle/sc
 import { skladProcedure } from "../access";
 import { logAudit } from "../auditLog";
 import { requireDb } from "../db";
+import { assertInventoryHistoryMutable } from "../inventoryBoundary";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
 
@@ -103,6 +104,7 @@ export const stockRouter = router({
     .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
       return db.transaction(async tx => {
+        await assertInventoryHistoryMutable(tx, [{ productId: input.productId, movementDate: new Date(input.movementDate) }]);
         const [created] = await tx.insert(stockMovements).values({
           productId: input.productId,
           movementType: "in",
@@ -150,6 +152,7 @@ export const stockRouter = router({
       const db = await requireDb();
       const movementDate = new Date(input.movementDate);
       await db.transaction(async tx => {
+        await assertInventoryHistoryMutable(tx, input.items.map(item => ({ productId: item.productId, movementDate })));
         for (const item of input.items) {
           const [created] = await tx.insert(stockMovements).values({
             productId: item.productId,
@@ -187,6 +190,7 @@ export const stockRouter = router({
     .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
       return db.transaction(async tx => {
+        await assertInventoryHistoryMutable(tx, [{ productId: input.productId, movementDate: new Date(input.movementDate) }]);
         const [created] = await tx.insert(stockMovements).values({
           productId: input.productId,
           movementType: "out",
@@ -216,8 +220,9 @@ export const stockRouter = router({
       .where(eq(stockMovements.id, input.id))
       .limit(1);
     if (!existing) throw new Error("Harakat topilmadi yoki allaqachon o'chirilgan.");
-    if (existing.isAutomatic) throw new Error("Savdo orqali yaratilgan yozuvni shu yerdan o'chirib bo'lmaydi — tegishli operatsiyani Savdo jurnalidan o'chiring.");
+    if (existing.isAutomatic) throw new Error("Avtomatik harakatni shu yerdan o'chirib bo'lmaydi — tegishli Savdo, Zavod yoki Agent × Tovar qaydini o'z bo'limida tuzating.");
     return db.transaction(async tx => {
+      await assertInventoryHistoryMutable(tx, [existing]);
       await tx.delete(stockMovements).where(eq(stockMovements.id, input.id));
       await logAudit(tx, {
         tableName: "stockMovements",

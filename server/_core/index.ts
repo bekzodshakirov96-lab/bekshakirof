@@ -1,3 +1,4 @@
+import { ensureMatrixInventorySchema } from "../matrixInventorySchema";
 import "dotenv/config";
 import express from "express";
 import rateLimit from "express-rate-limit";
@@ -49,6 +50,7 @@ async function startServer() {
     await ensureCashMatrixLayoutTable();
     await ensureCashTransferLinkTable();
     await ensureCashDebtRepaymentSchema();
+    await ensureMatrixInventorySchema();
   }
   const app = express();
   const server = createServer(app);

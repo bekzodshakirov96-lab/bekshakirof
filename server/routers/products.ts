@@ -77,7 +77,7 @@ export const productsRouter = router({
         if (!product) throw new Error("Mahsulot topilmadi.");
         await tx.update(products).set({ name: input.name }).where(eq(products.id, input.id));
         await tx.update(transactions).set({ productName: input.name }).where(eq(transactions.productId, input.id));
-        await tx.update(agentTakingEntries).set({ productName: input.name }).where(eq(agentTakingEntries.productId, input.id));
+        await tx.update(agentTakingEntries).set({ entryDate: sql`${agentTakingEntries.entryDate}`, productName: input.name }).where(eq(agentTakingEntries.productId, input.id));
         await logAudit(tx, {
           tableName: "products",
           recordId: input.id,

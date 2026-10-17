@@ -1,0 +1,38 @@
+name: Release checks
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: disposable-test-password
+          MYSQL_ROOT_HOST: "%"
+        ports:
+          - 43317:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pdisposable-test-password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      TENANT_ISOLATION_TEST_URL: mysql://root:disposable-test-password@127.0.0.1:43317/mysql
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - run: npm run check
+      - run: npm test
+      - run: npm run build

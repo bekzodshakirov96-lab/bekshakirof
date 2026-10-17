@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, like, not, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, cashEntries, clientPayments, positions, transactions, users } from "../../drizzle/schema";
+import { agentTakingEntries, matrixCellWrites, agents, cashEntries, clientPayments, positions, transactions, users } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure, productsViewProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { tashkentBusinessDate } from "../../shared/agentReconciliation";
@@ -233,6 +233,10 @@ export const agentsRouter = router({
         throw new Error("Bu agentga biriktirilgan foydalanuvchi login mavjud — avval uning rolini Foydalanuvchilar bo‘limida o‘zgartiring.");
       }
       return db.transaction(async tx => {
+        await tx.select({ id: agents.id }).from(agents).where(eq(agents.id, input.id)).for("update");
+        const [takingHistory] = await tx.select({ id: agentTakingEntries.id }).from(agentTakingEntries).where(eq(agentTakingEntries.agentId, input.id)).limit(1);
+        const [cellHistory] = await tx.select({ id: matrixCellWrites.id }).from(matrixCellWrites).where(eq(matrixCellWrites.agentId, input.id)).limit(1);
+        if (takingHistory || cellHistory) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Bu agentning Agent × Tovar tarixi bor. Tarixni saqlash uchun o'chirish o'rniga agentni faolsizlantiring." });
         await tx.delete(agents).where(eq(agents.id, input.id));
         await logAudit(tx, {
           tableName: "agents",

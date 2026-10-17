@@ -1,5 +1,7 @@
 import { and, desc, eq, gt, gte, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
+import { syncLegacyTaking, syncTaking, matrixCellVersion, recordMatrixCellWrite } from "../matrixInventory";
+import { randomUUID } from "node:crypto";
 import {
   agentCashSubmissions,
   agentTakingEntries,
@@ -545,9 +547,8 @@ export const kassaRouter = router({
         .where(and(sql`${agentTakingEntries.entryDate} >= ${toMySqlDate(start)}`, sql`${agentTakingEntries.entryDate} <= ${toMySqlDate(end)}`))
         .orderBy(agentTakingEntries.id);
     }),
-    /** Omborchi tovarni agentga topshirgan payti shu yerga yozadi — sklad qoldig'iga
-     * (stockMovements) tegmaydi, faqat "Agent x Tovar" moliyaviy hisobiga tushadi.
-     * Haqiqiy sklad qoldig'i faqat Tezkor KEG/Yangi savdo orqali savdo bo'lganda kamayadi. */
+    /** Configured products also synchronize warehouse stock from their explicit
+     * activation date. Earlier/unconfigured rows retain their original behavior. */
     addProduct: skladProcedure
       .input(
         z.object({
@@ -576,7 +577,9 @@ export const kassaRouter = router({
           .limit(1);
         const unitPrice = override?.unitPrice ?? product.price;
         const amount = Math.round(input.quantity * unitPrice);
-        const [created] = await db
+        return db.transaction(async tx => {
+        await tx.select({ id: products.id }).from(products).where(eq(products.id, product.id)).for("update");
+        const [created] = await tx
           .insert(agentTakingEntries)
           .values({
             entryDate: new Date(input.date),
@@ -589,32 +592,22 @@ export const kassaRouter = router({
             createdBy: ctx.user.id,
           })
           .$returningId();
+        await syncTaking(tx, { id: created.id, productId: product.id, entryDate: new Date(input.date), quantity: input.quantity.toFixed(3) }, ctx.user.id);
+        await recordMatrixCellWrite(tx, { productId: product.id, agentId: input.agentId, entryDate: new Date(input.date),
+          expectedVersion: await matrixCellVersion(tx, product.id, input.agentId, input.date),
+          expectedQuantity: 0, quantity: input.quantity, requestKey: randomUUID(), createdBy: ctx.user.id });
         return { id: created.id, amount } as const;
+        });
       }),
     updateQuantity: skladProcedure
       .input(z.object({ id: z.number().int().positive(), quantity: z.number().positive().max(1_000_000) }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const db = await requireDb();
-        const [row] = await db.select().from(agentTakingEntries).where(eq(agentTakingEntries.id, input.id)).limit(1);
-        if (!row) throw new Error("Yozuv topilmadi.");
-        await assertPeriodUnlocked(row.entryDate);
-        const amount = Math.round(input.quantity * row.unitPrice);
-        await db
-          .update(agentTakingEntries)
-          .set({ quantity: input.quantity.toFixed(3), amount })
-          .where(eq(agentTakingEntries.id, input.id));
-        return { success: true, amount } as const;
+        return syncLegacyTaking(db, input.id, ctx.user.id, input.quantity);
       }),
-    remove: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
+    remove: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
       const db = await requireDb();
-      const [row] = await db
-        .select({ entryDate: agentTakingEntries.entryDate })
-        .from(agentTakingEntries)
-        .where(eq(agentTakingEntries.id, input.id))
-        .limit(1);
-      if (!row) throw new Error("Yozuv topilmadi.");
-      await assertPeriodUnlocked(row.entryDate);
-      await db.delete(agentTakingEntries).where(eq(agentTakingEntries.id, input.id));
+      await syncLegacyTaking(db, input.id, ctx.user.id, 0);
       return { success: true } as const;
     }),
   }),
@@ -651,7 +644,7 @@ export const kassaRouter = router({
         if (input.unitPrice && input.unitPrice > 0) {
           effectiveUnitPrice = input.unitPrice;
           if (existing) {
-            await db.update(dailyProductPrices).set({ unitPrice: input.unitPrice, updatedBy: ctx.user.id }).where(eq(dailyProductPrices.id, existing.id));
+            await db.update(dailyProductPrices).set({ entryDate: sql`${dailyProductPrices.entryDate}`, unitPrice: input.unitPrice, updatedBy: ctx.user.id }).where(eq(dailyProductPrices.id, existing.id));
           } else {
             await db.insert(dailyProductPrices).values({ entryDate: new Date(input.date), productId: input.productId, unitPrice: input.unitPrice, updatedBy: ctx.user.id });
           }
@@ -666,6 +659,7 @@ export const kassaRouter = router({
           .update(agentTakingEntries)
           .set({
             unitPrice: effectiveUnitPrice,
+            entryDate: sql`${agentTakingEntries.entryDate}`,
             amount: sql`round(cast(${agentTakingEntries.quantity} as decimal(18,3)) * ${effectiveUnitPrice})`,
           })
           .where(

@@ -16,6 +16,8 @@ const TABLE_LABELS: Record<string, string> = {
   agents: "Agent",
   products: "Mahsulot",
   stockMovements: "Sklad harakati",
+  matrix_stock_events: "Agent × Tovar ombor harakati",
+  agent_taking_entries: "Agent × Tovar miqdori",
   factory_operations: "Zavod operatsiyasi",
   bottle_movements: "Butilka harakati",
 };

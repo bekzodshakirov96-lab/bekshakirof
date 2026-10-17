@@ -1,3 +1,4 @@
+import { matrixInventoryRouter } from "./routers/matrixInventory";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { COOKIE_NAME, SESSION_TTL_MS } from "@shared/const";
@@ -36,6 +37,7 @@ function toSafeUser(user: User | null): Omit<User, "passwordHash"> | null {
 }
 
 export const appRouter = router({
+  matrixInventory: matrixInventoryRouter,
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
