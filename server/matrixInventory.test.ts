@@ -133,10 +133,12 @@ describe.skipIf(!url)("matrix inventory on disposable SQL", () => {
     const user = `mi_${suffix}`;
     const password = randomBytes(20).toString("hex");
     await root.query(`CREATE DATABASE \`${schema}\` CHARACTER SET utf8mb4`);
-    await root.query(`CREATE USER '${user}'@'127.0.0.1' IDENTIFIED BY ?`, [
+    // Docker forwards the loopback port from its bridge address in CI.
+    // This random user can access only this disposable fixture schema.
+    await root.query(`CREATE USER '${user}'@'%' IDENTIFIED BY ?`, [
       password,
     ]);
-    await root.query(`GRANT ALL ON \`${schema}\`.* TO '${user}'@'127.0.0.1'`);
+    await root.query(`GRANT ALL ON \`${schema}\`.* TO '${user}'@'%'`);
     parsed.username = user;
     parsed.password = password;
     parsed.pathname = `/${schema}`;
