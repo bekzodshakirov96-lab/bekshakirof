@@ -19,6 +19,7 @@ import { permitsTenantHost, runtimeTenant } from "../tenancy/config";
 import { requireDb } from "../db";
 import { validateStorageKey } from "../tenancy/files";
 import { installManagedAccess, readManagedConfig } from "../tenancy/platformAccess";
+import { installReleaseMaintenance } from "../releaseMaintenance";
 
 // Kun chegaralari (Kassa, hisobotlar) server jarayonining LOKAL vaqt mintaqasiga tayanadi
 // (masalan, `new Date(...).setHours(0,0,0,0)`). Biznes doim Toshkentda ishlaydi, shuning
@@ -60,6 +61,7 @@ async function startServer() {
     await ensureMatrixInventorySchema();
   }
   const app = express();
+  installReleaseMaintenance(app, UPLOADS_DIR);
   const server = createServer(app);
   app.use((req, res, next) => {
     if (!permitsTenantHost(req.headers.host, runtimeTenant)) {
