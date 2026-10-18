@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   companyBrandingSaveSchema,
+  companyBrandingSchema,
   defaultCompanyBranding,
   companyInitials,
 } from "./companyBranding";
@@ -19,6 +20,8 @@ describe("per-company visual identity input", () => {
       name: "BiznesControl",
       tagline: "Firma kabineti",
       color: null,
+      backgroundLight: null,
+      backgroundDark: null,
       logoUrl: null,
     });
     expect(companyBrandingSaveSchema.parse(input).branding.color).toBe(
@@ -60,5 +63,44 @@ describe("per-company visual identity input", () => {
     expect(companyInitials("Baraka savdo")).toBe("BS");
     expect(companyInitials("Барака")).toBe("БА");
     expect(companyInitials("BiznesControl")).toBe("BC");
+  });
+  it("reads old revisions without migration and keeps omitted background writes distinct from explicit resets", () => {
+    const old = companyBrandingSchema.parse({
+      ...input.branding,
+      logoUrl: null,
+    });
+    expect(old.backgroundLight).toBeNull();
+    expect(old.backgroundDark).toBeNull();
+    const oldWrite = companyBrandingSaveSchema.parse(input);
+    expect(Object.hasOwn(oldWrite.branding, "backgroundLight")).toBe(false);
+    const custom = companyBrandingSaveSchema.parse({
+      ...input,
+      branding: {
+        ...input.branding,
+        backgroundLight: "#fff4e6",
+        backgroundDark: "#1a1725",
+      },
+    });
+    expect(custom.branding.backgroundLight).toBe("#FFF4E6");
+    expect(custom.branding.backgroundDark).toBe("#1A1725");
+    expect(
+      companyBrandingSaveSchema.parse({
+        ...input,
+        branding: { ...input.branding, backgroundLight: null },
+      }).branding.backgroundLight
+    ).toBeNull();
+    for (const field of ["backgroundLight", "backgroundDark"])
+      for (const value of [
+        "red",
+        "#fff",
+        "#000000;display:none",
+        "url(https://bad.invalid)",
+      ])
+        expect(
+          companyBrandingSaveSchema.safeParse({
+            ...input,
+            branding: { ...input.branding, [field]: value },
+          }).success
+        ).toBe(false);
   });
 });
