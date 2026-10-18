@@ -365,13 +365,13 @@ function AuthForm({
                   </Field>
                   {!forgot && (
                     <Field
-                      label={register ? "Parol (kamida 12 belgi)" : "Parol"}
+                      label={register ? "Parol (kamida 8 belgi)" : "Parol"}
                     >
                       <Input
                         name="password"
                         type="password"
                         required
-                        minLength={register ? 12 : 1}
+                        minLength={register ? 8 : 1}
                         maxLength={72}
                         autoComplete={
                           register ? "new-password" : "current-password"
@@ -458,7 +458,7 @@ function TokenPage({
         <p className="text-sm text-muted-foreground">
           {kind === "verify"
             ? "Hisobingizni tasdiqlash uchun quyidagi tugmani bosing."
-            : "Kamida 12 belgidan iborat yangi parol yarating."}
+            : "Kamida 8 belgidan iborat yangi parol yarating."}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -503,7 +503,7 @@ function TokenPage({
                 <Input
                   type="password"
                   name="password"
-                  minLength={12}
+                  minLength={8}
                   maxLength={72}
                   required
                   autoComplete="new-password"

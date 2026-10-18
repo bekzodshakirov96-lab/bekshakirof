@@ -31,7 +31,7 @@ import { billingApi } from "./billingApi";
 const email = z.string().trim().toLowerCase().email().max(254);
 const password = z
   .string()
-  .min(12, "Parol kamida 12 belgidan iborat bo‘lsin.")
+  .min(8, "Parol kamida 8 belgidan iborat bo‘lsin.")
   .max(72)
   .refine(
     value => Buffer.byteLength(value, "utf8") <= 72,

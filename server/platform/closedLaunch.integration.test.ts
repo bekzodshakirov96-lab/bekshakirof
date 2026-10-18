@@ -117,7 +117,8 @@ describe.skipIf(!testUrl)("closed SaaS launch against disposable SQL", () => {
         await rows(store.pool, "SELECT email,role FROM platform_accounts")
       ).toEqual([{ email: "admin@example.uz", role: "super_admin" }]);
       expect(saved).not.toContain("password");
-      const password = "test-private-password-2026";
+      expect((await post("/reset", { token, password: "seven77" })).status).toBe(400);
+      const password = "eight888";
       expect((await post("/reset", { token, password })).status).toBe(200);
       expect((await post("/reset", { token, password })).status).toBe(400);
       const login = await post("/login", {
