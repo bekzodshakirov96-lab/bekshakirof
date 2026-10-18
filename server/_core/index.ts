@@ -15,6 +15,10 @@ import { ensureCashJournalDebtTable } from "../cashJournalDebtSchema";
 import { ensureCashMatrixLayoutTable } from "../cashMatrixLayoutSchema";
 import { ensureCashTransferLinkTable } from "../cashTransferLinkSchema";
 import { ensureCashDebtRepaymentSchema } from "../cashDebtRepaymentSchema";
+import { permitsTenantHost, runtimeTenant } from "../tenancy/config";
+import { requireDb } from "../db";
+import { validateStorageKey } from "../tenancy/files";
+import { installManagedAccess, readManagedConfig } from "../tenancy/platformAccess";
 import { installReleaseMaintenance } from "../releaseMaintenance";
 
 // Kun chegaralari (Kassa, hisobotlar) server jarayonining LOKAL vaqt mintaqasiga tayanadi
@@ -46,6 +50,9 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  const managed = readManagedConfig(process.env, runtimeTenant);
+  // Validate ownership BEFORE any startup schema helpers or HTTP traffic.
+  if (runtimeTenant.mode === "isolated") await requireDb();
   if (process.env.DATABASE_URL) {
     await ensureCashJournalDebtTable();
     await ensureCashMatrixLayoutTable();
@@ -56,6 +63,13 @@ async function startServer() {
   const app = express();
   installReleaseMaintenance(app, UPLOADS_DIR);
   const server = createServer(app);
+  app.use((req, res, next) => {
+    if (!permitsTenantHost(req.headers.host, runtimeTenant)) {
+      res.status(421).json({ error: "Bu manzil ushbu firma uchun sozlanmagan." });
+      return;
+    }
+    next();
+  });
   // Reverse proxy ortida ishlaganda haqiqiy mijoz IP'sini olish uchun (rate-limit shunga tayanadi).
   app.set("trust proxy", 1);
   // Mobil ilovani (Expo web) mahalliy kompyuterdan production API'ga qarshi sinash
@@ -66,7 +80,7 @@ async function startServer() {
   const localOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && localOriginPattern.test(origin)) {
+    if (runtimeTenant.mode === "legacy" && origin && localOriginPattern.test(origin)) {
       res.header("Access-Control-Allow-Origin", origin);
       res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -85,6 +99,8 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.get("/api/runtime", (_req, res) => res.json({ mode: "business", platformLogin: managed ? `${managed.origin}/platforma/kirish` : null }));
+  installManagedAccess(app, runtimeTenant);
   // Parolni ketma-ket taxmin qilishga (brute-force) qarshi: bitta IP'dan 15 daqiqada
   // 20 ta login urinishi. Faqat login yo'liga qo'llanadi, oddiy ishlashga xalaqit bermaydi.
   app.use(
@@ -103,6 +119,13 @@ async function startServer() {
     const user = await authenticateRequest(req);
     if (!user) {
       res.status(401).json({ error: "Avval tizimga kiring." });
+      return;
+    }
+    try {
+      // Prevent the original root from exposing another firm's nested directory.
+      validateStorageKey(decodeURIComponent(req.path).slice(1));
+    } catch {
+      res.status(404).end();
       return;
     }
     next();
@@ -140,4 +163,7 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+startServer().catch(() => {
+  console.error("[Startup] Server startup failed. Check company database binding, configuration and schema migrations.");
+  process.exitCode = 1;
+});

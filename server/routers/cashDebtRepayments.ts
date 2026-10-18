@@ -8,6 +8,7 @@ import { tashkentDayRange, toMySqlDate } from "../businessDay";
 import { requireDb } from "../db";
 import { router } from "../_core/trpc";
 import { CASH_DEBT_REPAYMENT_CATEGORY } from "../../shared/cashAccounting";
+import { isCashCategory } from "../../shared/cashCategoryRegistry";
 
 const methodSchema = z.enum(["cash", "terminal", "click", "transfer"]);
 const archiveDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
@@ -170,7 +171,7 @@ export const cashDebtRepaymentsRouter = router({
       if (input.mode === "existing") {
         const [entry] = await tx.select().from(cashEntries)
           .where(eq(cashEntries.id, input.cashEntryId)).limit(1).for("update");
-        if (!entry || entry.type !== "income" || entry.category !== CASH_DEBT_REPAYMENT_CATEGORY
+        if (!entry || entry.type !== "income" || !isCashCategory(entry, "debt_repayment")
           || entry.agentId !== debt.agentId || entry.employeeId !== debt.employeeId
           || entry.cashAmount !== amounts.cashAmount || entry.terminalAmount !== amounts.terminalAmount
           || entry.clickAmount !== amounts.clickAmount || entry.transferAmount !== amounts.transferAmount

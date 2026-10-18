@@ -1,7 +1,7 @@
-import { matrixInventoryRouter } from "./routers/matrixInventory";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { COOKIE_NAME, SESSION_TTL_MS } from "@shared/const";
+import { SESSION_TTL_MS } from "@shared/const";
+import { SESSION_COOKIE_NAME as COOKIE_NAME } from "./tenancy/config";
 import type { User } from "../drizzle/schema";
 import * as db from "./db";
 import { hashPassword, signSession, verifyPassword } from "./_core/localAuth";
@@ -23,6 +23,8 @@ import { kassaRouter } from "./routers/kassa";
 import { fastKegRouter } from "./routers/fastKeg";
 import { productsRouter } from "./routers/products";
 import { stockRouter } from "./routers/stock";
+import { matrixInventoryRouter } from "./routers/matrixInventory";
+import { companyPreferencesRouter } from "./routers/companyPreferences";
 import { transactionsRouter } from "./routers/transactions";
 import { usersRouter } from "./routers/users";
 
@@ -37,6 +39,7 @@ function toSafeUser(user: User | null): Omit<User, "passwordHash"> | null {
 }
 
 export const appRouter = router({
+  companyPreferences: companyPreferencesRouter,
   matrixInventory: matrixInventoryRouter,
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { requireDb } from "./db";
+import { requireSchemaDb } from "./db";
 
 /** Additive table; existing journal rows and balances are left untouched. */
 export const CASH_TRANSFER_LINKS_DDL = `CREATE TABLE IF NOT EXISTS cash_transfer_links (
@@ -19,6 +19,6 @@ export const CASH_TRANSFER_LINKS_DDL = `CREATE TABLE IF NOT EXISTS cash_transfer
 
 export async function ensureCashTransferLinkTable() {
   if (!process.env.DATABASE_URL) return;
-  const db = await requireDb();
+  const db = await requireSchemaDb();
   await db.execute(sql.raw(CASH_TRANSFER_LINKS_DDL));
 }

@@ -11,6 +11,12 @@ import { router } from "../_core/trpc";
 import { cashJournalDebtRouter } from "./cashJournalDebt";
 import { cashTransferLinksRouter } from "./cashTransferLinks";
 import { createCashReportPageAccumulator, normalizeCashReportEntries, summarizeCashAccounting } from "../../shared/cashAccounting";
+import { CASH_CATEGORY_IDS, LEGACY_CASH_PROFILE, cashCategoryIdFromLegacy, cashCategoryView, resolveCashCategoryWrite, type CashCategoryId } from "../../shared/cashCategoryRegistry";
+
+function categoryWriteInput<T extends { category: string; type: "income" | "expense"; categoryId?: CashCategoryId }>(value: T, ctx: z.RefinementCtx): T {
+  try { return resolveCashCategoryWrite(value); }
+  catch (error) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: (error as Error).message }); return z.NEVER; }
+}
 
 function isDuplicateKeyError(error: unknown): boolean {
   let current = error;
@@ -23,6 +29,10 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 export const cashRouter = router({
+  categoryDefinitions: businessProcedure.query(() => ({
+    profileId: LEGACY_CASH_PROFILE.id,
+    categories: CASH_CATEGORY_IDS.map(id => cashCategoryView(id)),
+  })),
   journalDebt: cashJournalDebtRouter,
   transferLinks: cashTransferLinksRouter,
   /** Distinct category names previously used (optionally filtered to one type), most-recent
@@ -86,6 +96,7 @@ export const cashRouter = router({
     }
     return rows.map(row => ({
       ...row,
+      categoryId: cashCategoryIdFromLegacy(row.category),
       debtRepaymentId: repaymentByEntry.get(row.id) ?? null,
       transferSourceIds: linksByEntry.get(row.id) ?? [],
       transferLinkMode: (linksByEntry.get(row.id)?.length ? "linked"
@@ -281,6 +292,7 @@ export const cashRouter = router({
           entryDate: z.number().int(),
           type: z.enum(["income", "expense"]),
           category: z.string().trim().min(2).max(160),
+          categoryId: z.enum(CASH_CATEGORY_IDS).optional(),
           agentId: z.number().int().positive().optional(),
           employeeId: z.number().int().positive().optional(),
           description: z.string().max(1_000).optional(),
@@ -292,7 +304,7 @@ export const cashRouter = router({
         })
         .refine(value => value.cashAmount + value.terminalAmount + value.clickAmount + value.transferAmount > 0, {
           message: "Kamida bitta to‘lov kanali summasi kiritilishi kerak.",
-        }),
+        }).transform(categoryWriteInput),
     )
     .mutation(async ({ input, ctx }) => {
       const db = await requireDb();
@@ -362,6 +374,7 @@ export const cashRouter = router({
           entryDate: z.number().int(),
           type: z.enum(["income", "expense"]),
           category: z.string().trim().min(2).max(160),
+          categoryId: z.enum(CASH_CATEGORY_IDS).optional(),
           agentId: z.number().int().positive().nullable().optional(),
           /** Yuborilmasa (undefined) mavjud qiymat saqlanadi, `null` esa uni tozalaydi —
            * shunda qisman yangilash xodim bog'lanishini bexosdan o'chirib yubormaydi. */
@@ -375,7 +388,7 @@ export const cashRouter = router({
         })
         .refine(value => value.cashAmount + value.terminalAmount + value.clickAmount + value.transferAmount > 0, {
           message: "Kamida bitta to‘lov kanali summasi kiritilishi kerak.",
-        }),
+        }).transform(categoryWriteInput),
     )
     .mutation(async ({ input, ctx }) => {
       const db = await requireDb();

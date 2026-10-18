@@ -1,9 +1,9 @@
 import { TRPCError } from "@trpc/server";
+import { clientPaymentTotal } from "../tenancy/scalars";
 import { and, asc, eq, inArray, like, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   agents,
-  clientPayments,
   clients,
   containerMovements,
   products,
@@ -99,7 +99,7 @@ async function loadAgentClientRows(db: FastKegDatabase, agentId: number) {
       totalPaid: numberSql`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment} + ${transactions.transferPayment}), 0)`,
       // Qarz to'lovlari (savdodan alohida qabul qilingan pul) — subquery bilan, aks holda
       // transactions bilan JOIN qatorlarni ko'paytirib, yig'indini buzib yuboradi.
-      debtPaid: numberSql`coalesce((select sum(cp.cashAmount + cp.terminalAmount + cp.clickAmount + cp.transferAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
+      debtPaid: clientPaymentTotal(sql`cp.cashAmount + cp.terminalAmount + cp.clickAmount + cp.transferAmount`, clients.id).mapWith(Number),
     })
     .from(clients)
     .leftJoin(transactions, eq(transactions.clientId, clients.id))
@@ -304,7 +304,7 @@ export const fastKegRouter = router({
           openingDebt: clients.openingDebt,
           totalSales: numberSql`coalesce(sum(${transactions.totalAmount}), 0)`,
           totalPaid: numberSql`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment} + ${transactions.transferPayment}), 0)`,
-          debtPaid: numberSql`coalesce((select sum(cp.cashAmount + cp.terminalAmount + cp.clickAmount + cp.transferAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
+          debtPaid: clientPaymentTotal(sql`cp.cashAmount + cp.terminalAmount + cp.clickAmount + cp.transferAmount`, clients.id).mapWith(Number),
         })
         .from(clients)
         .leftJoin(transactions, eq(transactions.clientId, clients.id))

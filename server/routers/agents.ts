@@ -15,6 +15,8 @@ import {
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
+import { cashStorageCategory } from "../../shared/cashCategoryRegistry";
+import { cashCategorySql } from "../cashCategorySql";
 
 function toMySqlDate(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
@@ -25,7 +27,7 @@ function toMySqlDate(d: Date): string {
  * to'langan komissiya ham shu toifada yoziladi — shuning uchun komissiya hisobida
  * "allaqachon olingan" summa aynan shu yerdan olinadi.
  */
-const SALARY_CATEGORY = "Ойлик";
+const SALARY_CATEGORY = cashStorageCategory("salary");
 
 export function commissionPeriod(label: string) {
   const match = /^(\d{4}-\d{2}-\d{2}) — (\d{4}-\d{2}-\d{2})$/.exec(label);
@@ -296,7 +298,7 @@ export const agentsRouter = router({
         : null;
       const salaryPeriodConditions = [
         eq(cashEntries.type, "expense"),
-        eq(cashEntries.category, SALARY_CATEGORY),
+        cashCategorySql("salary"),
         periodLabel ? or(
           and(
             input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
@@ -421,7 +423,7 @@ export const agentsRouter = router({
           .from(cashEntries).where(and(
             eq(cashEntries.agentId, input.agentId),
             eq(cashEntries.type, "expense"),
-            eq(cashEntries.category, SALARY_CATEGORY),
+            cashCategorySql("salary"),
             not(like(cashEntries.sourceKey, "agent-commission:%")),
             sql`${cashEntries.entryDate} >= ${toMySqlDate(period.from)}`,
             sql`${cashEntries.entryDate} <= ${toMySqlDate(period.to)}`,
@@ -435,7 +437,7 @@ export const agentsRouter = router({
           sourceKey,
           entryDate,
           type: "expense",
-          category: "Ойлик",
+          category: SALARY_CATEGORY,
           agentId: input.agentId,
           description,
           cashAmount: input.amount,
@@ -449,7 +451,7 @@ export const agentsRouter = router({
           recordId: created.id,
           action: "create",
           userId: ctx.user.id,
-          after: { type: "expense", category: "Ойлик", agentId: input.agentId, cashAmount: input.amount, periodLabel: input.periodLabel },
+          after: { type: "expense", category: SALARY_CATEGORY, agentId: input.agentId, cashAmount: input.amount, periodLabel: input.periodLabel },
         });
         return { success: true };
       });

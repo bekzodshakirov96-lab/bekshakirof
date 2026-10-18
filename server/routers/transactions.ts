@@ -1,8 +1,9 @@
-import { assertInventoryHistoryMutable } from "../inventoryBoundary";
+import { transactionContainerColumns } from "../tenancy/scalars";
 import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, cashEntries, cashTransferLinks, clientPayments, clients, products, stockMovements, transactions } from "../../drizzle/schema";
+import { assertInventoryHistoryMutable } from "../inventoryBoundary";
 import { businessProcedure, ownerProcedure, requireOwnAgent, salesProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import {
@@ -206,18 +207,7 @@ export const transactionsRouter = router({
         transferPayment: transactions.transferPayment,
         note: transactions.note,
         source: transactions.source,
-        issuedContainerType:
-          sql<string | null>`(select cm.containerType from container_movements cm where cm.transactionId = ${transactions.id} and cm.movementType = 'issued' limit 1)`,
-        issuedContainerQuantity:
-          sql<number>`coalesce((select sum(cm.quantity) from container_movements cm where cm.transactionId = ${transactions.id} and cm.movementType = 'issued'), 0)`.mapWith(
-            Number,
-          ),
-        returnedContainerType:
-          sql<string | null>`(select cm.containerType from container_movements cm where cm.transactionId = ${transactions.id} and cm.movementType = 'returned' limit 1)`,
-        returnedContainerQuantity:
-          sql<number>`coalesce((select sum(cm.quantity) from container_movements cm where cm.transactionId = ${transactions.id} and cm.movementType = 'returned'), 0)`.mapWith(
-            Number,
-          ),
+        ...transactionContainerColumns(transactions.id),
       })
       .from(transactions)
       .leftJoin(agents, eq(transactions.agentId, agents.id))
@@ -308,18 +298,7 @@ export const transactionsRouter = router({
         transferPayment: transactions.transferPayment,
         note: transactions.note,
         source: transactions.source,
-        issuedContainerType:
-          sql<string | null>`(select cm.containerType from container_movements cm where cm.transactionId = ${transactions.id} and cm.movementType = 'issued' limit 1)`,
-        issuedContainerQuantity:
-          sql<number>`coalesce((select sum(cm.quantity) from container_movements cm where cm.transactionId = ${transactions.id} and cm.movementType = 'issued'), 0)`.mapWith(
-            Number,
-          ),
-        returnedContainerType:
-          sql<string | null>`(select cm.containerType from container_movements cm where cm.transactionId = ${transactions.id} and cm.movementType = 'returned' limit 1)`,
-        returnedContainerQuantity:
-          sql<number>`coalesce((select sum(cm.quantity) from container_movements cm where cm.transactionId = ${transactions.id} and cm.movementType = 'returned'), 0)`.mapWith(
-            Number,
-          ),
+        ...transactionContainerColumns(transactions.id),
       })
       .from(transactions)
       .leftJoin(agents, eq(transactions.agentId, agents.id))

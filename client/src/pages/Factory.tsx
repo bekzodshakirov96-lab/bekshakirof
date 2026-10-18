@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDate, formatMoney, formatNumber, localDateInputValue } from "@/lib/format";
+import { formatDate, formatMoney, formatNumber, localDateInputValue, formatTashkentDate } from "@/lib/format";
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
 import { AlertTriangle, Banknote, FileText, Factory as FactoryIcon, PackageCheck, RotateCcw, Send, ShoppingCart, Trash2 } from "lucide-react";
@@ -274,7 +274,16 @@ const bottleTypeMeta: Record<BottleEntryType, { label: string; icon: typeof Send
 function BottleLedger() {
   const utils = trpc.useUtils();
   const summary = trpc.factory.bottles.summary.useQuery();
-  const list = trpc.factory.bottles.list.useQuery({ limit: 100 });
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [page, setPage] = useState(1);
+  const invalidRange = Boolean(fromDate && toDate && fromDate > toDate);
+  const report = trpc.factory.bottles.report.useQuery({
+    fromDate: fromDate || undefined,
+    toDate: toDate || undefined,
+    page,
+    pageSize: 20,
+  }, { enabled: !invalidRange });
 
   const [entryType, setEntryType] = useState<BottleEntryType>("purchase");
   const [date, setDate] = useState(() => localDateInputValue());
@@ -287,7 +296,7 @@ function BottleLedger() {
   const [note, setNote] = useState("");
 
   const refresh = () =>
-    Promise.all([utils.factory.bottles.summary.invalidate(), utils.factory.bottles.list.invalidate()]);
+    Promise.all([utils.factory.bottles.summary.invalidate(), utils.factory.bottles.list.invalidate(), utils.factory.bottles.report.invalidate()]);
 
   const create = trpc.factory.bottles.create.useMutation({
     onSuccess: async () => {
@@ -333,7 +342,8 @@ function BottleLedger() {
     });
   }
 
-  const rows = list.data ?? [];
+  const reportReady = !invalidRange && !report.isError && !report.isFetching && Boolean(report.data);
+  const rows = reportReady ? report.data!.items : [];
   const stats = summary.data;
 
   return (
@@ -341,6 +351,7 @@ function BottleLedger() {
       title="Butilka harakati"
       description="Bo'sh butilkalar xaridi, zavodga sotuv va to'lovlar."
     >
+      <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground">Umumiy holat · barcha davr bo'yicha</p>
       <div className="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3 2xl:grid-cols-6">
         <div className="min-w-0 bg-card p-4">
           <p className="text-xs font-medium text-muted-foreground">Qo'lda qolgan butilka</p>
@@ -455,12 +466,44 @@ function BottleLedger() {
       </div>
 
       <div className="border-t border-border">
+        <div className="space-y-4 border-b border-border bg-muted/20 p-4" aria-label="Butilka davr hisoboti">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="mr-auto w-full xl:w-auto">
+              <h4 className="text-sm font-semibold">Davr bo'yicha hisobot</h4>
+              <p className="mt-1 text-xs text-muted-foreground">{fromDate || toDate ? "Tanlangan davr" : "Barcha davr"} · Toshkent vaqti · ikkala sana ham kiradi</p>
+            </div>
+            <label className="grid gap-1.5 text-xs text-muted-foreground">Sanadan
+              <Input type="date" className="w-full sm:w-40" value={fromDate} max={toDate || undefined} onChange={event => { setFromDate(event.target.value); setPage(1); }} />
+            </label>
+            <label className="grid gap-1.5 text-xs text-muted-foreground">Sanagacha
+              <Input type="date" className="w-full sm:w-40" value={toDate} min={fromDate || undefined} onChange={event => { setToDate(event.target.value); setPage(1); }} />
+            </label>
+            <Button variant="outline" onClick={() => { setFromDate(""); setToDate(""); setPage(1); }}>Barcha davr</Button>
+          </div>
+          {invalidRange && <p role="alert" className="text-sm text-destructive">Boshlanish sanasi tugash sanasidan keyin bo'lmasligi kerak.</p>}
+          {report.isError && !invalidRange && <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-destructive">Hisobotni yuklab bo'lmadi.<Button variant="outline" onClick={() => void report.refetch()}>Qayta urinish</Button></div>}
+          <div className="grid gap-3 sm:grid-cols-3" aria-live="polite" aria-busy={report.isFetching}>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs text-muted-foreground">Zavodga yuborilgan butilka</p>
+              <p className="mt-2 text-xl font-semibold tabular-nums">{reportReady ? `${formatNumber(report.data!.sentQuantity)} dona` : "—"}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs text-muted-foreground">Yuborilgan butilkalar sotuv summasi</p>
+              <p className="mt-2 text-xl font-semibold tabular-nums">{reportReady ? formatMoney(report.data!.sentAmount) : "—"}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs text-muted-foreground">Zavoddan olingan pul</p>
+              <p className="mt-2 text-xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{reportReady ? formatMoney(report.data!.paidAmount) : "—"}</p>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Jamilar davrdagi barcha yozuvlardan hisoblanadi. Olingan pul to'lov sanasi bo'yicha; oldingi davr yuborilmalari uchun to'lov ham bo'lishi mumkin.</p>
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
           <h4 className="text-sm font-semibold text-foreground">Butilka harakatlari tarixi</h4>
-          <span className="text-xs text-muted-foreground">So'nggi 100 ta yozuv</span>
+          <span className="text-xs text-muted-foreground">{reportReady ? `Jami ${formatNumber(report.data!.total)} ta yozuv` : "—"} · sana filtri bo'yicha</span>
         </div>
-        {list.isLoading ? <TableLoading columns={8} rows={4} /> : rows.length === 0 ? (
-          <EmptyState description="Hali butilka harakati yo'q. Yuqoridagi forma orqali qo'shing." />
+        {report.isFetching && !invalidRange ? <TableLoading columns={8} rows={4} /> : !reportReady ? null : rows.length === 0 ? (
+          <EmptyState description="Bu davrda butilka harakati topilmadi." />
         ) : (
           <Table className="finance-table min-w-[1000px] [&_td]:px-4 [&_th]:px-4">
             <TableHeader>
@@ -490,7 +533,7 @@ function BottleLedger() {
                   : "text-foreground";
                 return (
                   <TableRow key={row.id}>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(row.movementDate)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatTashkentDate(row.movementDate)}</TableCell>
                     <TableCell><Badge className={badge.className}>{badge.label}</Badge></TableCell>
                     <TableCell className="text-right tabular-nums">{hasQuantity ? `${formatNumber(row.quantity, 0)} dona` : "—"}</TableCell>
                     <TableCell className="text-right tabular-nums text-muted-foreground">{hasQuantity ? formatMoney(row.unitPrice) : "—"}</TableCell>
@@ -515,6 +558,13 @@ function BottleLedger() {
             </TableBody>
           </Table>
         )}
+        {reportReady && report.data!.total > 0 && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          <span>{report.data!.page} / {report.data!.pageCount} sahifa · har sahifada 20 tagacha yozuv</span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={report.data!.page <= 1} onClick={() => setPage(report.data!.page - 1)}>Oldingi</Button>
+            <Button variant="outline" size="sm" disabled={report.data!.page >= report.data!.pageCount} onClick={() => setPage(report.data!.page + 1)}>Keyingi</Button>
+          </div>
+        </div>}
       </div>
     </FactorySection>
   );

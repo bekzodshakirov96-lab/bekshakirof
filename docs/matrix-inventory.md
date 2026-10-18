@@ -1,55 +1,88 @@
-# Agent × Tovar: prixod va ostatka
+# Agent × Tovar warehouse quantities
 
-Agent katagiga omborchi qaytimlarni hisoblab bergan tayyor NET miqdor yoziladi.
-Qaytim alohida qayta kiritilmaydi. Prixod — faqat yangi kelgan tovar; katakka
-yozib Enter yoki Tab bosiladi. Har bir yangi kirimning alohida tarixi va so'rov
-IDsi bor. Kassa pul qoldig'iga bu kirim avtomatik ta'sir qilmaydi.
+## Dated column widths
 
-Rahbar avval har bir mahsulot uchun sanab tasdiqlangan **kun boshidagi** qoldiq
-va hisob boshlanadigan sanani belgilaydi. Qoldiq kun oxirida sanalgan bo'lsa,
-keyingi kunni boshlash sanasi sifatida tanlash kerak. Oldingi agent yozuvlari
-avtomatik ombor chiqimiga aylantirilmaydi.
+Drag a header's right boundary to resize its column. A focused separator also
+supports Left/Right (10px), Shift+Left/Right (40px), and Home/End. Pointer release
+saves once; Escape or pointer cancellation discards the unsaved preview.
 
-Ostatka = boshlang'ich qoldiq + kirimlar − agentlarning tayyor miqdorlari.
-Asosiy ombor jurnali `stockMovements`; Sklad va matritsa shu manbadan hisoblaydi.
-40 → 35 tahriri omborga faqat +5 qaytaradi; katakni o'chirish miqdorni qaytaradi.
-Keyingi kun oldingi kunning yakuniy qoldig'idan boshlanadi. Barcha agentlar,
-jumladan yashirilgan ustunlar ham hisobga kiradi. Narx miqdorni o'zgartirmaydi.
+Widths live in the existing cash_matrix_layouts.layout JSON as columnWidths;
+no schema change is required. Stable keys identify fixed columns and agent:<id>
+identifies each agent independently. The selected date and following dates inherit
+the widths until a later explicit layout version. Past layouts remain read-only.
+Old snapshots without widths use defaults; old clients that omit widths retain
+the effective saved widths. Updates explicitly preserve effectiveDate even when
+an older MySQL TIMESTAMP column has implicit ON UPDATE behavior. Invalidate all
+dated layout queries after saving so already-visited future dates also refresh.
+Column resizing never changes money, quantities or warehouse movements.
 
-## Uchta himoya
+The accountant enters the warehouse manager's prepared NET quantities. Returns
+are already included in those figures and must not be added again by this app.
+The existing monetary quantity × daily price calculation and cash reconciliation
+remain separate. A receipt never creates a cash payment or a sale.
 
-- Miqdor, kunlik narx yoki mahsulot nomi tahrirlanganda biznes sanasi saqlanadi,
-  jumladan eski MySQL/MariaDB `ON UPDATE` ustuni mavjud bo'lsa ham.
-- Tasdiqlangan boshlang'ich sanadan oldingi ombor harakatlarini qo'shish yoki
-  o'chirish Sklad, Zavod va Savdo yo'llarida bloklanadi. Narx/nom tahriri ombor
-  harakatini o'zgartirmasa tarixga tegmaydi. Mahsulot qulfi boshlang'ich qoldiq
-  tasdiqlanishi bilan parallel kirim-chiqimni muvofiqlashtiradi.
-- `matrix_cell_writes` har bir so'rov IDsi va tahrir versiyasini doimiy saqlaydi,
-  jumladan katak o'chirilgandan keyin ham. Eski so'rov qayta kelganda yana chiqim
-  yaratilmaydi; eski versiyali yangi so'rov rad etilib jadval yangilanadi.
-- Javobi yo'qolgan prixod IDsi shu foydalanuvchi, mahsulot va sana uchun brauzer
-  sessiyasida saqlanadi. Sana almashtirish yoki sahifani yangilashdan keyin
-  "Oldingi prixodni tekshirish" aynan shu so'rovni qayta tekshiradi. Natija
-  aniqlanmaguncha boshqa summa bilan eski so'rovni almashtirishga ruxsat yo'q.
-- Agentning Agent × Tovar tarixi bo'lsa, uni butunlay o'chirish bloklanadi.
-  Mavjud faolsizlantirish funksiyasidan foydalaniladi; eski miqdor va pul tarixi
-  saqlanadi, ombor chiqimlari manbasiz qolmaydi.
+New receipts are entered directly in the Prixod cell and posted on Enter, Tab or
+blur. The draft clears after success; the day's total appears beneath it. The
+separate history icon opens receipts/reversals, not an additional entry form.
 
-## Mavjud production ma'lumotlarini saqlash
+## Model
 
-Release SaaS/multitenancy, login, obuna yoki bazani qayta bog'lashni kiritmaydi.
-`ensureMatrixInventorySchema` faqat uchta yangi jadvalni `CREATE TABLE IF NOT
-EXISTS` orqali yaratadi. U eski jadvalni ALTER qilmaydi, satrlarni yangilamaydi,
-o'chirmaydi, inventarizatsiya boshlamaydi va tarixga kirim-chiqim yozmaydi.
-Yangi jadvaldagi `tenant_id='legacy'` faqat kelajakdagi moslik uchun; mavjud
-firma jadvallariga tenant ustuni qo'shilmaydi.
+`stockMovements` remains the single warehouse ledger used by Sklad and the matrix.
+`matrix_stock_configs` enables a product from an explicitly confirmed Tashkent
+business-day start. The entered number MUST be the physical opening balance,
+not a count taken after that day's issues. Prefer counting after close and
+activating the following day. No automatic historical backfill before that date.
 
-Deploydan oldin MySQL va uploads zaxirasi olinadi; mavjud jadvallar nazorat
-xeshlari yozib olinadi. Deploydan keyin eski jadvallar solishtiriladi. Jonli
-foydalanuvchi kiritgan yangi operatsiya sabab farq bo'lsa, u alohida tekshiriladi.
-Boshlang'ich qoldiqlar productionda avtomatik belgilanmaydi; ularni rahbar haqiqiy
-sanashdan keyin tasdiqlaydi. TEST mahsulotlari va lokal qoldiqlar ko'chirilmaydi.
+Activation posts only `counted opening - existing stock before activation`, then
+links taking rows on/after activation. Existing financial rows are unchanged.
+The confirmed opening freezes earlier stock history. Manual/batch stock writers,
+factory receipts/deletions and sale stock changes/deletions take the same product
+lock as activation and refuse movements before the opening date. Existing rows
+remain readable. Price/name-only sales edits do not rewrite warehouse history.
+Existing stock movements on/after that date remain effective; verify receipts
+were not already entered through Sklad before entering them again in the matrix.
 
-Orqaga qaytish kerak bo'lsa, oldingi app deployment qayta ochiladi. Yangi ombor
-jadvallari o'chirilmaydi. SQL zaxirasini jonli baza ustiga avtomatik tiklash mumkin
-emas: deploydan keyingi haqiqiy tranzaksiyalarni yo'qotish xavfi bor.
+`matrix_stock_events` is append-only metadata linking generated stock movements
+to opening counts, individual receipts, receipt reversals, and taking changes.
+The editable taking cell is an absolute net quantity. Its linked ledger target
+is `-quantity`, so 40 → 35 posts +5, retrying 35 posts nothing, and removal posts
++35. Earlier taking entries have no warehouse impact. Receipt reversals retain
+their original records and require a reason and an open posting period.
+
+Each new receipt has a random idempotency key. Equal quantities with DIFFERENT
+keys are distinct receipts. Product row locks serialize taking edits, receipts,
+activation and reversal; compare-and-set rejects stale cell edits. Legacy
+duplicate financial cells are displayed as a total and cannot be silently merged.
+Negative balances are visible in red, never clamped. Quantities use decimal(12,3).
+Each product uses its existing unit throughout; no implicit package conversion.
+
+`matrix_cell_writes` durably stores each accepted request, its expected edit
+version and quantities. The highest write ID for a day/product/agent is the cell
+version, including after deletion. Replaying a request returns its original
+result without writing; a new request with an old version is rejected even after
+40 -> 10 -> 40 or deleting/recreating a cell. Legacy quantity writers advance
+the same version. The frontend loads these versions alongside the daily rows.
+
+Business dates are explicitly preserved in quantity, daily-price and product-name
+updates, including on older MariaDB tables with implicit TIMESTAMP ON UPDATE.
+New taking tables declare an explicit timestamp default to avoid that implicit
+behavior. Existing historical dates are not guessed or rewritten.
+
+For a selected date, matrix stock is its closing balance, including all agents
+(even hidden ones), all warehouse movements, and all price-independent quantity
+corrections. Later date entries are excluded. A backdated open-period correction
+changes subsequent balances. Existing closed-period guards apply.
+
+## Local preview and deployment boundary
+
+`node --env-file=data/namuna-runtime.env.local --import tsx scripts/prepare-matrix-inventory-local.ts`
+only accepts the disposable Namuna demo or matrix TEST database at 127.0.0.1:43317.
+For the matrix TEST runtime use `--env-file=temp/matrix-ui.env.local` instead.
+It creates the three new
+tables, prepares tenant metadata, and verifies every prior business table hash.
+It does NOT activate any product, seed balances, or mutate financial history.
+
+No production migration runs automatically at startup. Schema additions change
+the tenant scope hash; an old database must not be restarted on this code until
+an explicit, backed-up and staging-tested schema/scope migration is prepared.
+The local helper intentionally refuses production. This work is not deployed.

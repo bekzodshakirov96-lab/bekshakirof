@@ -7,6 +7,7 @@ import { logAudit } from "../auditLog";
 import { normalizeContainerType } from "../containerAccounting";
 import { requireDb } from "../db";
 import { router } from "../_core/trpc";
+import { bottleReportInput, readBottleReport } from "../bottleReport";
 
 const operationTypeSchema = z.enum(["tara_sent", "filled_received", "brak_returned", "brak_replaced"]);
 
@@ -265,6 +266,9 @@ export const factoryRouter = router({
    * Kassa bilan bog'lanmagan: zavoddan olingan pul shu yerda alohida yuritiladi.
    */
   bottles: router({
+    report: skladProcedure.input(bottleReportInput).query(async ({ input }) =>
+      readBottleReport(await requireDb(), input)),
+
     /** Umumiy holat: qo'ldagi zaxira, sotib olish xarajati, sotuv summasi,
      * foyda, zavod to'lagan pul va zavod qarzi. */
     summary: skladProcedure.query(async () => {

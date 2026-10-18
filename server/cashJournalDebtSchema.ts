@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { requireDb } from "./db";
+import { requireSchemaDb } from "./db";
 
 /** Additive, restart-safe counterpart of drizzle/0016_cash_journal_debts.sql. */
 export const CASH_JOURNAL_DEBTS_DDL = `CREATE TABLE IF NOT EXISTS cash_journal_debts (
@@ -23,6 +23,6 @@ export const CASH_JOURNAL_DEBTS_DDL = `CREATE TABLE IF NOT EXISTS cash_journal_d
 
 export async function ensureCashJournalDebtTable() {
   if (!process.env.DATABASE_URL) return;
-  const db = await requireDb();
+  const db = await requireSchemaDb();
   await db.execute(sql.raw(CASH_JOURNAL_DEBTS_DDL));
 }

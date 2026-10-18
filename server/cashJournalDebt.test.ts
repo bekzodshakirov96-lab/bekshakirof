@@ -112,7 +112,7 @@ function createDbDouble() {
   return db;
 }
 
-vi.mock("./db", () => ({ requireDb: async () => createDbDouble() }));
+vi.mock("./db", () => ({ requireDb: async () => createDbDouble(), requireSchemaDb: async () => createDbDouble() }));
 
 import { cashRouter } from "./routers/cash";
 import { CASH_JOURNAL_DEBTS_DDL, ensureCashJournalDebtTable } from "./cashJournalDebtSchema";

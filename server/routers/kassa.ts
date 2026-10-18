@@ -1,5 +1,7 @@
-import { and, desc, eq, gt, gte, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, lte, not, or, sql } from "drizzle-orm";
+import { cashCategorySql } from "../cashCategorySql";
 import { z } from "zod";
+import { matrixLayoutValueSchema } from "../../shared/matrixLayout";
 import { syncLegacyTaking, syncTaking, matrixCellVersion, recordMatrixCellWrite } from "../matrixInventory";
 import { randomUUID } from "node:crypto";
 import {
@@ -23,7 +25,6 @@ import { tashkentDayRange, toMySqlDate } from "../businessDay";
 import { reconcileExpectedTransfers } from "../transferExpectation";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
-import { AGENT_SETTLEMENT_CASH_CATEGORIES, CASH_DEBT_REPAYMENT_CATEGORY } from "../../shared/cashAccounting";
 import { buildAgentDifferenceSummary } from "../../shared/agentDifference";
 import { buildDailyReconciliation, tashkentBusinessDate } from "../../shared/agentReconciliation";
 
@@ -34,16 +35,15 @@ const numberSql = (template: TemplateStringsArray, ...params: unknown[]) =>
  * uchun yagona mavjud tasdiqlash yo'li. Terminal/Click/Перечисление uchun bunday
  * "topshirish" tushunchasi yo'q (pul to'g'ridan-to'g'ri bankka/Click hisobiga tushadi),
  * shu sababli ular kassaDailyActuals'dagi qo'lda tasdiqlangan summa bilan solishtiriladi. */
-const CASH_SUBMISSION_CATEGORIES = ["Приход кег", "Приход пет"] as const;
 
 /** Agent x Tovar uchun yopilgan summa: naqd prihodlar va barcha elektron kanallar. */
 const agentSettlementAmountSql = () =>
   sql<number>`coalesce(sum(
     case when ${and(
       eq(cashEntries.type, "income"),
-      inArray(cashEntries.category, [...AGENT_SETTLEMENT_CASH_CATEGORIES]),
+      cashCategorySql("agent_cash_keg", "agent_cash_pet"),
     )} then ${cashEntries.cashAmount} else 0 end
-    + case when ${cashEntries.category} <> ${CASH_DEBT_REPAYMENT_CATEGORY}
+    + case when ${not(cashCategorySql("debt_repayment"))}
       then ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} + ${cashEntries.transferAmount} else 0 end
   ), 0)`.mapWith(Number);
 
@@ -51,16 +51,11 @@ const agentSettlementEntrySql = () =>
   or(
     and(
       eq(cashEntries.type, "income"),
-      inArray(cashEntries.category, [...AGENT_SETTLEMENT_CASH_CATEGORIES]),
+      cashCategorySql("agent_cash_keg", "agent_cash_pet"),
     ),
-    and(sql`${cashEntries.category} <> ${CASH_DEBT_REPAYMENT_CATEGORY}`, or(
+    and(not(cashCategorySql("debt_repayment")), or(
       gt(cashEntries.terminalAmount, 0), gt(cashEntries.clickAmount, 0), gt(cashEntries.transferAmount, 0))),
   );
-const matrixLayoutValueSchema = z.object({
-  productOrder: z.array(z.number().int().positive()).max(2_000),
-  visibleProductIds: z.array(z.number().int().positive()).max(2_000),
-  agentOrder: z.array(z.number().int().positive()).min(1).max(500),
-});
 
 function uniqueIds(ids: number[]) {
   return Array.from(new Set(ids));
@@ -140,7 +135,7 @@ async function computePendingByChannel(timestamp: number) {
     .where(
       and(
         eq(cashEntries.type, "income"),
-        inArray(cashEntries.category, [...CASH_SUBMISSION_CATEGORIES]),
+        cashCategorySql("agent_cash_keg", "agent_cash_pet"),
         sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`,
       ),
     );
@@ -175,7 +170,7 @@ async function computePendingByChannel(timestamp: number) {
       .leftJoin(transactions, eq(cashTransferLinks.transactionId, transactions.id))
       .leftJoin(clientPayments, eq(cashTransferLinks.clientPaymentId, clientPayments.id))
       .where(and(eq(cashEntries.type, "income"), gt(cashEntries.transferAmount, 0),
-        sql`${cashEntries.category} <> ${CASH_DEBT_REPAYMENT_CATEGORY}`,
+        not(cashCategorySql("debt_repayment")),
         sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`))
       .groupBy(cashEntries.id, cashEntries.entryDate, cashEntries.agentId, cashEntries.transferAmount),
   ]);
@@ -484,10 +479,16 @@ export const kassaRouter = router({
         const productIds = new Set(productRows.map(row => row.id));
         const activeAgentIds = new Set(agentRows.filter(row => row.isActive).map(row => row.id));
         const requestedOrder = uniqueIds(input.layout.productOrder).filter(id => productIds.has(id));
+        // Older clients omit widths; retain the effective dated widths instead of resetting them.
+        const { end: selectedEnd } = dayRange(input.date);
+        const [inherited] = await db.select({ layout: cashMatrixLayouts.layout }).from(cashMatrixLayouts)
+          .where(lte(cashMatrixLayouts.effectiveDate, selectedEnd)).orderBy(desc(cashMatrixLayouts.effectiveDate)).limit(1);
+        const inheritedWidths = inherited ? matrixLayoutValueSchema.parse(JSON.parse(inherited.layout)).columnWidths : undefined;
         const normalized = {
           productOrder: [...requestedOrder, ...productRows.map(row => row.id).filter(id => !requestedOrder.includes(id))],
           visibleProductIds: uniqueIds(input.layout.visibleProductIds).filter(id => productIds.has(id)),
           agentOrder: uniqueIds(input.layout.agentOrder).filter(id => activeAgentIds.has(id)),
+          columnWidths: input.layout.columnWidths ?? inheritedWidths ?? {},
         };
         if (normalized.agentOrder.length === 0) throw new Error("Kamida bitta agent ko‘rsatilishi kerak.");
         const effectiveDate = new Date(`${tashkentDateKey(input.date)}T07:00:00.000Z`);
@@ -500,7 +501,7 @@ export const kassaRouter = router({
         const serialized = JSON.stringify(normalized);
         return db.transaction(async tx => {
           if (existing) {
-            await tx.update(cashMatrixLayouts).set({ layout: serialized, updatedBy: ctx.user.id, updatedAt: new Date() }).where(eq(cashMatrixLayouts.id, existing.id));
+            await tx.update(cashMatrixLayouts).set({ effectiveDate: sql`${cashMatrixLayouts.effectiveDate}`, layout: serialized, updatedBy: ctx.user.id, updatedAt: new Date() }).where(eq(cashMatrixLayouts.id, existing.id));
             await logAudit(tx, {
               tableName: "cash_matrix_layouts", recordId: existing.id, action: "update", userId: ctx.user.id,
               before: { effectiveDate: existing.effectiveDate, layout: JSON.parse(existing.layout) },

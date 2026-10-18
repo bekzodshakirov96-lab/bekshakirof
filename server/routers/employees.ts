@@ -6,13 +6,13 @@ import { logAudit } from "../auditLog";
 import { normalizeSearch, normalizeSearchable } from "../businessQueries";
 import { requireDb } from "../db";
 import { router } from "../_core/trpc";
+import { cashCategorySql } from "../cashCategorySql";
 
 function toMySqlDate(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
 /** Xodimga berilgan oylik "Ойлик" toifasidagi kassa rasxodi sifatida yoziladi. */
-const SALARY_CATEGORY = "Ойлик";
 
 const periodInput = z.object({ from: z.number().int().optional(), to: z.number().int().optional() });
 
@@ -23,7 +23,7 @@ const periodInput = z.object({ from: z.number().int().optional(), to: z.number()
 async function loadSalaryTotals(db: Awaited<ReturnType<typeof requireDb>>, period: { from?: number; to?: number }) {
   const conditions = [
     eq(cashEntries.type, "expense"),
-    eq(cashEntries.category, SALARY_CATEGORY),
+    cashCategorySql("salary"),
     period.from ? gte(cashEntries.entryDate, sql`${toMySqlDate(new Date(period.from))}`) : undefined,
     period.to ? lte(cashEntries.entryDate, sql`${toMySqlDate(new Date(period.to))}`) : undefined,
   ].filter(Boolean);
@@ -128,7 +128,7 @@ export const employeesRouter = router({
       const conditions = [
         eq(cashEntries.employeeId, input.employeeId),
         eq(cashEntries.type, "expense"),
-        eq(cashEntries.category, SALARY_CATEGORY),
+        cashCategorySql("salary"),
         input.from ? gte(cashEntries.entryDate, sql`${toMySqlDate(new Date(input.from))}`) : undefined,
         input.to ? lte(cashEntries.entryDate, sql`${toMySqlDate(new Date(input.to))}`) : undefined,
       ].filter(Boolean);

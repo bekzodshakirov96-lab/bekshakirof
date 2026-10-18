@@ -87,6 +87,9 @@ export const usersRouter = router({
       const [target] = await db.select().from(users).where(eq(users.id, input.id)).limit(1);
       if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Foydalanuvchi topilmadi." });
       if (input.email !== target.email) {
+        if (target.id === OWNER_USER_ID && process.env.PLATFORM_MANAGED === "true") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Firma egasining emaili platforma hisobiga bog‘langan. Bu yerda uni o‘zgartirib bo‘lmaydi." });
+        }
         const existing = await getUserByEmail(input.email);
         if (existing && existing.id !== input.id) {
           throw new TRPCError({ code: "CONFLICT", message: "Bu email allaqachon ro‘yxatdan o‘tgan." });

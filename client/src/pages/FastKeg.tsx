@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, tashkentDateInputValue as inputDateValue } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { calculateFastKegRow, summarizeFastKegRows, type FastKegQuantities } from "../../../shared/fastKeg";
 import {
@@ -65,11 +65,6 @@ const EMPTY_ENTRY: EntryValue = { keg30: "", keg50: "", returned30: "", returned
 
 function createIdempotencyKey() {
   return `fk_${crypto.randomUUID().replaceAll("-", "")}`;
-}
-
-function inputDateValue(date = new Date()) {
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
 }
 
 function numeric(value: string) {

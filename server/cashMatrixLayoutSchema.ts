@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { requireDb } from "./db";
+import { requireSchemaDb } from "./db";
 
 /** Additive, restart-safe counterpart of drizzle/0017_curly_lily_hollister.sql. */
 export const CASH_MATRIX_LAYOUTS_DDL = `CREATE TABLE IF NOT EXISTS \`cash_matrix_layouts\` (
@@ -16,6 +16,6 @@ export const CASH_MATRIX_LAYOUTS_DDL = `CREATE TABLE IF NOT EXISTS \`cash_matrix
 
 export async function ensureCashMatrixLayoutTable() {
   if (!process.env.DATABASE_URL) return;
-  const db = await requireDb();
+  const db = await requireSchemaDb();
   await db.execute(sql.raw(CASH_MATRIX_LAYOUTS_DDL));
 }

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { requireDb } from "./db";
+import { requireSchemaDb } from "./db";
 
 /** Additive only: no existing table ALTER, row update, inventory activation,
  * financial backfill, deletion, or seed. Safe to run again after restart. */
@@ -11,7 +11,7 @@ export const MATRIX_INVENTORY_DDL = [
 
 export async function ensureMatrixInventorySchema() {
   if (!process.env.DATABASE_URL) return;
-  const db = await requireDb();
+  const db = await requireSchemaDb();
   for (const statement of MATRIX_INVENTORY_DDL)
     await db.execute(sql.raw(statement));
 }

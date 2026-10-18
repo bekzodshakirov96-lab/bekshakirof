@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { MatrixReceiptCell, useMatrixInventory } from "@/components/MatrixInventory";
+import { MatrixColumnHead } from "@/components/MatrixColumnHead";
+import { matrixColumnSize, type MatrixColumnKey, type MatrixLayoutValue } from "@shared/matrixLayout";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/cashCategories";
@@ -21,6 +23,8 @@ import {
 } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { moveProductId } from "@shared/productOrder";
+import { cashStorageCategory } from "@shared/cashCategoryRegistry";
+import { useCompanyPreferences } from "@/lib/companyPreferences";
 import { normalizeSearch, normalizeSearchable } from "@shared/translit";
 import {
   AlertTriangle,
@@ -96,7 +100,6 @@ const debtNoteText = (entry: Pick<JournalDebtRow, "borrowerName" | "description"
  * `a:12` — agent, `e:3` — xodim.
  */
 type Payee = { agentId: number | null; employeeId: number | null };
-type MatrixLayoutValue = { productOrder: number[]; visibleProductIds: number[]; agentOrder: number[] };
 const payeeToValue = (payee: Payee) =>
   payee.employeeId != null ? `e:${payee.employeeId}` : payee.agentId != null ? `a:${payee.agentId}` : "";
 function payeeFromValue(value: string): Payee {
@@ -128,7 +131,7 @@ const cellInputClass =
 /** "Ойлик" ustuni ajratib turishi uchun — qolganlaridan qizg'ishroq. */
 const cellInputClassHighlight =
   "w-full min-w-[64px] rounded-md border border-rose-100 bg-rose-50/70 px-1.5 py-1.5 text-right tabular-nums outline-none transition-colors hover:border-rose-300 hover:bg-rose-100 focus:border-primary focus:bg-card focus:ring-2 focus:ring-primary/25 dark:border-rose-400/25 dark:bg-rose-500/10 dark:hover:border-rose-400/40 dark:hover:bg-rose-500/20";
-const HIGHLIGHT_CATEGORY = "Ойлик";
+const HIGHLIGHT_CATEGORY = cashStorageCategory("salary");
 const textInputClass =
   "w-full min-w-[110px] rounded-md border border-transparent bg-muted/70 px-1.5 py-1.5 outline-none transition-colors hover:border-border hover:bg-muted focus:border-primary focus:bg-card focus:ring-2 focus:ring-primary/25";
 const selectInputClass =
@@ -299,6 +302,8 @@ function DailyJournalGrid({
   showEmployees: boolean;
   onChanged: () => void;
 }) {
+  const company = useCompanyPreferences(date);
+  const columnLabel = (name: string) => name === DEBT_COLUMN ? company.label("debt") : company.cashLabel(name);
   const utils = trpc.useUtils();
   const timestamp = dateToTimestamp(date);
   const debtEntries = trpc.cash.journalDebt.byDate.useQuery({ date: timestamp });
@@ -641,19 +646,22 @@ function DailyJournalGrid({
     }, 0);
   }
 
+  if (company.query.isLoading || debtEntries.isLoading || openingBalanceQuery.isLoading || agents.isLoading || (showEmployees && employees.isLoading)) return <p role="status" className="p-4 text-xs text-muted-foreground">Kunlik jurnal va ustun nomlari yuklanmoqda…</p>;
+  if (company.query.isError) return <QueryError description="Tanlangan sanadagi ustun nomlarini yuklab bo‘lmadi." onRetry={() => void company.query.refetch()} />;
+  if (debtEntries.isError || openingBalanceQuery.isError || agents.isError || (showEmployees && employees.isError)) return <QueryError description="Kunlik jurnalni to‘liq yuklab bo‘lmadi. Tahrirlashdan oldin qayta urinib ko‘ring." onRetry={() => { void debtEntries.refetch(); void openingBalanceQuery.refetch(); void agents.refetch(); if (showEmployees) void employees.refetch(); }} />;
+
   return (
     <div className="overflow-x-auto rounded-2xl border border-border">
-      {debtEntries.isError && <div role="alert" className="px-3 py-2 text-sm text-destructive">Qarz qaydlarini yuklab bo‘lmadi. <button type="button" className="underline" onClick={() => debtEntries.refetch()}>Qayta urinish</button></div>}
       <table className="w-full min-w-[1320px] text-sm">
         <thead>
           <tr className="border-b border-border bg-muted text-xs font-semibold tracking-wide text-muted-foreground">
-            <th className="whitespace-nowrap px-3 py-2.5 text-left">Агент</th>
-            {JOURNAL_COLUMNS.map(name => <th key={name} title={name === DEBT_COLUMN ? "Faqat qayd — kassa qoldig‘iga ta’sir qilmaydi" : undefined} className={`whitespace-nowrap px-3 py-2.5 text-right ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" : ""}`}>{name}</th>)}
-            <th className="whitespace-nowrap px-3 py-2.5 text-right">Терминал</th>
-            <th className="whitespace-nowrap px-3 py-2.5 text-right">Click</th>
-            <th className="whitespace-nowrap px-3 py-2.5 text-right" title="Agentning shu kundagi jami bank o'tkazmalari">Перечисление</th>
-            <th className="whitespace-nowrap px-3 py-2.5 text-left">Qarz izohi</th>
-            <th className="whitespace-nowrap px-3 py-2.5 text-left">Izoh</th>
+            <th className="whitespace-nowrap px-3 py-2.5 text-left">{company.label("journalAgent")}</th>
+            {JOURNAL_COLUMNS.map(name => <th key={name} title={name === DEBT_COLUMN ? "Faqat qayd — kassa qoldig‘iga ta’sir qilmaydi" : name} className={`whitespace-nowrap px-3 py-2.5 text-right ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" : ""}`}>{columnLabel(name)}</th>)}
+            <th className="whitespace-nowrap px-3 py-2.5 text-right">{company.label("terminal")}</th>
+            <th className="whitespace-nowrap px-3 py-2.5 text-right">{company.label("click")}</th>
+            <th className="whitespace-nowrap px-3 py-2.5 text-right" title="Agentning shu kundagi jami bank o'tkazmalari">{company.label("transfer")}</th>
+            <th className="whitespace-nowrap px-3 py-2.5 text-left">{company.label("debtNote")}</th>
+            <th className="whitespace-nowrap px-3 py-2.5 text-left">{company.label("note")}</th>
             <th className="w-11" />
           </tr>
         </thead>
@@ -757,13 +765,13 @@ function DailyJournalGrid({
                 <td className="px-3 py-2 font-medium"><span tabIndex={0} data-journal-cell={`${rowIndex}-0`} className="block min-w-[110px]"
                   onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); focusJournalCell(rowIndex, 0, 1, 0); } }}>{payeeName}</span></td>
                 {JOURNAL_COLUMNS.map((name, index) => <td key={name} className={`px-1.5 py-1 ${name === HIGHLIGHT_CATEGORY ? "bg-rose-50/40 dark:bg-rose-500/8" : ""}`}>
-                  {amountCell(group.entries.filter(item => item.category === name), "amount", name, index + 1)}
+                  {amountCell(group.entries.filter(item => item.category === name), "amount", columnLabel(name), index + 1)}
                 </td>)}
-                <td className="px-1.5 py-1">{amountCell(cashEntries.filter(item => item.terminalAmount > 0), "terminal", "Терминал", TERMINAL_COL)}</td>
-                <td className="px-1.5 py-1">{amountCell(cashEntries.filter(item => item.clickAmount > 0), "click", "Click", CLICK_COL)}</td>
-                <td className="px-1.5 py-1">{amountCell(cashEntries.filter(item => item.transferAmount > 0), "transfer", "Перечисление", TRANSFER_COL)}</td>
-                <td className="px-1.5 py-1">{notesCell("memo", "Qarz izohi", DEBT_REASON_COL)}</td>
-                <td className="px-1.5 py-1">{notesCell("cash", "Izoh", REASON_COL)}</td>
+                <td className="px-1.5 py-1">{amountCell(cashEntries.filter(item => item.terminalAmount > 0), "terminal", company.label("terminal"), TERMINAL_COL)}</td>
+                <td className="px-1.5 py-1">{amountCell(cashEntries.filter(item => item.clickAmount > 0), "click", company.label("click"), CLICK_COL)}</td>
+                <td className="px-1.5 py-1">{amountCell(cashEntries.filter(item => item.transferAmount > 0), "transfer", company.label("transfer"), TRANSFER_COL)}</td>
+                <td className="px-1.5 py-1">{notesCell("memo", company.label("debtNote"), DEBT_REASON_COL)}</td>
+                <td className="px-1.5 py-1">{notesCell("cash", company.label("note"), REASON_COL)}</td>
                 <td className="px-1 py-1">{manageEntries}</td>
               </tr>;
             }
@@ -1071,6 +1079,7 @@ function DailyJournalGrid({
  * boshqa kundagi agent-tovar taqsimotini ko'rish kerak bo'ladi, jurnalni almashtirmasdan. */
 function AgentProductMatrix() {
   const [date, setDate] = useState(today());
+  const company = useCompanyPreferences(date);
   const utils = trpc.useUtils();
   const timestamp = dateToTimestamp(date);
   const agents = trpc.agents.options.useQuery();
@@ -1101,16 +1110,19 @@ function AgentProductMatrix() {
     onError: error => toast.error(error.message),
   });
   const [layoutDraft, setLayoutDraft] = useState<MatrixLayoutValue | null>(null);
+  const [columnPreview, setColumnPreview] = useState<{ key: MatrixColumnKey; width: number } | null>(null);
+  const layoutSavingRef = useRef(false);
   const [draggedProduct, setDraggedProduct] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: number; placement: "before" | "after" } | null>(null);
   const [orderNotice, setOrderNotice] = useState("");
   const saveMatrixLayout = trpc.kassa.matrixLayout.save.useMutation({
     onSuccess: async (_result, variables) => {
-      await utils.kassa.matrixLayout.forDate.invalidate({ date: variables.date });
+      await utils.kassa.matrixLayout.forDate.invalidate();
       setLayoutDraft(null);
       setOrderNotice("Jadval ko‘rinishi shu sana va keyingi kunlar uchun saqlandi.");
     },
     onError: error => { setLayoutDraft(null); setOrderNotice("Jadval ko‘rinishi saqlanmadi."); toast.error(error.message); },
+    onSettled: () => { layoutSavingRef.current = false; },
   });
   const [productSearch, setProductSearch] = useState("");
   const createAgent = trpc.agents.create.useMutation({
@@ -1142,6 +1154,7 @@ function AgentProductMatrix() {
       ? savedLayout.visibleProductIds.filter(id => productList.some(product => product.id === id))
       : productList.map(product => product.id),
     agentOrder: savedLayout && savedAgentOrder.length > 0 ? savedAgentOrder : agentList.map(agent => agent.id),
+    columnWidths: savedLayout?.columnWidths ?? {},
   };
   const activeLayout = layoutDraft ?? inheritedLayout;
   const isHistoricalLayout = date < today();
@@ -1160,7 +1173,8 @@ function AgentProductMatrix() {
   const hiddenWithEntries = (takingRows.data ?? []).filter(row => row.productId != null && hiddenProductIds.includes(row.productId));
   function saveLayout(next: MatrixLayoutValue) {
     if (isHistoricalLayout) { toast.error("O‘tgan sana ko‘rinishi saqlangan. Bugungi yoki kelgusi sanani tanlang."); return; }
-    if (layoutIsSaving) return;
+    if (layoutSavingRef.current) return;
+    layoutSavingRef.current = true;
     setLayoutDraft(next);
     saveMatrixLayout.mutate({ date: timestamp, layout: next });
   }
@@ -1248,6 +1262,7 @@ function AgentProductMatrix() {
   }, [newProductOpen]);
   useEffect(() => {
     setLayoutDraft(null);
+    setColumnPreview(null);
     setAgentPickerOpen(false);
     setNewAgentOpen(false);
     setNewProductOpen(false);
@@ -1317,6 +1332,7 @@ function AgentProductMatrix() {
         <Button
           type="button" variant="outline" size="icon" className="size-8 bg-card"
           aria-label="Oldingi kun"
+          disabled={layoutIsSaving || columnPreview !== null}
           onClick={() => setDate(prev => shiftDate(prev, -1))}
         >
           <ChevronLeft className="size-4" />
@@ -1324,18 +1340,21 @@ function AgentProductMatrix() {
         <Input
           className="finance-input h-8 w-[150px] text-center"
           type="date" value={date}
+          aria-label="Agent × Tovar sanasi"
+          disabled={layoutIsSaving || columnPreview !== null}
           onChange={event => setDate(event.target.value)}
         />
         <Button
           type="button" variant="outline" size="icon" className="size-8 bg-card"
           aria-label="Keyingi kun"
+          disabled={layoutIsSaving || columnPreview !== null}
           onClick={() => setDate(prev => shiftDate(prev, 1))}
         >
           <ChevronRight className="size-4" />
         </Button>
         <Button
           type="button" variant="outline" size="sm" className="h-8 bg-card text-xs font-semibold"
-          onClick={() => setDate(today())}
+          disabled={layoutIsSaving || columnPreview !== null} onClick={() => setDate(today())}
         >
           Bugun
         </Button>
@@ -1343,11 +1362,20 @@ function AgentProductMatrix() {
     </div>
   );
 
-  if (agents.isLoading || products.isLoading || matrixLayoutQuery.isLoading) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Yuklanmoqda...</p></div>;
+  if (agents.isLoading || products.isLoading || matrixLayoutQuery.isLoading || company.query.isLoading || takingRows.isLoading || cellVersions.isLoading || daySummary.isLoading || dayPriceQuery.isLoading) return <div>{header}<p role="status" className="p-4 text-xs text-muted-foreground">Yuklanmoqda...</p></div>;
+  if (company.query.isError) return <div>{header}<QueryError description="Tanlangan sanadagi ustun nomlarini yuklab bo‘lmadi." onRetry={() => void company.query.refetch()} /></div>;
+  if (agents.isError || products.isError || matrixLayoutQuery.isError || takingRows.isError || cellVersions.isError || daySummary.isError || dayPriceQuery.isError) return <div>{header}<QueryError description="Agent × Tovar ma’lumotlarini to‘liq yuklab bo‘lmadi." onRetry={() => { void agents.refetch(); void products.refetch(); void matrixLayoutQuery.refetch(); void takingRows.refetch(); void cellVersions.refetch(); void daySummary.refetch(); void dayPriceQuery.refetch(); }} /></div>;
   if (visibleAgents.length === 0) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Faol agentlar topilmadi.</p></div>;
   if (productList.length === 0) return <div>{header}<p className="p-4 text-xs text-muted-foreground">Mahsulotlar topilmadi.</p></div>;
 
   const summaryByAgent = new Map((daySummary.data?.agentSummaries ?? []).map(row => [row.agentId, row]));
+  const matrixColumns: MatrixColumnKey[] = ["product", "stock", "receipt", "price", "dailyPrice", ...visibleAgents.map(agent => `agent:${agent.id}` as const)];
+  const columnWidth = (key: MatrixColumnKey) => columnPreview?.key === key ? columnPreview.width : activeLayout.columnWidths?.[key] ?? matrixColumnSize(key).default;
+  const columnHeadProps = (key: MatrixColumnKey, label: string) => ({
+    columnKey: key, label, width: columnWidth(key), disabled: layoutIsSaving || isHistoricalLayout,
+    onPreview: (width: number | null) => setColumnPreview(width == null ? null : { key, width }),
+    onCommit: (width: number) => saveLayout({ ...activeLayout, columnWidths: { ...activeLayout.columnWidths, [key]: width } }),
+  });
 
   return (
     <div>
@@ -1470,23 +1498,25 @@ function AgentProductMatrix() {
         </div>
       </div>
 
-      <p role="status" className="sr-only">{orderNotice}</p>
+      <p role="status" className="mb-1 text-xs text-muted-foreground">{layoutIsSaving ? "Jadval kengliklari va ko‘rinishi saqlanmoqda..." : orderNotice}</p>
+      <p className="mb-2 text-xs text-muted-foreground">Ustun chegarasini sichqoncha bilan surib kengligini o‘zgartiring. Kenglik shu sana va keyingi kunlarga saqlanadi.</p>
       {isHistoricalLayout && <p className="mb-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">Bu tarixiy sana: agentlar va mahsulotlar ko‘rinishi saqlangan, uni bu yerdan o‘zgartirib bo‘lmaydi.</p>}
       {hiddenWithEntries.length > 0 && <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">Yashirilgan mahsulotlarda shu kun uchun yozuvlar bor. Ularning summalari jami hisobga kiradi.</p>}
       <div className="overflow-x-auto rounded-2xl border border-border">
-      <table className="w-full min-w-[720px] text-sm">
+      <table data-matrix-resizable className="table-fixed text-sm" style={{ width: matrixColumns.reduce((sum, key) => sum + columnWidth(key), 0) }}>
+        <colgroup>{matrixColumns.map(key => <col key={key} style={{ width: columnWidth(key) }} />)}</colgroup>
         <thead>
           <tr className="bg-muted text-xs font-semibold text-muted-foreground">
-            <th className="sticky left-0 whitespace-nowrap bg-muted px-3 py-2 text-left">Товар</th>
-            <th className="whitespace-nowrap px-3 py-2 text-right">Ostatka</th>
-            <th className="whitespace-nowrap px-3 py-2 text-right">Prixod</th>
-            <th className="whitespace-nowrap px-3 py-2 text-right">Narxi</th>
-            <th className="whitespace-nowrap px-3 py-2 text-right">Kunlik narx</th>
+            <MatrixColumnHead key={`${date}:product`} {...columnHeadProps("product", company.label("product"))} sticky>{company.label("product")}</MatrixColumnHead>
+            <MatrixColumnHead key={`${date}:stock`} {...columnHeadProps("stock", company.label("stock"))}>{company.label("stock")}</MatrixColumnHead>
+            <MatrixColumnHead key={`${date}:receipt`} {...columnHeadProps("receipt", company.label("receipt"))}>{company.label("receipt")}</MatrixColumnHead>
+            <MatrixColumnHead key={`${date}:price`} {...columnHeadProps("price", company.label("price"))}>{company.label("price")}</MatrixColumnHead>
+            <MatrixColumnHead key={`${date}:dailyPrice`} {...columnHeadProps("dailyPrice", company.label("dailyPrice"))}>{company.label("dailyPrice")}</MatrixColumnHead>
             {visibleAgents.map(agent => (
-              <th key={agent.id} className="whitespace-nowrap px-2 py-1.5 text-right">
+              <MatrixColumnHead key={`${date}:agent:${agent.id}`} {...columnHeadProps(`agent:${agent.id}`, agent.name)}>
                 {agentList.some(option => option.id === agent.id) ? (
                   <Select disabled={layoutIsSaving || isHistoricalLayout} value={String(agent.id)} onValueChange={value => replaceAgentColumn(agent.id, Number(value))}>
-                    <SelectTrigger size="sm" aria-label={`${agent.name} ustunidagi agentni tanlash`} className="ml-auto h-8 min-w-28 justify-end border-transparent bg-transparent px-2 font-semibold shadow-none hover:border-border hover:bg-card">
+                    <SelectTrigger size="sm" aria-label={`${agent.name} ustunidagi agentni tanlash`} className="ml-auto h-8 w-full min-w-0 justify-end border-transparent bg-transparent px-2 font-semibold shadow-none hover:border-border hover:bg-card">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent align="end">
@@ -1494,7 +1524,7 @@ function AgentProductMatrix() {
                     </SelectContent>
                   </Select>
                 ) : agent.name}
-              </th>
+              </MatrixColumnHead>
             ))}
           </tr>
         </thead>
@@ -1521,8 +1551,8 @@ function AgentProductMatrix() {
                 }
                 setDraggedProduct(null); setDropTarget(null);
               }}>
-              <td className="sticky left-0 whitespace-nowrap bg-card px-3 py-1.5 font-medium text-foreground">
-                <div className="flex items-center gap-1.5">
+              <td className="sticky left-0 z-10 whitespace-nowrap bg-card px-3 py-1.5 font-medium text-foreground">
+                <div className="flex min-w-0 items-center gap-1.5">
                   <button type="button" draggable={!layoutIsSaving && !isHistoricalLayout}
                     disabled={layoutIsSaving || isHistoricalLayout}
                     aria-label={`${product.name} — tartibini o‘zgartirish`}
@@ -1546,7 +1576,7 @@ function AgentProductMatrix() {
                     className="flex size-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-primary"
                     disabled={layoutIsSaving || isHistoricalLayout}
                     onClick={() => setProductVisible(product.id, false)}><EyeOff className="size-3.5" /></button>
-                  {product.name}
+                  <span className="truncate" title={product.name}>{product.name}</span>
                 </div>
               </td>
               <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums">
@@ -1590,7 +1620,7 @@ function AgentProductMatrix() {
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-border bg-muted/80 text-xs font-bold text-foreground">
-            <td className="sticky left-0 whitespace-nowrap bg-muted/80 px-3 py-2" colSpan={5}>Умумий</td>
+            <td className="whitespace-normal bg-muted/80 px-3 py-2" colSpan={5}>Умумий</td>
             {visibleAgents.map(agent => (
               <td key={agent.id} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
                 {formatMoney(summaryByAgent.get(agent.id)?.computedAmount ?? 0)}
@@ -1598,9 +1628,9 @@ function AgentProductMatrix() {
             ))}
           </tr>
           <tr className="bg-muted/80 text-xs font-bold text-foreground">
-            <td className="sticky left-0 whitespace-nowrap bg-muted/80 px-3 py-2" colSpan={5}>
+            <td className="whitespace-normal bg-muted/80 px-3 py-2" colSpan={5}>
               Касса
-              <span className="ml-1.5 font-normal text-muted-foreground">(Приход кег + Приход пет + Terminal + Click + Перечисление)</span>
+              <span className="ml-1.5 font-normal text-muted-foreground">({company.label("agent_cash_keg")} + {company.label("agent_cash_pet")} + {company.label("terminal")} + {company.label("click")} + {company.label("transfer")})</span>
             </td>
             {visibleAgents.map(agent => (
               <td key={agent.id} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
@@ -1609,7 +1639,7 @@ function AgentProductMatrix() {
             ))}
           </tr>
           <tr className="text-xs font-bold">
-            <td className="sticky left-0 whitespace-nowrap bg-card px-3 py-2" colSpan={5}>Разница</td>
+            <td className="whitespace-normal bg-card px-3 py-2" colSpan={5}>Разница</td>
             {visibleAgents.map(agent => {
               const row = summaryByAgent.get(agent.id);
               const farq = row?.farq ?? 0;
@@ -1827,6 +1857,7 @@ function ActualCashCard({
 }
 
 export default function Cash() {
+  const company = useCompanyPreferences();
   const [date, setDate] = useState(today());
   const [showEmployees, setShowEmployees] = useState(readShowEmployees);
   function toggleShowEmployees() {
@@ -1842,8 +1873,9 @@ export default function Cash() {
 
   const allEntries = prihodEntries.data ?? [];
 
-  if (daySummary.error) {
-    return <div className="mx-auto w-full max-w-none"><PageHeader eyebrow="Pul oqimi" title="КАССА" description="Kunlik jurnal va agentlar bo'yicha tezkor nazorat." /><QueryError description={daySummary.error.message} onRetry={() => daySummary.refetch()} /></div>;
+  if (daySummary.isLoading || prihodEntries.isLoading) return <div className="mx-auto w-full max-w-none"><PageHeader eyebrow="Pul oqimi" title="КАССА" description="Kunlik jurnal va agentlar bo'yicha tezkor nazorat." /><p role="status" className="p-4 text-sm text-muted-foreground">Kassa qoldig‘i va jurnal yuklanmoqda…</p></div>;
+  if (daySummary.error || prihodEntries.error) {
+    return <div className="mx-auto w-full max-w-none"><PageHeader eyebrow="Pul oqimi" title="КАССА" description="Kunlik jurnal va agentlar bo'yicha tezkor nazorat." /><QueryError description={(daySummary.error ?? prihodEntries.error)!.message} onRetry={() => { void daySummary.refetch(); void prihodEntries.refetch(); }} /></div>;
   }
 
   const data = daySummary.data;
@@ -1864,7 +1896,7 @@ export default function Cash() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Jami Приход" value={formatMoney(data?.jamiPrihod, true)} helper="Tanlangan kun" icon={Banknote} tone="green" />
+        <MetricCard label="Jami Приход" value={formatMoney(data?.jamiPrihod, true)} helper="Naqd + Terminal + Click; o‘tkazma alohida" icon={Banknote} tone="green" />
         <MetricCard label="Jami Расход" value={formatMoney(data?.jamiRasxod, true)} helper="Tanlangan kun" icon={Banknote} tone="rose" />
         <MetricCard label="Naqd qoldiq" value={formatMoney(kassaQoldigi, true)} helper="Tanlangan kun yakunida" icon={Landmark} tone="cyan" />
         <MetricCard
@@ -1940,9 +1972,9 @@ export default function Cash() {
         />
       </div>
 
-      <div className="mt-5 min-w-0 rounded-2xl border border-border bg-card p-5">
+      {company.visible("agentMatrix") && <div className="mt-5 min-w-0 rounded-2xl border border-border bg-card p-5">
         <AgentProductMatrix />
-      </div>
+      </div>}
     </div>
   );
 }

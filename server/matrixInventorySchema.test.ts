@@ -9,7 +9,7 @@ import { matrixStockDay } from "./matrixInventory";
 
 let connection: mysql.Connection;
 let db: ReturnType<typeof drizzle>;
-vi.mock("./db", () => ({ requireDb: async () => db }));
+vi.mock("./db", () => ({ requireDb: async () => db, requireSchemaDb: async () => db }));
 const names = ["matrix_stock_configs", "matrix_stock_events", "matrix_cell_writes"];
 const url = process.env.TENANT_ISOLATION_TEST_URL;
 

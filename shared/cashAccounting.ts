@@ -1,3 +1,5 @@
+import { CASH_CATEGORY_DEFINITIONS, cashCategoryIdOf, cashStorageCategory, legacyCashCategories, type CashCategoryId } from "./cashCategoryRegistry";
+
 export type CashAccountingEntry = {
   type: "income" | "expense";
   cashAmount: number;
@@ -6,9 +8,9 @@ export type CashAccountingEntry = {
   transferAmount?: number;
 };
 
-export const ELECTRONIC_PAYMENT_CATEGORY = "Elektron to‘lovlar";
-export const CASH_DEBT_REPAYMENT_CATEGORY = "Qarz qaytimi";
-export const AGENT_SETTLEMENT_CASH_CATEGORIES = ["Приход кег", "Приход пет"] as const;
+export const ELECTRONIC_PAYMENT_CATEGORY = cashStorageCategory("electronic_collection");
+export const CASH_DEBT_REPAYMENT_CATEGORY = cashStorageCategory("debt_repayment");
+export const AGENT_SETTLEMENT_CASH_CATEGORIES = legacyCashCategories(["agent_cash_keg", "agent_cash_pet"]);
 
 export type CashReportEntry = CashAccountingEntry & {
   id: number;
@@ -25,10 +27,11 @@ export type NormalizedCashReportEntry<T extends CashReportEntry> = T & {
  * nomiga yozilgan barcha elektron to'lovlar. Rasxod qatoriga tarixan birikib qolgan
  * elektron to'lov ham to'lov hisoblanadi, ammo rasxodning naqd qismi hisoblanmaydi.
  */
-export function agentSettlementAmount(entry: CashAccountingEntry & { category: string }) {
-  if (entry.category === CASH_DEBT_REPAYMENT_CATEGORY) return 0;
+export function agentSettlementAmount(entry: CashAccountingEntry & { category: string; categoryId?: CashCategoryId | null }) {
+  const id = cashCategoryIdOf(entry);
+  if (id === "debt_repayment") return 0;
   const submittedCash = entry.type === "income"
-    && AGENT_SETTLEMENT_CASH_CATEGORIES.includes(entry.category as typeof AGENT_SETTLEMENT_CASH_CATEGORIES[number])
+    && id !== null && CASH_CATEGORY_DEFINITIONS[id].agentCashSettlement
     ? entry.cashAmount
     : 0;
   return submittedCash + entry.terminalAmount + entry.clickAmount + (entry.transferAmount ?? 0);
