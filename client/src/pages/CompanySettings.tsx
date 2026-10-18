@@ -157,7 +157,7 @@ export default function CompanySettings() {
           </div>
         ))}
       </div>
-      <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="overflow-clip rounded-xl border bg-card">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b p-3">
           <div
             className="flex gap-1"

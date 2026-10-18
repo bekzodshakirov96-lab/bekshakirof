@@ -21,6 +21,10 @@ export const companyBrandFieldsSchema = z
     // Optional on writes: older clients must not erase saved backgrounds.
     backgroundLight: brandColor.nullable().optional(),
     backgroundDark: brandColor.nullable().optional(),
+    cardLight: brandColor.nullable().optional(),
+    cardDark: brandColor.nullable().optional(),
+    tableLight: brandColor.nullable().optional(),
+    tableDark: brandColor.nullable().optional(),
   })
   .strict();
 export const companyBrandingSchema = companyBrandFieldsSchema
@@ -28,6 +32,10 @@ export const companyBrandingSchema = companyBrandFieldsSchema
     // Older stored revisions have neither field; reading them writes nothing.
     backgroundLight: brandColor.nullable().default(null),
     backgroundDark: brandColor.nullable().default(null),
+    cardLight: brandColor.nullable().default(null),
+    cardDark: brandColor.nullable().default(null),
+    tableLight: brandColor.nullable().default(null),
+    tableDark: brandColor.nullable().default(null),
     logoUrl: z
       .string()
       .regex(/^\/uploads\/branding\/[a-f0-9-]+_[a-f0-9]{8}\.png$/)
@@ -75,6 +83,10 @@ export function defaultCompanyBranding(): CompanyBranding {
     color: null,
     backgroundLight: null,
     backgroundDark: null,
+    cardLight: null,
+    cardDark: null,
+    tableLight: null,
+    tableDark: null,
     logoUrl: null,
   };
 }

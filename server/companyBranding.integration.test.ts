@@ -385,6 +385,10 @@ describe.skipIf(!url)(
         ...old,
         backgroundLight: null,
         backgroundDark: null,
+        cardLight: null,
+        cardDark: null,
+        tableLight: null,
+        tableDark: null,
       });
       expect((await snapshotBusinessData(connection)).fingerprint).toBe(
         beforeRead.fingerprint
@@ -455,6 +459,84 @@ describe.skipIf(!url)(
       );
       const history = await db.select().from(auditLog);
       expect(history[0].afterData).toContain("#FFF4E6");
+    });
+    it("isolates surface colors, preserves omitted/undefined fields and resets only the requested surface", async () => {
+      const db = createTenantDatabase(pool, "brand-surfaces");
+      const [owner] = await db
+        .insert(users)
+        .values({
+          name: "Surface owner",
+          email: "surfaces@example.uz",
+          passwordHash: "fixture",
+          role: "admin",
+        })
+        .$returningId();
+      const financialBefore = nonSettings(
+        await snapshotBusinessData(connection)
+      );
+      const otherBefore = await readCompanyBranding(b);
+      const colors = {
+        cardLight: "#F0FFF4",
+        cardDark: "#172A26",
+        tableLight: "#FFF0F8",
+        tableDark: "#291D35",
+      };
+      let saved = await saveCompanyBranding(
+        db,
+        {
+          expectedRevision: 0,
+          branding: { ...fields, backgroundLight: "#FFFFFF", ...colors },
+          logo: { action: "keep" },
+        },
+        owner.id,
+        storeA
+      );
+      expect(await readCompanyBranding(db)).toEqual(saved);
+      for (const write of [
+        fields,
+        {
+          ...fields,
+          cardLight: undefined,
+          cardDark: undefined,
+          tableLight: undefined,
+          tableDark: undefined,
+        },
+      ]) {
+        saved = await saveCompanyBranding(
+          db,
+          {
+            expectedRevision: saved.revision,
+            branding: write,
+            logo: { action: "keep" },
+          },
+          owner.id,
+          storeA
+        );
+        expect(saved.branding).toMatchObject(colors);
+      }
+      saved = await saveCompanyBranding(
+        db,
+        {
+          expectedRevision: saved.revision,
+          branding: { ...fields, tableLight: null },
+          logo: { action: "keep" },
+        },
+        owner.id,
+        storeA
+      );
+      expect(saved.branding).toMatchObject({
+        ...colors,
+        tableLight: null,
+        backgroundLight: "#FFFFFF",
+      });
+      expect(await readCompanyBranding(b)).toEqual(otherBefore);
+      expect(nonSettings(await snapshotBusinessData(connection))).toEqual(
+        financialBefore
+      );
+      const history = await db.select().from(auditLog);
+      expect(history).toHaveLength(4);
+      expect(history[0].afterData).toContain("Yorug‘ rejim kartalari");
+      expect(history[0].afterData).toContain(colors.cardLight);
     });
   }
 );

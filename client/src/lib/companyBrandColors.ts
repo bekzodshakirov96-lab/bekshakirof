@@ -30,19 +30,49 @@ export function contrastText(color: string) {
     ? "#FFFFFF"
     : "#000000";
 }
+function surfaceVariables(kind: "card" | "table", color?: string | null) {
+  if (!color || !/^#[0-9a-f]{6}$/i.test(color)) return {};
+  const foreground = contrastText(color);
+  // Shade away from the text so the header and hover retain its contrast.
+  const shade = foreground === "#FFFFFF" ? "#000000" : "#FFFFFF";
+  return {
+    [`--company-${kind}-background`]: color,
+    [`--company-${kind}-foreground`]: foreground,
+    [`--company-${kind}-muted`]: mix(color, shade, 0.08),
+    [`--company-${kind}-hover`]: mix(color, shade, 0.05),
+    [`--company-${kind}-border`]: mix(color, foreground, 0.25),
+  };
+}
 /** Brand accents/tints only. Financial success, warning and error colors retain
  * their existing semantics. No arbitrary CSS text can enter these properties. */
 export function companyBrandVariables(
   color: string | null,
   dark: boolean,
-  backgrounds: { light?: string | null; dark?: string | null } = {}
+  backgrounds: {
+    light?: string | null;
+    dark?: string | null;
+    cardLight?: string | null;
+    cardDark?: string | null;
+    tableLight?: string | null;
+    tableDark?: string | null;
+  } = {}
 ): Record<string, string> {
   const valid = (value: string | null | undefined): value is string =>
     !!value && /^#[0-9a-f]{6}$/i.test(value);
   const primary = valid(color) ? color : null;
   const selected = dark ? backgrounds.dark : backgrounds.light;
   const customBackground = valid(selected) ? selected : null;
-  if (!primary && !customBackground) return {};
+  const surfaces = {
+    ...surfaceVariables(
+      "card",
+      dark ? backgrounds.cardDark : backgrounds.cardLight
+    ),
+    ...surfaceVariables(
+      "table",
+      dark ? backgrounds.tableDark : backgrounds.tableLight
+    ),
+  };
+  if (!primary && !customBackground) return surfaces;
   // The chosen background is exact. Adapt nearby surfaces/text when the owner
   // picks e.g. black in light mode or white in dark mode, preserving legibility.
   const surfaceDark = customBackground
@@ -69,6 +99,7 @@ export function companyBrandVariables(
       ? tint
       : mix(tint, surfaceDark ? "#FFFFFF" : "#000000", 0.5);
   return {
+    ...surfaces,
     ...(primary
       ? {
           "--primary": primary,
