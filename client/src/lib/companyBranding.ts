@@ -18,7 +18,10 @@ export function useCompanyBrandTheme(
 ) {
   useLayoutEffect(() => {
     const root = document.documentElement;
-    const values = companyBrandVariables(branding.color, theme === "dark");
+    const values = companyBrandVariables(branding.color, theme === "dark", {
+      light: branding.backgroundLight,
+      dark: branding.backgroundDark,
+    });
     const previous = Object.fromEntries(
       Object.keys(values).map(key => [
         key,
@@ -38,7 +41,12 @@ export function useCompanyBrandTheme(
         else root.style.removeProperty(key);
       }
     };
-  }, [branding.color, theme]);
+  }, [
+    branding.color,
+    branding.backgroundLight,
+    branding.backgroundDark,
+    theme,
+  ]);
   useLayoutEffect(() => {
     const old = document.title,
       title = `${branding.name} — Firma kabineti`;

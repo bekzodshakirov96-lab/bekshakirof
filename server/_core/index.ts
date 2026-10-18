@@ -131,6 +131,8 @@ async function startServer() {
     next();
   });
   app.use("/uploads", express.static(UPLOADS_DIR));
+  // Missing uploads must stop here, before the Vite/SPA index.html fallback.
+  app.use("/uploads", (_req, res) => res.status(404).end());
   // tRPC API
   app.use(
     "/api/trpc",

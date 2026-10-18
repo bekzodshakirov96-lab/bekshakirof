@@ -47,6 +47,8 @@ const auditView = (brand: CompanyBranding) => ({
   "Firma nomi": brand.name,
   "Nom ostidagi yozuv": brand.tagline,
   "Asosiy rang": brand.color ?? "Standart",
+  "Yorug‘ rejim foni": brand.backgroundLight ?? "Avtomatik",
+  "Qorong‘i rejim foni": brand.backgroundDark ?? "Avtomatik",
   Logotip: brand.logoUrl ?? "Harfli belgi",
 });
 
@@ -143,7 +145,16 @@ export async function saveCompanyBranding(
         logoUrl = created.url;
       }
       const branding = companyBrandingSchema.parse({
+        ...before.branding,
         ...input.branding,
+        backgroundLight:
+          input.branding.backgroundLight === undefined
+            ? before.branding.backgroundLight
+            : input.branding.backgroundLight,
+        backgroundDark:
+          input.branding.backgroundDark === undefined
+            ? before.branding.backgroundDark
+            : input.branding.backgroundDark,
         logoUrl,
       });
       const characters = Array.from(JSON.stringify(branding));
