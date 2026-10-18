@@ -271,6 +271,7 @@ describe.skipIf(!url)("matrix inventory on disposable SQL", () => {
     expect(
       (await a.select().from(matrixStockEvents))
         .filter(row => row.productId === id)
+        .sort((left, right) => left.id - right.id)
         .map(row => Number(row.quantity))
     ).toEqual([20, -10]);
     expect(
