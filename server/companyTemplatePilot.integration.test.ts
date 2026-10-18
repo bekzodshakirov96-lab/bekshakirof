@@ -127,12 +127,12 @@ describe.skipIf(!url)(
           password = randomBytes(20).toString("hex");
         await root.query(`CREATE DATABASE \`${schema}\` CHARACTER SET utf8mb4`);
         await root.query(
-          `CREATE USER '${account}'@'127.0.0.1' IDENTIFIED BY ?`,
+          `CREATE USER '${account}'@'%' IDENTIFIED BY ?`,
           [password]
         );
         allocated.push({ schema, account });
         await root.query(
-          `GRANT ALL ON \`${schema}\`.* TO '${account}'@'127.0.0.1'`
+          `GRANT ALL ON \`${schema}\`.* TO '${account}'@'%'`
         );
         const target = new URL(url!);
         target.username = account;
@@ -232,7 +232,7 @@ describe.skipIf(!url)(
         )
           throw Error("Unsafe pilot cleanup target");
         await root.query(`DROP DATABASE \`${allocation.schema}\``);
-        await root.query(`DROP USER '${allocation.account}'@'127.0.0.1'`);
+        await root.query(`DROP USER '${allocation.account}'@'%'`);
       }
       await root?.end();
     });

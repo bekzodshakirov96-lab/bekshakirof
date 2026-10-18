@@ -9,6 +9,7 @@ const schemaHelpers = new Set([
   "cashJournalDebtSchema.ts",
   "cashMatrixLayoutSchema.ts",
   "cashTransferLinkSchema.ts",
+  "matrixInventorySchema.ts",
 ]);
 function files(folder: string): string[] {
   return readdirSync(folder, { withFileTypes: true }).flatMap(entry =>

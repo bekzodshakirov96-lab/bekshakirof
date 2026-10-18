@@ -81,10 +81,10 @@ describe.skipIf(!url)("platform control plane with real SQL/HTTP", () => {
     const user = `bp_${suffix}`;
     const pass = newToken();
     await root.query(`CREATE DATABASE \`${schema}\` CHARACTER SET utf8mb4`);
-    await root.query(`CREATE USER '${user}'@'127.0.0.1' IDENTIFIED BY ?`, [
+    await root.query(`CREATE USER '${user}'@'%' IDENTIFIED BY ?`, [
       pass,
     ]);
-    await root.query(`GRANT ALL ON \`${schema}\`.* TO '${user}'@'127.0.0.1'`);
+    await root.query(`GRANT ALL ON \`${schema}\`.* TO '${user}'@'%'`);
     parsed.username = user;
     parsed.password = pass;
     parsed.pathname = `/${schema}`;
@@ -117,11 +117,11 @@ describe.skipIf(!url)("platform control plane with real SQL/HTTP", () => {
       `CREATE DATABASE \`${targetSchema}\` CHARACTER SET utf8mb4`
     );
     await root.query(
-      `CREATE USER '${targetUser}'@'127.0.0.1' IDENTIFIED BY ?`,
+      `CREATE USER '${targetUser}'@'%' IDENTIFIED BY ?`,
       [pass]
     );
     await root.query(
-      `GRANT ALL ON \`${targetSchema}\`.* TO '${targetUser}'@'127.0.0.1'`
+      `GRANT ALL ON \`${targetSchema}\`.* TO '${targetUser}'@'%'`
     );
     parsed.username = targetUser;
     parsed.pathname = `/${targetSchema}`;

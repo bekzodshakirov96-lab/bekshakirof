@@ -137,10 +137,10 @@ describe.skipIf(!sqlUrl)(
       const pass = randomBytes(20).toString("hex");
       await root.query("CREATE USER ?@? IDENTIFIED BY ?", [
         user,
-        "127.0.0.1",
+        "%",
         pass,
       ]);
-      await root.query("GRANT ALL ON ??.* TO ?@?", [schema, user, "127.0.0.1"]);
+      await root.query("GRANT ALL ON ??.* TO ?@?", [schema, user, "%"]);
       u.username = user;
       u.password = pass;
       u.pathname = `/${schema}`;

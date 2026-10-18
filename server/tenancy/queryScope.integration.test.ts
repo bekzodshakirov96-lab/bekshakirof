@@ -55,10 +55,10 @@ describe.skipIf(!url)("tenant_id boundary in ONE actual database", () => {
     const user = `br_${suffix}`;
     const password = randomBytes(20).toString("hex");
     await root.query(`CREATE DATABASE \`${schema}\` CHARACTER SET utf8mb4`);
-    await root.query(`CREATE USER '${user}'@'127.0.0.1' IDENTIFIED BY ?`, [
+    await root.query(`CREATE USER '${user}'@'%' IDENTIFIED BY ?`, [
       password,
     ]);
-    await root.query(`GRANT ALL ON \`${schema}\`.* TO '${user}'@'127.0.0.1'`);
+    await root.query(`GRANT ALL ON \`${schema}\`.* TO '${user}'@'%'`);
     parsed.username = user;
     parsed.password = password;
     parsed.pathname = `/${schema}`;

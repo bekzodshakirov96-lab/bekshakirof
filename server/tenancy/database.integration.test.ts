@@ -62,8 +62,8 @@ describe.skipIf(!testUrl)("real isolated company databases", () => {
       const username = `bc_${suffix}_${index}`;
       const password = randomBytes(18).toString("hex");
       await root.query(`CREATE DATABASE \`${schema}\` CHARACTER SET utf8mb4`);
-      await root.query(`CREATE USER '${username}'@'127.0.0.1' IDENTIFIED BY ?`, [password]);
-      await root.query(`GRANT ALL ON \`${schema}\`.* TO '${username}'@'127.0.0.1'`);
+      await root.query(`CREATE USER '${username}'@'%' IDENTIFIED BY ?`, [password]);
+      await root.query(`GRANT ALL ON \`${schema}\`.* TO '${username}'@'%'`);
       const uri = new URL(testUrl!);
       uri.username = username; uri.password = password; uri.pathname = `/${schema}`;
       const db = await mysql.createConnection({ uri: uri.toString(), multipleStatements: true, dateStrings: true, timezone: "+05:00", supportBigNumbers: true, bigNumberStrings: true });

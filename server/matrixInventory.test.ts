@@ -8,6 +8,7 @@ import {
   agents,
   cashEntries,
   cashMatrixLayouts,
+  factoryOperations,
   matrixStockEvents,
   products,
   stockMovements,
@@ -16,6 +17,8 @@ import {
 } from "../drizzle/schema";
 import { createTenantDatabase } from "./tenancy/queryScope";
 import { stockRouter } from "./routers/stock";
+import { agentsRouter } from "./routers/agents";
+import { transactionsRouter } from "./routers/transactions";
 import { factoryRouter } from "./routers/factory";
 import { kassaRouter } from "./routers/kassa";
 import { cashRouter } from "./routers/cash";
@@ -140,10 +143,10 @@ describe.skipIf(!url)("matrix inventory on disposable SQL", () => {
     const user = `mi_${suffix}`;
     const password = randomBytes(20).toString("hex");
     await root.query(`CREATE DATABASE \`${schema}\` CHARACTER SET utf8mb4`);
-    await root.query(`CREATE USER '${user}'@'127.0.0.1' IDENTIFIED BY ?`, [
+    await root.query(`CREATE USER '${user}'@'%' IDENTIFIED BY ?`, [
       password,
     ]);
-    await root.query(`GRANT ALL ON \`${schema}\`.* TO '${user}'@'127.0.0.1'`);
+    await root.query(`GRANT ALL ON \`${schema}\`.* TO '${user}'@'%'`);
     parsed.username = user;
     parsed.password = password;
     parsed.pathname = `/${schema}`;
@@ -826,4 +829,136 @@ describe.skipIf(!url)("matrix inventory on disposable SQL", () => {
     expect((await companyTemplateStatus(fresh, freshOwner.id)).state).toBe("existing_data");
   });
 
+
+  it("preserves backfilled agent taking history on agent deletion", async () => {
+    const id = await product();
+    const [oldAgent] = await a
+      .insert(agents)
+      .values({ name: "Existing history" })
+      .$returningId();
+    const [taking] = await a
+      .insert(agentTakingEntries)
+      .values({
+        productId: id,
+        agentId: oldAgent.id,
+        entryDate: new Date(date),
+        productName: "Existing",
+        quantity: "40",
+        unitPrice: 1000,
+        amount: 40000,
+        createdBy: owner,
+      })
+      .$returningId();
+    await activateMatrixStock(
+      a,
+      { productId: id, date, openingQuantity: 100 },
+      owner
+    );
+    const caller = agentsRouter.createCaller({
+      user: { id: owner, role: "admin" },
+      req: { headers: {} },
+      res: {},
+    } as TrpcContext);
+    await expect(caller.delete({ id: oldAgent.id })).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+    });
+    expect(
+      await a
+        .select()
+        .from(agentTakingEntries)
+        .where(eq(agentTakingEntries.id, taking.id))
+    ).toHaveLength(1);
+    expect(await balance(id)).toMatchObject({ closing: 60 });
+    const [unused] = await a
+      .insert(agents)
+      .values({ name: "Unused agent" })
+      .$returningId();
+    await expect(caller.delete({ id: unused.id })).resolves.toMatchObject({
+      success: true,
+    });
+  });
+
+  it("blocks factory and sale cascade deletion before the physical count", async () => {
+    const id = await product();
+    const [sale] = await a
+      .insert(transactions)
+      .values({
+        sourceKey: randomUUID(),
+        productId: id,
+        transactionDate: new Date(yesterday),
+        productName: "Existing sale",
+        unit: "blok",
+        quantity: "5",
+        totalAmount: 5000,
+        agentId: agent,
+      })
+      .$returningId();
+    const [saleStock] = await a
+      .insert(stockMovements)
+      .values({
+        productId: id,
+        movementDate: new Date(yesterday),
+        movementType: "out",
+        quantity: "5",
+        transactionId: sale.id,
+        isAutomatic: true,
+      })
+      .$returningId();
+    const [factoryStock] = await a
+      .insert(stockMovements)
+      .values({
+        productId: id,
+        movementDate: new Date(yesterday),
+        movementType: "in",
+        quantity: "80",
+        isAutomatic: true,
+      })
+      .$returningId();
+    const [factory] = await a
+      .insert(factoryOperations)
+      .values({
+        productId: id,
+        operationDate: new Date(yesterday),
+        operationType: "filled_received",
+        quantity: 80,
+        stockMovementId: factoryStock.id,
+        createdBy: owner,
+      })
+      .$returningId();
+    await activateMatrixStock(
+      a,
+      { productId: id, date, openingQuantity: 100 },
+      owner
+    );
+    const context = {
+      user: { id: owner, role: "admin" },
+      req: { headers: {} },
+      res: {},
+    } as TrpcContext;
+    await expect(
+      factoryRouter.createCaller(context).delete({ id: factory.id })
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    await expect(
+      transactionsRouter.createCaller(context).delete({ id: sale.id })
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    expect(
+      await a.select().from(transactions).where(eq(transactions.id, sale.id))
+    ).toHaveLength(1);
+    expect(
+      await a
+        .select()
+        .from(factoryOperations)
+        .where(eq(factoryOperations.id, factory.id))
+    ).toHaveLength(1);
+    expect(
+      await a
+        .select()
+        .from(stockMovements)
+        .where(eq(stockMovements.id, saleStock.id))
+    ).toHaveLength(1);
+    expect(await balance(id, tomorrow)).toMatchObject({
+      opening: 100,
+      closing: 100,
+    });
+  });
 });
