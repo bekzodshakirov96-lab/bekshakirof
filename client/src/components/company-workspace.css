@@ -1,10 +1,10 @@
 /* Workspace presentation only. Cash and Fast KEG content keep their existing styles. */
 .company-workspace,
 [data-sidebar="sidebar"][data-mobile="true"] {
-  --sidebar: #f0f2f6;
+  --sidebar: var(--company-sidebar, #f0f2f6);
   --sidebar-foreground: var(--foreground);
-  --sidebar-primary: var(--card);
-  --sidebar-primary-foreground: var(--foreground);
+  --sidebar-primary: var(--company-sidebar-primary, var(--card));
+  --sidebar-primary-foreground: var(--company-sidebar-primary-foreground, var(--foreground));
   --sidebar-accent: var(--secondary);
   --sidebar-accent-foreground: var(--foreground);
   --sidebar-border: var(--border);
@@ -12,7 +12,7 @@
 }
 .dark .company-workspace,
 .dark [data-sidebar="sidebar"][data-mobile="true"] {
-  --sidebar: #141c29;
+  --sidebar: var(--company-sidebar, #141c29);
 }
 
 [data-company-style="compact"] [data-company-header] {
