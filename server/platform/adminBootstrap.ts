@@ -10,7 +10,8 @@ export async function inviteFirstAdmin(
   store: PlatformStore,
   email: string,
   origin: string,
-  output: string
+  output: string,
+  renewUnused = false
 ) {
   const normalized = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) || normalized.length > 254)
@@ -21,11 +22,63 @@ export async function inviteFirstAdmin(
   await store.transaction(async db => {
     // Singleton row serializes first-admin creation, including concurrent invocations.
     await rows(db, "SELECT id FROM platform_identity WHERE id=1 FOR UPDATE");
-    const existing = await rows(
+    const existing = await rows<{ id: string; email: string; role: string }>(
       db,
-      "SELECT id FROM platform_accounts WHERE role='super_admin' OR email=? LIMIT 1",
-      [normalized]
+      renewUnused
+        ? "SELECT id,email,role FROM platform_accounts FOR UPDATE"
+        : "SELECT id,email,role FROM platform_accounts WHERE role='super_admin' OR email=? LIMIT 1",
+      renewUnused ? [] : [normalized]
     );
+    if (renewUnused) {
+      const account = existing[0];
+      if (
+        existing.length !== 1 ||
+        account.role !== "super_admin" ||
+        account.email !== normalized
+      )
+        throw new Error(
+          "Renewal is limited to the sole, original bootstrap administrator."
+        );
+      const invited = await rows(
+        db,
+        "SELECT id FROM platform_events WHERE action='super_admin_invited' AND actorId=? LIMIT 1",
+        [account.id]
+      );
+      const used = await rows(
+        db,
+        "SELECT id FROM platform_events WHERE action='password_reset' LIMIT 1"
+      );
+      const sessions = await rows(
+        db,
+        "SELECT tokenHash FROM platform_tokens WHERE purpose='session' LIMIT 1"
+      );
+      const companies = await rows(
+        db,
+        "SELECT id FROM platform_companies LIMIT 1"
+      );
+      if (!invited.length || used.length || sessions.length || companies.length)
+        throw new Error(
+          "Administrator setup has been used; renewal never resets an active account."
+        );
+      await db.query(
+        "UPDATE platform_tokens SET consumedAt=? WHERE accountId=? AND purpose='reset' AND consumedAt IS NULL",
+        [Date.now(), account.id]
+      );
+      const token = await issueToken(db, account.id, "reset", 60 * 60 * 1000);
+      await writeFile(
+        output,
+        `PLATFORM_ADMIN_SETUP_URL=${JSON.stringify(`${origin}/platforma/parol#${token}`)}\n`,
+        { flag: "wx", mode: 0o600 }
+      );
+      await store.event(
+        db,
+        null,
+        { id: account.id, name: "Super admin" },
+        "super_admin_invitation_renewed",
+        "Unused bootstrap link replaced by operator; password unchanged"
+      );
+      return;
+    }
     if (existing.length)
       throw new Error(
         "An administrator or this email already exists; bootstrap never overwrites/promotes accounts."

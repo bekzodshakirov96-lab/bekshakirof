@@ -23,23 +23,24 @@ async function main() {
       return;
     }
     await store.assertReady();
-    if (args[0] === "admin-invite") {
+    if (args[0] === "admin-invite" || args[0] === "admin-reinvite") {
       if (
         !args.includes("--out") ||
         !flag("--out") ||
         flag("--out").startsWith("--")
       )
         throw new Error(
-          "admin-invite requires --out NEW_PRIVATE_FILE.env.local."
+          "Administrator invitation requires --out NEW_PRIVATE_FILE.env.local."
         );
       await inviteFirstAdmin(
         store,
         process.env.PLATFORM_ADMIN_EMAIL ?? "",
         config.origin,
-        path.resolve(flag("--out"))
+        path.resolve(flag("--out")),
+        args[0] === "admin-reinvite"
       );
       console.log(
-        "First administrator invited. Private setup link saved; expires in one hour. No password/token printed."
+        "Administrator invitation saved privately; expires in one hour. No password/token printed."
       );
       return;
     }
@@ -156,7 +157,7 @@ async function main() {
       return;
     }
     throw new Error(
-      "Usage: platform:ops init | admin | admin-invite --out FILE.env.local | provision --company UUID --origin ORIGIN --out FILE.env.local"
+      "Usage: platform:ops init | admin | admin-invite --out FILE.env.local | admin-reinvite --out FILE.env.local | provision --company UUID --origin ORIGIN --out FILE.env.local"
     );
   } finally {
     await store.close();

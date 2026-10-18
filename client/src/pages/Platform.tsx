@@ -19,6 +19,11 @@ import { type Company, type PlatformAccount } from "@shared/platform";
 import { AdminConsole } from "./platform/AdminConsole";
 import { CompanyCabinet } from "./platform/CompanyCabinet";
 import { api, Field, Loading, ErrorMessage } from "./platform/ui";
+import {
+  restorePlatformToken,
+  clearPlatformToken,
+  platformTabStorage,
+} from "@/lib/platformToken";
 
 type Me = { account: PlatformAccount | null; company: Company | null };
 export default function Platform() {
@@ -112,6 +117,7 @@ export default function Platform() {
       <main className="mx-auto max-w-[1440px] px-5 py-6 sm:px-7">
         {tokenPage ? (
           <TokenPage
+            key={location}
             kind={location.endsWith("tasdiqlash") ? "verify" : "reset"}
             onDone={() => {
               void me.refetch();
@@ -442,7 +448,9 @@ function TokenPage({
   onDone: () => void;
 }) {
   const [, navigate] = useLocation();
-  const [token] = useState(() => window.location.hash.slice(1));
+  const [token] = useState(() =>
+    restorePlatformToken(kind, window.location.hash, platformTabStorage())
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
@@ -489,6 +497,7 @@ function TokenPage({
                     ? { password: values.get("password") }
                     : {}),
                 });
+                clearPlatformToken(kind, platformTabStorage());
                 setDone(true);
                 onDone();
               } catch (err) {
@@ -515,7 +524,7 @@ function TokenPage({
               {kind === "verify" ? "Emailni tasdiqlash" : "Parolni saqlash"}
             </Button>
             {!token && (
-              <ErrorMessage message="Emaildagi to‘liq havolani oching. Havola shu oynada ishlatilgan bo‘lsa, kabinetga qayting." />
+              <ErrorMessage message="Tasdiqlash havolasi topilmadi. Emaildagi yoki operator bergan to‘liq havolani oching." />
             )}
           </form>
         )}

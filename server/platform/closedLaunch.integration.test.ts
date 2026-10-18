@@ -105,7 +105,7 @@ describe.skipIf(!testUrl)("closed SaaS launch against disposable SQL", () => {
         "utf8"
       );
       const link = JSON.parse(saved.trim().split("=").slice(1).join("="));
-      const token = new URL(link).hash.slice(1);
+      let token = new URL(link).hash.slice(1);
       const [ticket] = await rows<{ tokenHash: string; expiresAt: number }>(
         store.pool,
         "SELECT tokenHash,expiresAt FROM platform_tokens"
@@ -117,9 +117,57 @@ describe.skipIf(!testUrl)("closed SaaS launch against disposable SQL", () => {
         await rows(store.pool, "SELECT email,role FROM platform_accounts")
       ).toEqual([{ email: "admin@example.uz", role: "super_admin" }]);
       expect(saved).not.toContain("password");
-      expect((await post("/reset", { token, password: "seven77" })).status).toBe(400);
+      const original = token;
+      const renewed = path.join(dir, "renew.env.local");
+      await expect(
+        inviteFirstAdmin(
+          store,
+          "other@example.uz",
+          config.origin,
+          renewed,
+          true
+        )
+      ).rejects.toThrow("sole");
+      await expect(
+        inviteFirstAdmin(store, "admin@example.uz", config.origin, out, true)
+      ).rejects.toThrow();
+      expect(
+        await rows(
+          store.pool,
+          "SELECT consumedAt FROM platform_tokens WHERE tokenHash=?",
+          [tokenHash(original)]
+        )
+      ).toEqual([{ consumedAt: null }]);
+      await inviteFirstAdmin(
+        store,
+        "admin@example.uz",
+        config.origin,
+        renewed,
+        true
+      );
+      token = new URL(
+        JSON.parse(
+          (await readFile(renewed, "utf8")).trim().split("=").slice(1).join("=")
+        )
+      ).hash.slice(1);
+      expect(token).not.toBe(original);
+      expect(
+        (await post("/reset", { token: original, password: "eight888" })).status
+      ).toBe(400);
+      expect(
+        (await post("/reset", { token, password: "seven77" })).status
+      ).toBe(400);
       const password = "eight888";
       expect((await post("/reset", { token, password })).status).toBe(200);
+      await expect(
+        inviteFirstAdmin(
+          store,
+          "admin@example.uz",
+          config.origin,
+          path.join(dir, "used.env.local"),
+          true
+        )
+      ).rejects.toThrow("used");
       expect((await post("/reset", { token, password })).status).toBe(400);
       const login = await post("/login", {
         email: "admin@example.uz",
