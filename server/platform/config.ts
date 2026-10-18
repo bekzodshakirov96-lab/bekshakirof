@@ -1,11 +1,12 @@
 import { readBillingConfig, type BillingConfig } from "./billingConfig";
 export type PlatformConfig = {
+  registrationEnabled?: boolean;
   billing?: BillingConfig;
   databaseUrl: string;
   origin: string;
   production: boolean;
   mail: {
-    mode: "resend" | "local";
+    mode: "resend" | "local" | "disabled";
     apiKey: string;
     from: string;
     file: string;
@@ -60,15 +61,21 @@ export function readPlatformConfig(
   }
   const production = env.NODE_ENV === "production";
   const mode = env.PLATFORM_MAIL_MODE ?? "resend";
-  if (mode !== "resend" && mode !== "local")
+  if (mode !== "resend" && mode !== "local" && mode !== "disabled")
     throw new Error("Unknown mail mode.");
   if (production && mode === "local")
     throw new Error("Local email delivery is forbidden in production.");
+  const registration = env.PLATFORM_REGISTRATION_ENABLED ?? "true";
+  if (registration !== "true" && registration !== "false")
+    throw new Error("PLATFORM_REGISTRATION_ENABLED must be true or false.");
+  if (mode === "disabled" && registration !== "false")
+    throw new Error("Disable registration explicitly before disabling email.");
   if (mode === "resend" && (!env.RESEND_API_KEY || !env.PLATFORM_MAIL_FROM))
     throw new Error(
       "Configure verification email delivery before opening registration."
     );
   return {
+    registrationEnabled: registration === "true",
     billing: readBillingConfig(env, production),
     databaseUrl,
     production,

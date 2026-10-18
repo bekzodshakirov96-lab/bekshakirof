@@ -9,6 +9,8 @@ export type SendMail = (
 ) => Promise<void>;
 export function mailSender(config: PlatformConfig): SendMail {
   return async (email, kind, token) => {
+    if (config.mail.mode === "disabled")
+      throw new Error("Email delivery is disabled.");
     const link = `${config.origin}/platforma/${kind === "verify" ? "tasdiqlash" : "parol"}#${token}`;
     const subject =
       kind === "verify"

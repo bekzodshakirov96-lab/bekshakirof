@@ -69,6 +69,16 @@ Do not run this command for the existing business. A non-empty database is refus
 
 ## Local review
 
+### Separate hosted platform, closed registration
+
+The platform is deployed independently of the current firm's service. Use a new Railway project, a private MySQL service with its own `/var/lib/mysql` volume and a web service. Do not change the existing company's database, environment, uploads or deployment. `node scripts/build-platform-release.mjs` prepares an allowlisted upload under ignored `temp/platform-launch/artifact`; only the platform server/operator, client assets and dependency manifests are included. It contains no credentials or business server entrypoint. Upload that folder as the service root, never the whole checkout.
+
+Without verified email delivery, explicitly set `PLATFORM_MAIL_MODE=disabled`, `PLATFORM_REGISTRATION_ENABLED=false`, `PLATFORM_BILLING_MODE=off`, an exact HTTPS `PLATFORM_ORIGIN` and a dedicated `PLATFORM_DATABASE_URL`. Closed registration rejects register/resend/forgot requests before account/company/token writes. Login and existing one-use verification/reset links remain usable. Production local-file email is still forbidden; the UI reads public capabilities and explains unavailable actions. Do not enable registration until actual email delivery has passed acceptance checks.
+
+For the first deployment only, `PLATFORM_BOOTSTRAP_ONLY=true` starts a 503 holding process with no database access or public APIs. Through private Railway SSH, explicitly run `node dist/platform-ops.js init` against the empty, new platform schema. Then limit the runtime MySQL account to SELECT/INSERT/UPDATE/DELETE on that schema. Never grant it access to company databases. Remove the hold flag and redeploy; normal startup still refuses an unprepared schema.
+
+`PLATFORM_ADMIN_EMAIL=... node dist/platform-ops.js admin-invite --out /tmp/first-admin.env.local` invites only the first administrator. It refuses existing accounts/admins, serializes concurrent runs and writes an exclusive private file. There is no known initial password: the generated reset link expires in one hour and the human chooses a password through the existing one-use form. Transfer the file privately and remove the remote copy; never print its content in logs or commit it. This is an explicit trusted operator bootstrap, not a public verification bypass. The platform database and its backups are separate from the current business. New company provisioning remains an explicit operator procedure; this release does not automatically allocate company infrastructure or enable payments.
+
 Use a disposable local SQL server and separate schema. Configure `PLATFORM_MAIL_MODE=local`, `PLATFORM_ORIGIN=http://localhost:4180`, initialize schema/admin explicitly, then `npm run platform:dev` with port 4180. The existing local business app at 4177 remains independent. Local verification/reset messages are in ignored `data/platform-local-mail.jsonl`. These links grant access: never commit/share that file. No demonstration credentials exist in source code.
 
 ## Validation and release boundaries

@@ -84,6 +84,12 @@ export function createPlatformApi(
     res.setHeader("Referrer-Policy", "no-referrer");
     next();
   });
+  api.get("/capabilities", (_req, res) =>
+    res.json({
+      registrationEnabled: config.registrationEnabled !== false,
+      emailEnabled: config.mail.mode !== "disabled",
+    })
+  );
   // Provider callbacks authenticate their own signatures/credentials, not a
   // browser Origin or session. They must precede the browser CSRF middleware.
   api.use(
@@ -196,6 +202,32 @@ export function createPlatformApi(
     ["/register", "/login", "/forgot", "/reset", "/verify", "/resend"],
     authLimiter
   );
+  // Reject unavailable flows before issuing tokens or creating any accounts.
+  api.use((req, _res, next) => {
+    if (
+      req.method === "POST" &&
+      req.path === "/register" &&
+      config.registrationEnabled === false
+    )
+      return next(
+        new PlatformError(
+          503,
+          "Yangi firmalar uchun ro‘yxatdan o‘tish hali ochilmagan."
+        )
+      );
+    if (
+      req.method === "POST" &&
+      ["/forgot", "/resend"].includes(req.path) &&
+      config.mail.mode === "disabled"
+    )
+      return next(
+        new PlatformError(
+          503,
+          "Email xizmati hali ulanmagan. Platforma operatoriga murojaat qiling."
+        )
+      );
+    next();
+  });
   api.get(
     "/me",
     endpoint(async (req, res) => {

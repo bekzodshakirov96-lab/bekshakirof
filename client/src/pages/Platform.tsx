@@ -164,6 +164,18 @@ function AuthForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const capabilities = useQuery({
+    queryKey: ["platform", "capabilities"],
+    queryFn: () =>
+      api<{ registrationEnabled: boolean; emailEnabled: boolean }>(
+        "/capabilities"
+      ),
+    retry: false,
+    staleTime: 30_000,
+  });
+  const unavailable = register
+    ? capabilities.data?.registrationEnabled === false
+    : forgot && capabilities.data?.emailEnabled === false;
   useEffect(() => {
     setError("");
     setSent(false);
@@ -256,129 +268,166 @@ function AuthForm({
           </p>
         </CardHeader>
         <CardContent>
-          <form onSubmit={submit} className="space-y-4">
-            {error && <ErrorMessage message={error} />}
-            {sent ? (
+          {(register || forgot) && capabilities.isPending ? (
+            <Loading />
+          ) : (register || forgot) && capabilities.error ? (
+            <div className="space-y-4">
+              <ErrorMessage message="Platforma holatini tekshirib bo‘lmadi." />
+              <Button variant="outline" onClick={() => capabilities.refetch()}>
+                Qayta urinish
+              </Button>
+            </div>
+          ) : unavailable ? (
+            <div className="space-y-4">
               <p
                 role="status"
-                className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-800"
+                className="rounded-xl border bg-muted/40 p-4 text-sm leading-relaxed"
               >
-                Tasdiqlangan hisob mavjud bo‘lsa, parolni tiklash xati
-                yuborildi. Emailingizni tekshiring.
+                {register
+                  ? "Yangi firmalar uchun ro‘yxatdan o‘tish hali ochilmagan. Platforma ishga tayyorlanmoqda."
+                  : "Email xizmati hali ulanmagan. Parolni tiklash uchun platforma operatoriga murojaat qiling."}
               </p>
-            ) : (
-              <>
-                {register && (
-                  <>
-                    <Field label="Ism va familiya">
-                      <Input
-                        name="name"
-                        required
-                        minLength={2}
-                        maxLength={120}
-                        autoComplete="name"
-                      />
-                    </Field>
-                    <Field label="Firma nomi">
-                      <Input
-                        name="companyName"
-                        required
-                        minLength={2}
-                        maxLength={160}
-                        autoComplete="organization"
-                      />
-                    </Field>
-                    <Field label="Firma kodi">
-                      <Input
-                        name="slug"
-                        required
-                        minLength={2}
-                        maxLength={63}
-                        pattern="[a-z][a-z0-9\-]{1,62}"
-                        placeholder="masalan: baraka-savdo"
-                        autoCapitalize="none"
-                        spellCheck={false}
-                      />
-                    </Field>
-                    <Field label="Telefon">
-                      <Input
-                        name="phone"
-                        type="tel"
-                        required
-                        minLength={7}
-                        maxLength={32}
-                        autoComplete="tel"
-                        placeholder="+998"
-                      />
-                    </Field>
-                  </>
-                )}
-                <Field label="Email">
-                  <Input
-                    name="email"
-                    type="email"
-                    required
-                    maxLength={254}
-                    autoComplete="email"
-                  />
-                </Field>
-                {!forgot && (
-                  <Field label={register ? "Parol (kamida 12 belgi)" : "Parol"}>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  navigate(admin ? "/super-admin" : "/platforma/kirish")
+                }
+              >
+                Kirishga qaytish
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={submit} className="space-y-4">
+              {error && <ErrorMessage message={error} />}
+              {sent ? (
+                <p
+                  role="status"
+                  className="rounded-lg bg-emerald-50 p-4 text-sm text-emerald-800"
+                >
+                  Tasdiqlangan hisob mavjud bo‘lsa, parolni tiklash xati
+                  yuborildi. Emailingizni tekshiring.
+                </p>
+              ) : (
+                <>
+                  {register && (
+                    <>
+                      <Field label="Ism va familiya">
+                        <Input
+                          name="name"
+                          required
+                          minLength={2}
+                          maxLength={120}
+                          autoComplete="name"
+                        />
+                      </Field>
+                      <Field label="Firma nomi">
+                        <Input
+                          name="companyName"
+                          required
+                          minLength={2}
+                          maxLength={160}
+                          autoComplete="organization"
+                        />
+                      </Field>
+                      <Field label="Firma kodi">
+                        <Input
+                          name="slug"
+                          required
+                          minLength={2}
+                          maxLength={63}
+                          pattern="[a-z][a-z0-9\-]{1,62}"
+                          placeholder="masalan: baraka-savdo"
+                          autoCapitalize="none"
+                          spellCheck={false}
+                        />
+                      </Field>
+                      <Field label="Telefon">
+                        <Input
+                          name="phone"
+                          type="tel"
+                          required
+                          minLength={7}
+                          maxLength={32}
+                          autoComplete="tel"
+                          placeholder="+998"
+                        />
+                      </Field>
+                    </>
+                  )}
+                  <Field label="Email">
                     <Input
-                      name="password"
-                      type="password"
+                      name="email"
+                      type="email"
                       required
-                      minLength={register ? 12 : 1}
-                      maxLength={72}
-                      autoComplete={
-                        register ? "new-password" : "current-password"
-                      }
+                      maxLength={254}
+                      autoComplete="email"
                     />
                   </Field>
-                )}
-                <Button className="w-full" disabled={busy}>
-                  {busy ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <ArrowRight className="size-4" />
+                  {!forgot && (
+                    <Field
+                      label={register ? "Parol (kamida 12 belgi)" : "Parol"}
+                    >
+                      <Input
+                        name="password"
+                        type="password"
+                        required
+                        minLength={register ? 12 : 1}
+                        maxLength={72}
+                        autoComplete={
+                          register ? "new-password" : "current-password"
+                        }
+                      />
+                    </Field>
                   )}
-                  {forgot
-                    ? "Tiklash xatini yuborish"
-                    : register
-                      ? "Hisob yaratish"
-                      : "Kirish"}
-                </Button>
-              </>
-            )}
-            <div className="flex flex-wrap justify-between gap-2 pt-2 text-sm">
-              {!admin && (
-                <button
-                  type="button"
-                  className="text-primary underline-offset-4 hover:underline"
-                  onClick={() =>
-                    navigate(
-                      register || forgot
-                        ? "/platforma/kirish"
-                        : "/platforma/royxat"
-                    )
-                  }
-                >
-                  {register || forgot
-                    ? "Kirishga qaytish"
-                    : "Yangi firma ochish"}
-                </button>
+                  <Button className="w-full" disabled={busy}>
+                    {busy ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <ArrowRight className="size-4" />
+                    )}
+                    {forgot
+                      ? "Tiklash xatini yuborish"
+                      : register
+                        ? "Hisob yaratish"
+                        : "Kirish"}
+                  </Button>
+                </>
               )}
-              {!register && !forgot && (
-                <button
-                  type="button"
-                  className="text-muted-foreground underline-offset-4 hover:underline"
-                  onClick={() => navigate("/platforma/parol-tiklash")}
-                >
-                  Parolni unutdingizmi?
-                </button>
-              )}
-            </div>
-          </form>
+              <div className="flex flex-wrap justify-between gap-2 pt-2 text-sm">
+                {!admin &&
+                  (register ||
+                    forgot ||
+                    capabilities.data?.registrationEnabled === true) && (
+                    <button
+                      type="button"
+                      className="text-primary underline-offset-4 hover:underline"
+                      onClick={() =>
+                        navigate(
+                          register || forgot
+                            ? "/platforma/kirish"
+                            : "/platforma/royxat"
+                        )
+                      }
+                    >
+                      {register || forgot
+                        ? "Kirishga qaytish"
+                        : "Yangi firma ochish"}
+                    </button>
+                  )}
+                {!register &&
+                  !forgot &&
+                  capabilities.data?.emailEnabled === true && (
+                    <button
+                      type="button"
+                      className="text-muted-foreground underline-offset-4 hover:underline"
+                      onClick={() => navigate("/platforma/parol-tiklash")}
+                    >
+                      Parolni unutdingizmi?
+                    </button>
+                  )}
+              </div>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -9,6 +9,7 @@ import { PlatformStore, rows } from "../server/platform/store";
 import { activateCompany, prepareCompany } from "../server/platform/provision";
 import { newToken } from "../server/platform/security";
 import { billingSchema } from "../server/platform/billingSchema";
+import { inviteFirstAdmin } from "../server/platform/adminBootstrap";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args[args.indexOf(name) + 1];
@@ -22,6 +23,26 @@ async function main() {
       return;
     }
     await store.assertReady();
+    if (args[0] === "admin-invite") {
+      if (
+        !args.includes("--out") ||
+        !flag("--out") ||
+        flag("--out").startsWith("--")
+      )
+        throw new Error(
+          "admin-invite requires --out NEW_PRIVATE_FILE.env.local."
+        );
+      await inviteFirstAdmin(
+        store,
+        process.env.PLATFORM_ADMIN_EMAIL ?? "",
+        config.origin,
+        path.resolve(flag("--out"))
+      );
+      console.log(
+        "First administrator invited. Private setup link saved; expires in one hour. No password/token printed."
+      );
+      return;
+    }
     if (args[0] === "billing-init") {
       for (const ddl of billingSchema) await store.pool.query(ddl);
       console.log(
@@ -135,7 +156,7 @@ async function main() {
       return;
     }
     throw new Error(
-      "Usage: platform:ops init | admin | provision --company UUID --origin ORIGIN --out FILE.env.local"
+      "Usage: platform:ops init | admin | admin-invite --out FILE.env.local | provision --company UUID --origin ORIGIN --out FILE.env.local"
     );
   } finally {
     await store.close();
