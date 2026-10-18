@@ -34,25 +34,49 @@ export function contrastText(color: string) {
  * their existing semantics. No arbitrary CSS text can enter these properties. */
 export function companyBrandVariables(
   color: string | null,
-  dark: boolean
+  dark: boolean,
+  backgrounds: { light?: string | null; dark?: string | null } = {}
 ): Record<string, string> {
-  if (!color || !/^#[0-9a-f]{6}$/i.test(color)) return {};
-  const fg = dark ? "#F1F5F9" : "#172033";
-  const bg = dark ? mix(color, "#080D18", 0.95) : mix(color, "#FFFFFF", 0.97);
-  const card = dark ? mix(color, "#111827", 0.95) : "#FFFFFF";
-  const secondary = dark
-    ? mix(color, "#182235", 0.88)
-    : mix(color, "#FFFFFF", 0.91);
-  const border = dark
-    ? mix(color, "#334155", 0.8)
-    : mix(color, "#CCD5E0", 0.88);
+  const valid = (value: string | null | undefined): value is string =>
+    !!value && /^#[0-9a-f]{6}$/i.test(value);
+  const primary = valid(color) ? color : null;
+  const selected = dark ? backgrounds.dark : backgrounds.light;
+  const customBackground = valid(selected) ? selected : null;
+  if (!primary && !customBackground) return {};
+  // The chosen background is exact. Adapt nearby surfaces/text when the owner
+  // picks e.g. black in light mode or white in dark mode, preserving legibility.
+  const surfaceDark = customBackground
+    ? contrastText(customBackground) === "#FFFFFF"
+    : dark;
+  const tint = primary ?? "#285BD4";
+  const bg =
+    customBackground ??
+    (dark ? mix(tint, "#080D18", 0.95) : mix(tint, "#FFFFFF", 0.97));
+  const standardFg = surfaceDark ? "#F1F5F9" : "#172033";
+  const fg =
+    colorContrast(bg, standardFg) >= 4.5 ? standardFg : contrastText(bg);
+  const card = surfaceDark ? mix(tint, "#111827", 0.95) : "#FFFFFF";
+  const secondary = surfaceDark
+    ? mix(tint, "#182235", 0.88)
+    : mix(tint, "#FFFFFF", 0.91);
+  const border = surfaceDark
+    ? mix(tint, "#334155", 0.8)
+    : mix(tint, "#CCD5E0", 0.88);
+  const standardMuted = surfaceDark ? "#ADBBCF" : "#536176";
+  const muted = colorContrast(bg, standardMuted) >= 4.5 ? standardMuted : fg;
   const ring =
-    colorContrast(color, bg) >= 3
-      ? color
-      : mix(color, dark ? "#FFFFFF" : "#000000", 0.5);
+    colorContrast(tint, bg) >= 3
+      ? tint
+      : mix(tint, surfaceDark ? "#FFFFFF" : "#000000", 0.5);
   return {
-    "--primary": color,
-    "--primary-foreground": contrastText(color),
+    ...(primary
+      ? {
+          "--primary": primary,
+          "--primary-foreground": contrastText(primary),
+          "--company-sidebar-primary": primary,
+          "--company-sidebar-primary-foreground": contrastText(primary),
+        }
+      : {}),
     "--ring": ring,
     "--background": bg,
     "--foreground": fg,
@@ -63,15 +87,13 @@ export function companyBrandVariables(
     "--secondary": secondary,
     "--secondary-foreground": fg,
     "--muted": secondary,
-    "--muted-foreground": dark ? "#ADBBCF" : "#536176",
+    "--muted-foreground": muted,
     "--accent": secondary,
     "--accent-foreground": fg,
     "--border": border,
     "--input": border,
-    "--company-sidebar": dark
-      ? mix(color, "#060B14", 0.94)
-      : mix(color, "#FFFFFF", 0.93),
-    "--company-sidebar-primary": color,
-    "--company-sidebar-primary-foreground": contrastText(color),
+    "--company-sidebar": surfaceDark
+      ? mix(tint, "#060B14", 0.94)
+      : mix(tint, "#FFFFFF", 0.93),
   };
 }

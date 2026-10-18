@@ -83,6 +83,8 @@ export function CompanyBrandingSettings() {
     name: draft.name,
     tagline: draft.tagline,
     color: draft.color,
+    backgroundLight: draft.backgroundLight,
+    backgroundDark: draft.backgroundDark,
   });
   const previewLogo =
     logo.action === "replace"
@@ -264,8 +266,79 @@ export function CompanyBrandingSettings() {
               ))}
             </div>
             <p className="text-xs leading-5 text-muted-foreground">
-              Rang menyu, fon va tugmalarga moslanadi. Kirim, chiqim va xato
+              Asosiy rang menyu va tugmalarga qo‘llanadi. Kirim, chiqim va xato
               ranglari o‘z ma’nosini saqlaydi.
+            </p>
+          </div>
+          <div className="space-y-4 border-t pt-5">
+            <div>
+              <h4 className="text-sm font-medium">Sayt foni</h4>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Fonni asosiy rangdan alohida tanlang. Har bir rejimda tanlangan
+                rang aynan qo‘llanadi; matn va kartalar o‘qishga moslanadi.
+              </p>
+            </div>
+            {(
+              [
+                ["backgroundLight", "Yorug‘ rejim foni", "#F4F6FA", false],
+                ["backgroundDark", "Qorong‘i rejim foni", "#101722", true],
+              ] as const
+            ).map(([field, label, fallback, previewDark]) => (
+              <div key={field} className="space-y-2">
+                <label
+                  htmlFor={`company-${field}`}
+                  className="text-sm font-medium"
+                >
+                  {label}
+                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    id={`company-${field}`}
+                    type="color"
+                    aria-label={`${label}ni tanlash`}
+                    value={
+                      /^#[0-9a-f]{6}$/i.test(draft[field] ?? "")
+                        ? draft[field]!
+                        : (companyBrandVariables(draft.color, previewDark)[
+                            "--background"
+                          ] ?? fallback)
+                    }
+                    className="h-10 w-14 cursor-pointer rounded-md border p-1"
+                    onChange={e => {
+                      setDraft({ ...draft, [field]: e.target.value });
+                      setDarkPreview(previewDark);
+                    }}
+                  />
+                  <Input
+                    aria-label={`${label} kodi`}
+                    value={draft[field] ?? ""}
+                    placeholder="Avtomatik fon"
+                    maxLength={7}
+                    className="w-40 font-mono"
+                    onChange={e => {
+                      setDraft({ ...draft, [field]: e.target.value || null });
+                      setDarkPreview(previewDark);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`${label}: avtomatik fonga qaytish`}
+                    onClick={() => {
+                      setDraft({ ...draft, [field]: null });
+                      setDarkPreview(previewDark);
+                    }}
+                  >
+                    <RotateCcw className="mr-1 size-4" />
+                    Avtomatik fon
+                  </Button>
+                </div>
+              </div>
+            ))}
+            <p className="text-xs leading-5 text-muted-foreground">
+              Avtomatik holatda avvalgi fon saqlanadi. O‘zgarishlar “Ko‘rinishni
+              saqlash” bosilgandan keyin firmangizga qo‘llanadi.
             </p>
           </div>
           {!parsed.success && (
@@ -291,7 +364,7 @@ export function CompanyBrandingSettings() {
           </Button>
         </fieldset>
       </form>
-      <div className="min-w-0 space-y-3">
+      <div className="min-w-0 space-y-3 lg:sticky lg:top-20 lg:self-start">
         <div className="flex items-center justify-between">
           <p className="flex items-center gap-2 text-sm font-medium">
             <Palette className="size-4" />
@@ -308,10 +381,10 @@ export function CompanyBrandingSettings() {
         </div>
         <div
           style={
-            companyBrandVariables(
-              draft.color ?? "#285BD4",
-              darkPreview
-            ) as CSSProperties
+            companyBrandVariables(draft.color ?? "#285BD4", darkPreview, {
+              light: draft.backgroundLight,
+              dark: draft.backgroundDark,
+            }) as CSSProperties
           }
           className="overflow-hidden rounded-xl border bg-background text-foreground shadow-sm"
         >

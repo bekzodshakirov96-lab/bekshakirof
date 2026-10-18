@@ -358,5 +358,103 @@ describe.skipIf(!url)(
       expect(removed.branding.logoUrl).toBeNull();
       expect(await readdir(path.join(dir, "a/branding"))).toEqual(files);
     });
+    it("preserves old snapshots and old-client writes while isolating exact background colors and resets", async () => {
+      const db = createTenantDatabase(pool, "brand-backgrounds");
+      const [owner] = await db
+        .insert(users)
+        .values({
+          name: "Background owner",
+          email: "background@example.uz",
+          passwordHash: "fixture",
+          role: "admin",
+        })
+        .$returningId();
+      const old = { ...fields, logoUrl: null };
+      await db.insert(appSettings).values([
+        { key: "company-brand.head", value: "1", updatedBy: owner.id },
+        { key: "company-brand.1.count", value: "1", updatedBy: owner.id },
+        {
+          key: "company-brand.1.0",
+          value: JSON.stringify(old),
+          updatedBy: owner.id,
+        },
+      ]);
+      const beforeRead = await snapshotBusinessData(connection);
+      const read = await readCompanyBranding(db);
+      expect(read.branding).toEqual({
+        ...old,
+        backgroundLight: null,
+        backgroundDark: null,
+      });
+      expect((await snapshotBusinessData(connection)).fingerprint).toBe(
+        beforeRead.fingerprint
+      );
+      const other = await readCompanyBranding(b);
+      const financialBefore = nonSettings(beforeRead);
+      const saved = await saveCompanyBranding(
+        db,
+        {
+          expectedRevision: read.revision,
+          branding: {
+            ...fields,
+            backgroundLight: "#fff4e6",
+            backgroundDark: "#1a1725",
+          },
+          logo: { action: "keep" },
+        },
+        owner.id,
+        storeA
+      );
+      expect(saved.branding.backgroundLight).toBe("#FFF4E6");
+      expect(saved.branding.backgroundDark).toBe("#1A1725");
+      expect(await readCompanyBranding(db)).toEqual(saved);
+      // Old clients send only the original fields, not resets for new settings.
+      const legacySave = await saveCompanyBranding(
+        db,
+        {
+          expectedRevision: saved.revision,
+          branding: { ...fields, name: "Renamed by old client" },
+          logo: { action: "keep" },
+        },
+        owner.id,
+        storeA
+      );
+      expect(legacySave.branding.backgroundLight).toBe("#FFF4E6");
+      expect(legacySave.branding.backgroundDark).toBe("#1A1725");
+      const undefinedSave = await saveCompanyBranding(
+        db,
+        {
+          expectedRevision: legacySave.revision,
+          branding: {
+            ...fields,
+            backgroundLight: undefined,
+            backgroundDark: undefined,
+          },
+          logo: { action: "keep" },
+        },
+        owner.id,
+        storeA
+      );
+      expect(undefinedSave.branding.backgroundLight).toBe("#FFF4E6");
+      expect(undefinedSave.branding.backgroundDark).toBe("#1A1725");
+      const reset = await saveCompanyBranding(
+        db,
+        {
+          expectedRevision: undefinedSave.revision,
+          branding: { ...fields, backgroundLight: null },
+          logo: { action: "keep" },
+        },
+        owner.id,
+        storeA
+      );
+      expect(reset.branding.backgroundLight).toBeNull();
+      expect(reset.branding.backgroundDark).toBe("#1A1725");
+      expect(await readCompanyBranding(b)).toEqual(other);
+      expect(nonSettings(await snapshotBusinessData(connection))).toEqual(
+        financialBefore
+      );
+      const history = await db.select().from(auditLog);
+      expect(history[0].afterData).toContain("#FFF4E6");
+    });
   }
 );

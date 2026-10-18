@@ -9,19 +9,25 @@ const text = (max: number) =>
       value => !/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(value),
       "Matnda boshqaruv belgisi bor."
     );
+const brandColor = z
+  .string()
+  .regex(/^#[0-9a-f]{6}$/i, "Rang #RRGGBB ko‘rinishida bo‘lsin.")
+  .transform(value => value.toUpperCase());
 export const companyBrandFieldsSchema = z
   .object({
     name: text(80).refine(value => value.length > 0, "Firma nomini kiriting."),
     tagline: text(80),
-    color: z
-      .string()
-      .regex(/^#[0-9a-f]{6}$/i, "Rang #RRGGBB ko‘rinishida bo‘lsin.")
-      .transform(value => value.toUpperCase())
-      .nullable(),
+    color: brandColor.nullable(),
+    // Optional on writes: older clients must not erase saved backgrounds.
+    backgroundLight: brandColor.nullable().optional(),
+    backgroundDark: brandColor.nullable().optional(),
   })
   .strict();
 export const companyBrandingSchema = companyBrandFieldsSchema
   .extend({
+    // Older stored revisions have neither field; reading them writes nothing.
+    backgroundLight: brandColor.nullable().default(null),
+    backgroundDark: brandColor.nullable().default(null),
     logoUrl: z
       .string()
       .regex(/^\/uploads\/branding\/[a-f0-9-]+_[a-f0-9]{8}\.png$/)
@@ -67,6 +73,8 @@ export function defaultCompanyBranding(): CompanyBranding {
     name: "BiznesControl",
     tagline: "Firma kabineti",
     color: null,
+    backgroundLight: null,
+    backgroundDark: null,
     logoUrl: null,
   };
 }
