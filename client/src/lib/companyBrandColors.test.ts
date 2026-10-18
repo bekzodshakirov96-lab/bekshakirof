@@ -1,6 +1,75 @@
 import { describe, it, expect } from "vitest";
 import { companyBrandVariables, colorContrast } from "./companyBrandColors";
 describe("readable company color palettes", () => {
+  it("changes card/table surfaces independently without changing the page, accent or financial tokens", () => {
+    const choices = {
+      cardLight: "#F0FFF4",
+      cardDark: "#172A26",
+      tableLight: "#FFF0F8",
+      tableDark: "#291D35",
+    };
+    for (const dark of [false, true]) {
+      const original = companyBrandVariables("#0F766E", dark);
+      const custom = companyBrandVariables("#0F766E", dark, choices);
+      expect(custom).toMatchObject(original);
+      expect(custom["--company-card-background"]).toBe(
+        dark ? choices.cardDark : choices.cardLight
+      );
+      expect(custom["--company-table-background"]).toBe(
+        dark ? choices.tableDark : choices.tableLight
+      );
+      expect(
+        companyBrandVariables("#0F766E", dark, {
+          cardLight: null,
+          cardDark: null,
+          tableLight: null,
+          tableDark: null,
+        })
+      ).toEqual(original);
+      const surfaceOnly = companyBrandVariables(null, dark, choices);
+      expect(surfaceOnly).not.toHaveProperty("--primary");
+      expect(surfaceOnly).not.toHaveProperty("--background");
+      expect(
+        Object.keys(surfaceOnly).every(key =>
+          /^--company-(card|table)-/.test(key)
+        )
+      ).toBe(true);
+    }
+    expect(
+      companyBrandVariables(null, true, {
+        cardLight: "#FFFFFF",
+        tableLight: "#FFFFFF",
+      })
+    ).toEqual({});
+    expect(
+      companyBrandVariables(null, false, {
+        cardLight: "red",
+        tableLight: "url(bad)",
+      })
+    ).toEqual({});
+  });
+  it.each([
+    "#000000",
+    "#FFFFFF",
+    "#808080",
+    "#FF0000",
+    "#00FF00",
+    "#0000FF",
+    "#FFFF00",
+  ])("keeps custom card/table text readable on %s", color => {
+    const v = companyBrandVariables(null, false, {
+      cardLight: color,
+      tableLight: color,
+    });
+    for (const kind of ["card", "table"])
+      for (const surface of ["background", "muted", "hover"])
+        expect(
+          colorContrast(
+            v[`--company-${kind}-${surface}`],
+            v[`--company-${kind}-foreground`]
+          )
+        ).toBeGreaterThanOrEqual(4.5);
+  });
   it("keeps legacy colors untouched and rejects arbitrary CSS", () => {
     expect(companyBrandVariables(null, false)).toEqual({});
     expect(companyBrandVariables("url(https://bad.invalid)", false)).toEqual(

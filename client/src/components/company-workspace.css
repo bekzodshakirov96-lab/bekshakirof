@@ -1,10 +1,13 @@
-/* Workspace presentation only. Cash and Fast KEG content keep their existing styles. */
+/* Workspace presentation only; no business calculations depend on these tokens. */
 .company-workspace,
 [data-sidebar="sidebar"][data-mobile="true"] {
   --sidebar: var(--company-sidebar, #f0f2f6);
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--company-sidebar-primary, var(--card));
-  --sidebar-primary-foreground: var(--company-sidebar-primary-foreground, var(--foreground));
+  --sidebar-primary-foreground: var(
+    --company-sidebar-primary-foreground,
+    var(--foreground)
+  );
   --sidebar-accent: var(--secondary);
   --sidebar-accent-foreground: var(--foreground);
   --sidebar-border: var(--border);
@@ -13,6 +16,56 @@
 .dark .company-workspace,
 .dark [data-sidebar="sidebar"][data-mobile="true"] {
   --sidebar: var(--company-sidebar, #141c29);
+}
+
+/* Opt-in scopes: legacy firms keep their exact existing palette. The draft
+ * preview owns its flags and never inherits the saved firm's surface choices. */
+html[data-company-card-color="custom"]
+  .company-workspace
+  .bg-card:not(table *, .company-brand-preview *),
+.company-brand-preview[data-company-card-color="custom"] .bg-card:not(table *) {
+  --card: var(--company-card-background);
+  --card-foreground: var(--company-card-foreground);
+  --foreground: var(--company-card-foreground);
+  --muted: var(--company-card-muted);
+  --muted-foreground: var(--company-card-foreground);
+  --secondary: var(--company-card-muted);
+  --secondary-foreground: var(--company-card-foreground);
+  --accent: var(--company-card-hover);
+  --accent-foreground: var(--company-card-foreground);
+  --border: var(--company-card-border);
+  --input: var(--company-card-border);
+  color: var(--card-foreground);
+}
+
+html[data-company-table-color="custom"]
+  .company-workspace
+  table:not(.company-brand-preview table),
+.company-brand-preview[data-company-table-color="custom"] table {
+  --background: var(--company-table-background);
+  --card: var(--company-table-background);
+  --card-foreground: var(--company-table-foreground);
+  --foreground: var(--company-table-foreground);
+  --muted: var(--company-table-muted);
+  --muted-foreground: var(--company-table-foreground);
+  --secondary: var(--company-table-muted);
+  --secondary-foreground: var(--company-table-foreground);
+  --accent: var(--company-table-hover);
+  --accent-foreground: var(--company-table-foreground);
+  --border: var(--company-table-border);
+  --input: var(--company-table-border);
+  background-color: var(--company-table-background);
+  color: var(--company-table-foreground);
+}
+
+/* Paint the header container only: salary cells, debt status rows and other
+ * semantic backgrounds keep their own colors above it. */
+html[data-company-table-color="custom"]
+  .company-workspace
+  table:not(.company-brand-preview table)
+  thead,
+.company-brand-preview[data-company-table-color="custom"] table thead {
+  background-color: var(--company-table-muted);
 }
 
 [data-company-style="compact"] [data-company-header] {

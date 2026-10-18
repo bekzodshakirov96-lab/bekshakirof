@@ -22,6 +22,10 @@ describe("per-company visual identity input", () => {
       color: null,
       backgroundLight: null,
       backgroundDark: null,
+      cardLight: null,
+      cardDark: null,
+      tableLight: null,
+      tableDark: null,
       logoUrl: null,
     });
     expect(companyBrandingSaveSchema.parse(input).branding.color).toBe(
@@ -89,7 +93,14 @@ describe("per-company visual identity input", () => {
         branding: { ...input.branding, backgroundLight: null },
       }).branding.backgroundLight
     ).toBeNull();
-    for (const field of ["backgroundLight", "backgroundDark"])
+    for (const field of [
+      "backgroundLight",
+      "backgroundDark",
+      "cardLight",
+      "cardDark",
+      "tableLight",
+      "tableDark",
+    ])
       for (const value of [
         "red",
         "#fff",
@@ -102,5 +113,28 @@ describe("per-company visual identity input", () => {
             branding: { ...input.branding, [field]: value },
           }).success
         ).toBe(false);
+  });
+  it("defaults missing surface settings without converting omitted writes into resets", () => {
+    const read = companyBrandingSchema.parse({
+      ...input.branding,
+      logoUrl: null,
+    });
+    for (const field of [
+      "cardLight",
+      "cardDark",
+      "tableLight",
+      "tableDark",
+    ] as const) {
+      expect(read[field]).toBeNull();
+      expect(
+        Object.hasOwn(companyBrandingSaveSchema.parse(input).branding, field)
+      ).toBe(false);
+      expect(
+        companyBrandingSaveSchema.parse({
+          ...input,
+          branding: { ...input.branding, [field]: "#aabbcc" },
+        }).branding[field]
+      ).toBe("#AABBCC");
+    }
   });
 });
