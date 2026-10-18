@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { cp, mkdir, copyFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, copyFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSync } from "esbuild";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const out = path.join(root, "temp", "platform-launch", "artifact");
+const parent = path.join(root, "temp", "platform-launch");
 // Build first. The upload directory is an allowlist: never copy .env, uploads,
 // backups, local fixtures, business server entrypoint or source checkout.
 execFileSync(
@@ -21,7 +21,10 @@ buildSync({
   format: "esm",
   outfile: "dist/platform-ops.js",
 });
-await mkdir(path.join(out, "dist"), { recursive: true });
+await mkdir(parent, { recursive: true });
+// A fresh directory prevents unrelated local files from entering a later upload.
+const out = await mkdtemp(path.join(parent, "artifact-"));
+await mkdir(path.join(out, "dist"));
 for (const file of ["package.json", "package-lock.json"])
   await copyFile(path.join(root, file), path.join(out, file));
 for (const file of ["platform.js", "platform-ops.js"])
