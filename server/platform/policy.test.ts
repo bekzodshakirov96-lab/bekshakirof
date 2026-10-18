@@ -39,6 +39,29 @@ describe("separate platform configuration", () => {
     PLATFORM_MAIL_MODE: "local",
     PLATFORM_ORIGIN: "http://localhost:4180",
   };
+  it("allows a closed production launch without inventing email credentials", () => {
+    const closed = {
+      ...base,
+      NODE_ENV: "production",
+      PLATFORM_ORIGIN: "https://platform.example.uz",
+      PLATFORM_MAIL_MODE: "disabled",
+      PLATFORM_REGISTRATION_ENABLED: "false",
+    };
+    expect(readPlatformConfig(closed)).toMatchObject({
+      registrationEnabled: false,
+      mail: { mode: "disabled" },
+      billing: { mode: "off" },
+    });
+    expect(() =>
+      readPlatformConfig({ ...closed, PLATFORM_REGISTRATION_ENABLED: "true" })
+    ).toThrow("explicitly");
+    expect(() =>
+      readPlatformConfig({ ...closed, PLATFORM_REGISTRATION_ENABLED: "FALSE" })
+    ).toThrow("true or false");
+    expect(() =>
+      readPlatformConfig({ ...closed, PLATFORM_MAIL_MODE: "resend" })
+    ).toThrow("delivery");
+  });
   it("never accepts the current business database or local production mail", () => {
     expect(() =>
       readPlatformConfig({
