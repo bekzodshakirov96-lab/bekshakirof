@@ -21,6 +21,18 @@ export function useCompanyBrandTheme(
     const values = companyBrandVariables(branding.color, theme === "dark", {
       light: branding.backgroundLight,
       dark: branding.backgroundDark,
+      cardLight: branding.cardLight,
+      cardDark: branding.cardDark,
+      tableLight: branding.tableLight,
+      tableDark: branding.tableDark,
+    });
+    const attributes = ["card", "table"].map(kind => {
+      const name = `data-company-${kind}-color`;
+      const prior = root.getAttribute(name);
+      const value = values[`--company-${kind}-background`] ? "custom" : null;
+      if (value) root.setAttribute(name, value);
+      else root.removeAttribute(name);
+      return { name, prior, value };
     });
     const previous = Object.fromEntries(
       Object.keys(values).map(key => [
@@ -34,6 +46,11 @@ export function useCompanyBrandTheme(
     for (const [key, value] of Object.entries(values))
       root.style.setProperty(key, value);
     return () => {
+      for (const { name, prior, value } of attributes) {
+        if (root.getAttribute(name) !== value) continue;
+        if (prior === null) root.removeAttribute(name);
+        else root.setAttribute(name, prior);
+      }
       for (const [key, prior] of Object.entries(previous)) {
         if (root.style.getPropertyValue(key) !== values[key]) continue;
         if (prior.value)
@@ -45,6 +62,10 @@ export function useCompanyBrandTheme(
     branding.color,
     branding.backgroundLight,
     branding.backgroundDark,
+    branding.cardLight,
+    branding.cardDark,
+    branding.tableLight,
+    branding.tableDark,
     theme,
   ]);
   useLayoutEffect(() => {

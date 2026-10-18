@@ -85,6 +85,10 @@ export function CompanyBrandingSettings() {
     color: draft.color,
     backgroundLight: draft.backgroundLight,
     backgroundDark: draft.backgroundDark,
+    cardLight: draft.cardLight,
+    cardDark: draft.cardDark,
+    tableLight: draft.tableLight,
+    tableDark: draft.tableDark,
   });
   const previewLogo =
     logo.action === "replace"
@@ -92,6 +96,18 @@ export function CompanyBrandingSettings() {
       : logo.action === "remove"
         ? null
         : draft.logoUrl;
+  const previewColors = companyBrandVariables(
+    draft.color ?? "#285BD4",
+    darkPreview,
+    {
+      light: draft.backgroundLight,
+      dark: draft.backgroundDark,
+      cardLight: draft.cardLight,
+      cardDark: draft.cardDark,
+      tableLight: draft.tableLight,
+      tableDark: draft.tableDark,
+    }
+  );
   return (
     <div className="grid gap-7 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.85fr)]">
       <form
@@ -341,6 +357,85 @@ export function CompanyBrandingSettings() {
               saqlash” bosilgandan keyin firmangizga qo‘llanadi.
             </p>
           </div>
+          {(
+            [
+              ["Kartalar rangi", "cardLight", "cardDark"],
+              ["Jadvallar rangi", "tableLight", "tableDark"],
+            ] as const
+          ).map(([title, lightField, darkField]) => (
+            <div key={lightField} className="space-y-4 border-t pt-5">
+              <div>
+                <h4 className="text-sm font-medium">{title}</h4>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Sayt fonidan alohida tanlanadi. Matn o‘qishga moslanadi;
+                  kirim, chiqim va qarzdorlik ranglari saqlanadi.
+                </p>
+              </div>
+              {([lightField, darkField] as const).map((field, index) => {
+                const previewDark = index === 1;
+                const label = `${title}: ${previewDark ? "qorong‘i" : "yorug‘"} rejim`;
+                const automatic =
+                  companyBrandVariables(draft.color, previewDark, {
+                    light: draft.backgroundLight,
+                    dark: draft.backgroundDark,
+                  })["--card"] ?? (previewDark ? "#182230" : "#FFFFFF");
+                return (
+                  <div key={field} className="space-y-2">
+                    <label
+                      htmlFor={`company-${field}`}
+                      className="text-sm font-medium"
+                    >
+                      {label}
+                    </label>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <input
+                        id={`company-${field}`}
+                        type="color"
+                        aria-label={`${label} rangini tanlash`}
+                        value={
+                          /^#[0-9a-f]{6}$/i.test(draft[field] ?? "")
+                            ? draft[field]!
+                            : automatic
+                        }
+                        className="h-10 w-14 cursor-pointer rounded-md border p-1"
+                        onChange={e => {
+                          setDraft({ ...draft, [field]: e.target.value });
+                          setDarkPreview(previewDark);
+                        }}
+                      />
+                      <Input
+                        aria-label={`${label} kodi`}
+                        value={draft[field] ?? ""}
+                        placeholder="Avtomatik rang"
+                        maxLength={7}
+                        className="w-40 font-mono"
+                        onChange={e => {
+                          setDraft({
+                            ...draft,
+                            [field]: e.target.value || null,
+                          });
+                          setDarkPreview(previewDark);
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`${label}: avtomatik rangga qaytish`}
+                        onClick={() => {
+                          setDraft({ ...draft, [field]: null });
+                          setDarkPreview(previewDark);
+                        }}
+                      >
+                        <RotateCcw className="mr-1 size-4" />
+                        Avtomatik rang
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
           {!parsed.success && (
             <p role="alert" className="text-sm text-destructive">
               {parsed.error.issues[0]?.message}
@@ -380,13 +475,14 @@ export function CompanyBrandingSettings() {
           </Button>
         </div>
         <div
-          style={
-            companyBrandVariables(draft.color ?? "#285BD4", darkPreview, {
-              light: draft.backgroundLight,
-              dark: draft.backgroundDark,
-            }) as CSSProperties
+          style={previewColors as CSSProperties}
+          data-company-card-color={
+            previewColors["--company-card-background"] ? "custom" : undefined
           }
-          className="overflow-hidden rounded-xl border bg-background text-foreground shadow-sm"
+          data-company-table-color={
+            previewColors["--company-table-background"] ? "custom" : undefined
+          }
+          className="company-brand-preview overflow-hidden rounded-xl border bg-background text-foreground shadow-sm"
         >
           <div
             className="flex items-center gap-3 border-b p-4"
@@ -412,6 +508,25 @@ export function CompanyBrandingSettings() {
                 Firma kabinetining yangi ko‘rinishi
               </p>
               <div className="mt-4 h-2 w-3/4 rounded-full bg-primary" />
+            </div>
+            <div className="overflow-hidden rounded-lg border bg-card">
+              <table
+                className="w-full text-left text-xs"
+                aria-label="Jadval ko‘rinishi namunasi"
+              >
+                <thead className="bg-muted text-muted-foreground">
+                  <tr>
+                    <th className="p-3">Mahsulot</th>
+                    <th className="p-3 text-right">Miqdor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="p-3">Namuna mahsulot</td>
+                    <td className="p-3 text-right">12 blok</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
             <span className="inline-flex rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
               Namuna tugma
