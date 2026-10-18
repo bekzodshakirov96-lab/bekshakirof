@@ -1,4 +1,5 @@
-import { eq, getTableName, is, sql } from "drizzle-orm";
+import { eq, ne, getTableName, is, sql } from "drizzle-orm";
+import { isCompanyBrandingSetting } from "../shared/companyBranding";
 import { MySqlTable } from "drizzle-orm/mysql-core";
 import * as schema from "../drizzle/schema";
 import { TRPCError } from "@trpc/server";
@@ -63,6 +64,7 @@ async function eligibility(db: Reader, userId: number, locking = false) {
     settings.some(
       row =>
         row.key !== "bootstrapAdminClaimed" &&
+        !isCompanyBrandingSetting(row.key) &&
         !(row.key === COMPANY_PREFERENCES_HEAD && row.value === "0")
     )
   )
@@ -74,7 +76,13 @@ async function eligibility(db: Reader, userId: number, locking = false) {
       .select({ exists: sql<number>`1` })
       .from(table)
       .limit(1);
-    const rows = locking ? await query.for("update") : await query;
+    // Visual identity may be configured before choosing an activity template.
+    // All other audit/business activity still makes a company ineligible.
+    const filtered =
+      getTableName(table) === "audit_log"
+        ? query.where(ne(schema.auditLog.tableName, "company_branding"))
+        : query;
+    const rows = locking ? await filtered.for("update") : await filtered;
     if (rows.length) return "existing_data" as const;
   }
   return "eligible" as const;

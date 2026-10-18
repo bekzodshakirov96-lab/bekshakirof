@@ -8,6 +8,7 @@ import { router } from "../_core/trpc";
 
 const TABLE_LABELS: Record<string, string> = {
   company_preferences: "Firma sozlamalari",
+  company_branding: "Firma ko‘rinishi",
   transactions: "Savdo",
   cash_entries: "Kassa yozuvi",
   client_payments: "Qarz to‘lovi",

@@ -1,0 +1,64 @@
+import { describe, it, expect } from "vitest";
+import {
+  companyBrandingSaveSchema,
+  defaultCompanyBranding,
+  companyInitials,
+} from "./companyBranding";
+describe("per-company visual identity input", () => {
+  const input = {
+    expectedRevision: 0,
+    branding: {
+      name: "Baraka savdo",
+      tagline: "Savdo va xizmatlar",
+      color: "#0f766e",
+    },
+    logo: { action: "keep" },
+  };
+  it("preserves legacy defaults and validates a custom name/color without accepting identity or financial fields", () => {
+    expect(defaultCompanyBranding()).toEqual({
+      name: "BiznesControl",
+      tagline: "Firma kabineti",
+      color: null,
+      logoUrl: null,
+    });
+    expect(companyBrandingSaveSchema.parse(input).branding.color).toBe(
+      "#0F766E"
+    );
+    for (const extra of [
+      { tenantId: "other" },
+      { ownerId: 1 },
+      { cashBalance: 0 },
+    ])
+      expect(
+        companyBrandingSaveSchema.safeParse({ ...input, ...extra }).success
+      ).toBe(false);
+    expect(
+      companyBrandingSaveSchema.safeParse({
+        ...input,
+        branding: { ...input.branding, logoUrl: "/uploads/other.png" },
+      }).success
+    ).toBe(false);
+    for (const color of [
+      "red",
+      "#fff",
+      "url(https://evil.invalid/a)",
+      "#000000;display:none",
+    ])
+      expect(
+        companyBrandingSaveSchema.safeParse({
+          ...input,
+          branding: { ...input.branding, color },
+        }).success
+      ).toBe(false);
+    for (const name of ["", "x".repeat(81), "x\ny", "Firma\u202E"])
+      expect(
+        companyBrandingSaveSchema.safeParse({
+          ...input,
+          branding: { ...input.branding, name },
+        }).success
+      ).toBe(false);
+    expect(companyInitials("Baraka savdo")).toBe("BS");
+    expect(companyInitials("Барака")).toBe("БА");
+    expect(companyInitials("BiznesControl")).toBe("BC");
+  });
+});
