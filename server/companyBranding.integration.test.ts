@@ -389,6 +389,8 @@ describe.skipIf(!url)(
         cardDark: null,
         tableLight: null,
         tableDark: null,
+        sidebarLight: null,
+        sidebarDark: null,
       });
       expect((await snapshotBusinessData(connection)).fingerprint).toBe(
         beforeRead.fingerprint
@@ -537,6 +539,83 @@ describe.skipIf(!url)(
       expect(history).toHaveLength(4);
       expect(history[0].afterData).toContain("Yorug‘ rejim kartalari");
       expect(history[0].afterData).toContain(colors.cardLight);
+    });
+    it("persists sidebar colors for only one company and retains them on old-client writes", async () => {
+      const db = createTenantDatabase(pool, "brand-sidebar");
+      const [owner] = await db
+        .insert(users)
+        .values({
+          name: "Sidebar owner",
+          email: "sidebar@example.uz",
+          passwordHash: "fixture",
+          role: "admin",
+        })
+        .$returningId();
+      const before = nonSettings(await snapshotBusinessData(connection));
+      const other = await readCompanyBranding(b);
+      let saved = await saveCompanyBranding(
+        db,
+        {
+          expectedRevision: 0,
+          branding: {
+            ...fields,
+            sidebarLight: "#45345c",
+            sidebarDark: "#f7edda",
+            cardLight: "#E8F5EF",
+            tableLight: "#EDF2FF",
+            backgroundLight: "#FFF1E0",
+          },
+          logo: { action: "keep" },
+        },
+        owner.id,
+        storeA
+      );
+      expect(saved.branding.sidebarLight).toBe("#45345C");
+      expect(saved.branding.sidebarDark).toBe("#F7EDDA");
+      expect(await readCompanyBranding(db)).toEqual(saved);
+      for (const write of [
+        fields,
+        { ...fields, sidebarLight: undefined, sidebarDark: undefined },
+      ]) {
+        saved = await saveCompanyBranding(
+          db,
+          {
+            expectedRevision: saved.revision,
+            branding: write,
+            logo: { action: "keep" },
+          },
+          owner.id,
+          storeA
+        );
+        expect(saved.branding).toMatchObject({
+          sidebarLight: "#45345C",
+          sidebarDark: "#F7EDDA",
+        });
+      }
+      saved = await saveCompanyBranding(
+        db,
+        {
+          expectedRevision: saved.revision,
+          branding: { ...fields, sidebarLight: null },
+          logo: { action: "keep" },
+        },
+        owner.id,
+        storeA
+      );
+      expect(saved.branding).toMatchObject({
+        sidebarLight: null,
+        sidebarDark: "#F7EDDA",
+        cardLight: "#E8F5EF",
+        tableLight: "#EDF2FF",
+        backgroundLight: "#FFF1E0",
+      });
+      expect(await readCompanyBranding(b)).toEqual(other);
+      expect(nonSettings(await snapshotBusinessData(connection))).toEqual(
+        before
+      );
+      expect((await db.select().from(auditLog))[0].afterData).toContain(
+        "Yorug‘ rejim menyusi"
+      );
     });
   }
 );

@@ -25,6 +25,8 @@ export const companyBrandFieldsSchema = z
     cardDark: brandColor.nullable().optional(),
     tableLight: brandColor.nullable().optional(),
     tableDark: brandColor.nullable().optional(),
+    sidebarLight: brandColor.nullable().optional(),
+    sidebarDark: brandColor.nullable().optional(),
   })
   .strict();
 export const companyBrandingSchema = companyBrandFieldsSchema
@@ -36,6 +38,8 @@ export const companyBrandingSchema = companyBrandFieldsSchema
     cardDark: brandColor.nullable().default(null),
     tableLight: brandColor.nullable().default(null),
     tableDark: brandColor.nullable().default(null),
+    sidebarLight: brandColor.nullable().default(null),
+    sidebarDark: brandColor.nullable().default(null),
     logoUrl: z
       .string()
       .regex(/^\/uploads\/branding\/[a-f0-9-]+_[a-f0-9]{8}\.png$/)
@@ -87,6 +91,8 @@ export function defaultCompanyBranding(): CompanyBranding {
     cardDark: null,
     tableLight: null,
     tableDark: null,
+    sidebarLight: null,
+    sidebarDark: null,
     logoUrl: null,
   };
 }

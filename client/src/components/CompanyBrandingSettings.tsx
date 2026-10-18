@@ -89,6 +89,8 @@ export function CompanyBrandingSettings() {
     cardDark: draft.cardDark,
     tableLight: draft.tableLight,
     tableDark: draft.tableDark,
+    sidebarLight: draft.sidebarLight,
+    sidebarDark: draft.sidebarDark,
   });
   const previewLogo =
     logo.action === "replace"
@@ -106,8 +108,11 @@ export function CompanyBrandingSettings() {
       cardDark: draft.cardDark,
       tableLight: draft.tableLight,
       tableDark: draft.tableDark,
+      sidebarLight: draft.sidebarLight,
+      sidebarDark: draft.sidebarDark,
     }
   );
+  const customSidebarPreview = !!previewColors["--company-sidebar-background"];
   return (
     <div className="grid gap-7 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.85fr)]">
       <form
@@ -361,6 +366,7 @@ export function CompanyBrandingSettings() {
             [
               ["Kartalar rangi", "cardLight", "cardDark"],
               ["Jadvallar rangi", "tableLight", "tableDark"],
+              ["Sidebar rangi", "sidebarLight", "sidebarDark"],
             ] as const
           ).map(([title, lightField, darkField]) => (
             <div key={lightField} className="space-y-4 border-t pt-5">
@@ -378,7 +384,9 @@ export function CompanyBrandingSettings() {
                   companyBrandVariables(draft.color, previewDark, {
                     light: draft.backgroundLight,
                     dark: draft.backgroundDark,
-                  })["--card"] ?? (previewDark ? "#182230" : "#FFFFFF");
+                  })[
+                    field.startsWith("sidebar") ? "--company-sidebar" : "--card"
+                  ] ?? (previewDark ? "#182230" : "#FFFFFF");
                 return (
                   <div key={field} className="space-y-2">
                     <label
@@ -485,20 +493,57 @@ export function CompanyBrandingSettings() {
           className="company-brand-preview overflow-hidden rounded-xl border bg-background text-foreground shadow-sm"
         >
           <div
-            className="flex items-center gap-3 border-b p-4"
-            style={{ backgroundColor: "var(--company-sidebar)" }}
+            className="company-sidebar-preview space-y-4 border-b p-4"
+            style={{
+              backgroundColor: "var(--company-sidebar)",
+              color: customSidebarPreview
+                ? "var(--company-sidebar-foreground)"
+                : "var(--foreground)",
+              borderColor: customSidebarPreview
+                ? "var(--company-sidebar-border)"
+                : "var(--border)",
+            }}
           >
-            <CompanyBrandMark
-              name={draft.name || "Firma"}
-              logoUrl={previewLogo}
-            />
-            <div className="min-w-0">
-              <p data-no-translit className="truncate text-sm font-semibold">
-                {draft.name || "Firma nomi"}
-              </p>
-              <p className="truncate text-xs text-muted-foreground">
-                {draft.tagline || " "}
-              </p>
+            <div className="flex items-center gap-3">
+              <CompanyBrandMark
+                name={draft.name || "Firma"}
+                logoUrl={previewLogo}
+              />
+              <div className="min-w-0">
+                <p data-no-translit className="truncate text-sm font-semibold">
+                  {draft.name || "Firma nomi"}
+                </p>
+                <p className="truncate text-xs">{draft.tagline || " "}</p>
+              </div>
+            </div>
+            <div
+              className="grid grid-cols-2 gap-2 text-xs"
+              aria-label="Sidebar namunasi"
+            >
+              <span
+                className="rounded-md px-3 py-2"
+                style={{
+                  backgroundColor:
+                    "var(--company-sidebar-primary, var(--primary))",
+                  color:
+                    "var(--company-sidebar-primary-foreground, var(--primary-foreground))",
+                }}
+              >
+                Bosh sahifa
+              </span>
+              <span
+                className="rounded-md px-3 py-2"
+                style={{
+                  backgroundColor: customSidebarPreview
+                    ? "var(--company-sidebar-accent)"
+                    : "var(--accent)",
+                  color: customSidebarPreview
+                    ? "var(--company-sidebar-accent-foreground)"
+                    : "var(--foreground)",
+                }}
+              >
+                Hisobotlar
+              </span>
             </div>
           </div>
           <div className="space-y-4 p-5">
