@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
 import { useCompanyPreferences } from "@/lib/companyPreferences";
 import { CompanyTemplatePicker } from "@/components/CompanyTemplatePicker";
+import { CompanyBrandingSettings } from "@/components/CompanyBrandingSettings";
 import {
   COMPANY_COLUMNS,
   COMPANY_MODULES,
@@ -25,6 +26,7 @@ import {
   Save,
   Settings2,
   LayoutTemplate,
+  Palette,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,9 +38,9 @@ export default function CompanySettings() {
     defaultCompanyPreferences
   );
   const [baseRevision, setBaseRevision] = useState<number | null>(null);
-  const [tab, setTab] = useState<"columns" | "modules" | "templates">(() =>
-    window.location.hash === "#shablonlar" ? "templates" : "columns"
-  );
+  const [tab, setTab] = useState<
+    "branding" | "columns" | "modules" | "templates"
+  >(() => (window.location.hash === "#shablonlar" ? "templates" : "branding"));
   const [conflict, setConflict] = useState(false);
   useEffect(() => {
     if (query.data && baseRevision === null) {
@@ -105,21 +107,25 @@ export default function CompanySettings() {
       <PageHeader
         eyebrow="Firma kabineti"
         title="Firma sozlamalari"
-        description="Jadvallardagi nomlar va menyuni firmangizga moslang. Sozlamalar faqat shu firma uchun saqlanadi."
+        description="Firma nomi, logotipi, ranglari va jadvallarini o‘zingizga moslang. Sozlamalar faqat shu firma uchun saqlanadi."
         action={
-          <Button
-            className="gap-2"
-            disabled={!ready || !dirty || save.isPending || invalid || conflict}
-            onClick={() =>
-              save.mutate({
-                preferences: draft,
-                expectedRevision: baseRevision!,
-              })
-            }
-          >
-            <Save className="size-4" />
-            {save.isPending ? "Saqlanmoqda…" : "Saqlash"}
-          </Button>
+          tab === "branding" ? undefined : (
+            <Button
+              className="gap-2"
+              disabled={
+                !ready || !dirty || save.isPending || invalid || conflict
+              }
+              onClick={() =>
+                save.mutate({
+                  preferences: draft,
+                  expectedRevision: baseRevision!,
+                })
+              }
+            >
+              <Save className="size-4" />
+              {save.isPending ? "Saqlanmoqda…" : "Saqlash"}
+            </Button>
+          )
         }
       />
       <div className="grid gap-3 md:grid-cols-3">
@@ -160,6 +166,7 @@ export default function CompanySettings() {
           >
             {(
               [
+                ["branding", "Nom, logotip va rang", Palette],
                 ["columns", "Ustun nomlari", Columns3],
                 ["modules", "Modullar", Settings2],
                 ["templates", "Faoliyat shablonlari", LayoutTemplate],
@@ -182,7 +189,9 @@ export default function CompanySettings() {
             role="status"
             className="flex items-center gap-1.5 text-xs text-muted-foreground"
           >
-            {!ready ? (
+            {tab === "branding" ? (
+              "Firma ko‘rinishi"
+            ) : !ready ? (
               "Yuklanmoqda…"
             ) : dirty ? (
               "Saqlanmagan o‘zgarishlar bor"
@@ -217,7 +226,10 @@ export default function CompanySettings() {
             </Button>
           </div>
         )}
-        {tab === "templates" ? (
+        <div hidden={tab !== "branding"}>
+          <CompanyBrandingSettings />
+        </div>
+        {tab === "branding" ? null : tab === "templates" ? (
           <CompanyTemplatePicker
             dirty={dirty}
             onApplied={configuration => {

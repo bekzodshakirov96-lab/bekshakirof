@@ -12,6 +12,8 @@ import {
 import { useLanguage } from "@/lib/language";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useCompanyPreferences } from "@/lib/companyPreferences";
+import { useCompanyBranding, useCompanyBrandTheme } from "@/lib/companyBranding";
+import { CompanyBrandMark } from "./CompanyBrandMark";
 import { CompanyOnboardingNotice } from "./CompanyTemplatePicker";
 import { moduleForPath } from "@shared/companyPreferences";
 import {
@@ -641,8 +643,10 @@ function DashboardShell({
 }) {
   const { user } = useAuth();
   const company = useCompanyPreferences();
+  const brand = useCompanyBranding();
   const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  useCompanyBrandTheme(brand.branding, theme);
   const {
     state: sidebarState,
     isMobile,
@@ -744,6 +748,14 @@ function DashboardShell({
   // Do not briefly expose another profile's default menu/forms while a saved
   // company configuration is still loading, or silently ignore a read failure.
   if (company.query.isLoading) return <DashboardLayoutSkeleton />;
+  if (brand.query.isLoading) return <DashboardLayoutSkeleton />;
+  if (brand.query.isError)
+    return (
+      <div className="mx-auto w-full max-w-2xl p-6">
+        <QueryError description="Firma ko‘rinishini yuklab bo‘lmadi." onRetry={() => void brand.query.refetch()} />
+        <Button variant="outline" className="mt-3" onClick={onLogout}>Tizimdan chiqish</Button>
+      </div>
+    );
   if (company.query.isError) return <div className="mx-auto w-full max-w-2xl p-6"><QueryError description="Firma sozlamalarini yuklab bo‘lmadi. Davom etish uchun qayta urinib ko‘ring." onRetry={() => void company.query.refetch()} /><Button variant="outline" className="mt-3" onClick={onLogout}>Tizimdan chiqish</Button></div>;
 
   return (
@@ -757,21 +769,20 @@ function DashboardShell({
       <Sidebar collapsible="icon" className="border-sidebar-border">
         <SidebarHeader className="h-14 justify-center border-b border-sidebar-border px-4 group-data-[collapsible=icon]:px-2">
           <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center">
-            <div
-              data-no-translit
-              className="grid size-8 shrink-0 place-items-center rounded-lg bg-foreground text-[11px] font-bold text-background"
-            >
-              BC
-            </div>
+            <CompanyBrandMark
+              name={brand.branding.name}
+              logoUrl={brand.branding.logoUrl}
+              className={brand.branding.color ? "size-8 border-0" : "size-8 border-0 bg-foreground text-background"}
+            />
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
               <p
                 data-no-translit
                 className="truncate text-sm font-semibold tracking-tight text-sidebar-foreground"
               >
-                BiznesControl
+                {brand.branding.name}
               </p>
               <p className="mt-0.5 truncate text-[11px] text-sidebar-foreground/60">
-                Firma kabineti
+                {brand.branding.tagline}
               </p>
             </div>
           </div>
