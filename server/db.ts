@@ -1,10 +1,14 @@
 import { eq, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle, type MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { appSettings, InsertUser, users } from "../drizzle/schema";
 import { runtimeTenant } from "./tenancy/config";
 import { assertTenantDatabase } from "./tenancy/database";
+import { assertTenantQueryScope } from "./tenancy/scopeSchema";
+import { createTenantDatabase } from "./tenancy/queryScope";
 const databaseUrl = process.env.DATABASE_URL;
+let activePool: ReturnType<typeof mysql.createPool> | null = null;
+let schemaDb: MySql2Database<Record<string, unknown>> | null = null;
 
 // MySQL TIMESTAMP columns (entryDate, transactionDate, etc.) are stored as UTC
 // internally and converted using the CONNECTION'S session time_zone on every
@@ -30,7 +34,10 @@ async function connect() {
   });
   try {
     await assertTenantDatabase(pool, runtimeTenant);
-    return drizzle(pool);
+    await assertTenantQueryScope(pool, runtimeTenant.id);
+    activePool = pool;
+    schemaDb = drizzle(pool);
+    return createTenantDatabase(pool, runtimeTenant.id);
   } catch (error) {
     await pool.end();
     throw error;
@@ -64,12 +71,22 @@ export async function requireDb() {
   return db;
 }
 
+/** Startup schema helpers only. HTTP business code must use requireDb(). */
+export async function requireSchemaDb() {
+  await requireDb();
+  if (!schemaDb) throw new Error("Schema database is unavailable.");
+  return schemaDb;
+}
+
 /** Release this runtime's pool (used by shutdown/integration test tooling). */
 export async function closeDb() {
-  const db = _db ?? await connecting?.catch(() => null);
+  await connecting?.catch(() => null);
   _db = null;
   connecting = null;
-  if (db) await db.$client.end();
+  schemaDb = null;
+  const pool = activePool;
+  activePool = null;
+  if (pool) await pool.end();
 }
 
 /** True when this is the very first account ever created (the permanent owner). */

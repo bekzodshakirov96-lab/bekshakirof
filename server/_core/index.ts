@@ -17,6 +17,7 @@ import { ensureCashDebtRepaymentSchema } from "../cashDebtRepaymentSchema";
 import { permitsTenantHost, runtimeTenant } from "../tenancy/config";
 import { requireDb } from "../db";
 import { validateStorageKey } from "../tenancy/files";
+import { installManagedAccess, readManagedConfig } from "../tenancy/platformAccess";
 
 // Kun chegaralari (Kassa, hisobotlar) server jarayonining LOKAL vaqt mintaqasiga tayanadi
 // (masalan, `new Date(...).setHours(0,0,0,0)`). Biznes doim Toshkentda ishlaydi, shuning
@@ -47,6 +48,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  const managed = readManagedConfig(process.env, runtimeTenant);
   // Validate ownership BEFORE any startup schema helpers or HTTP traffic.
   if (runtimeTenant.mode === "isolated") await requireDb();
   if (process.env.DATABASE_URL) {
@@ -93,6 +95,8 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.get("/api/runtime", (_req, res) => res.json({ mode: "business", platformLogin: managed ? `${managed.origin}/platforma/kirish` : null }));
+  installManagedAccess(app, runtimeTenant);
   // Parolni ketma-ket taxmin qilishga (brute-force) qarshi: bitta IP'dan 15 daqiqada
   // 20 ta login urinishi. Faqat login yo'liga qo'llanadi, oddiy ishlashga xalaqit bermaydi.
   app.use(

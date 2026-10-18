@@ -7,6 +7,7 @@ import { requireDb } from "../db";
 import { router } from "../_core/trpc";
 
 const TABLE_LABELS: Record<string, string> = {
+  company_preferences: "Firma sozlamalari",
   transactions: "Savdo",
   cash_entries: "Kassa yozuvi",
   client_payments: "Qarz to‘lovi",
@@ -16,6 +17,8 @@ const TABLE_LABELS: Record<string, string> = {
   agents: "Agent",
   products: "Mahsulot",
   stockMovements: "Sklad harakati",
+  matrix_stock_events: "Agent × Tovar ombor harakati",
+  agent_taking_entries: "Agent × Tovar miqdori",
   factory_operations: "Zavod operatsiyasi",
   bottle_movements: "Butilka harakati",
 };

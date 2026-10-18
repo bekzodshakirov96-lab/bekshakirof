@@ -118,3 +118,5 @@ client/public/__manus__/version.json
 
 # Baza zaxira nusxalari (mahalliy, git'ga tushmasin)
 backups/
+data/platform-local-mail.jsonl
+**/*.env.local

@@ -23,6 +23,8 @@ import { kassaRouter } from "./routers/kassa";
 import { fastKegRouter } from "./routers/fastKeg";
 import { productsRouter } from "./routers/products";
 import { stockRouter } from "./routers/stock";
+import { matrixInventoryRouter } from "./routers/matrixInventory";
+import { companyPreferencesRouter } from "./routers/companyPreferences";
 import { transactionsRouter } from "./routers/transactions";
 import { usersRouter } from "./routers/users";
 
@@ -37,6 +39,8 @@ function toSafeUser(user: User | null): Omit<User, "passwordHash"> | null {
 }
 
 export const appRouter = router({
+  companyPreferences: companyPreferencesRouter,
+  matrixInventory: matrixInventoryRouter,
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({

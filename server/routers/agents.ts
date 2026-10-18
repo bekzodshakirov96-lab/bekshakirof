@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, like, not, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, cashEntries, clientPayments, positions, transactions, users } from "../../drizzle/schema";
+import { agentTakingEntries, matrixCellWrites, agents, cashEntries, clientPayments, positions, transactions, users } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure, productsViewProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { tashkentBusinessDate } from "../../shared/agentReconciliation";
@@ -15,6 +15,8 @@ import {
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
+import { cashStorageCategory } from "../../shared/cashCategoryRegistry";
+import { cashCategorySql } from "../cashCategorySql";
 
 function toMySqlDate(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
@@ -25,7 +27,7 @@ function toMySqlDate(d: Date): string {
  * to'langan komissiya ham shu toifada yoziladi — shuning uchun komissiya hisobida
  * "allaqachon olingan" summa aynan shu yerdan olinadi.
  */
-const SALARY_CATEGORY = "Ойлик";
+const SALARY_CATEGORY = cashStorageCategory("salary");
 
 export function commissionPeriod(label: string) {
   const match = /^(\d{4}-\d{2}-\d{2}) — (\d{4}-\d{2}-\d{2})$/.exec(label);
@@ -233,6 +235,10 @@ export const agentsRouter = router({
         throw new Error("Bu agentga biriktirilgan foydalanuvchi login mavjud — avval uning rolini Foydalanuvchilar bo‘limida o‘zgartiring.");
       }
       return db.transaction(async tx => {
+        await tx.select({ id: agents.id }).from(agents).where(eq(agents.id, input.id)).for("update");
+        const [takingHistory] = await tx.select({ id: agentTakingEntries.id }).from(agentTakingEntries).where(eq(agentTakingEntries.agentId, input.id)).limit(1);
+        const [cellHistory] = await tx.select({ id: matrixCellWrites.id }).from(matrixCellWrites).where(eq(matrixCellWrites.agentId, input.id)).limit(1);
+        if (takingHistory || cellHistory) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Bu agentning Agent × Tovar tarixi bor. Tarixni saqlash uchun o'chirish o'rniga agentni faolsizlantiring." });
         await tx.delete(agents).where(eq(agents.id, input.id));
         await logAudit(tx, {
           tableName: "agents",
@@ -292,7 +298,7 @@ export const agentsRouter = router({
         : null;
       const salaryPeriodConditions = [
         eq(cashEntries.type, "expense"),
-        eq(cashEntries.category, SALARY_CATEGORY),
+        cashCategorySql("salary"),
         periodLabel ? or(
           and(
             input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
@@ -417,7 +423,7 @@ export const agentsRouter = router({
           .from(cashEntries).where(and(
             eq(cashEntries.agentId, input.agentId),
             eq(cashEntries.type, "expense"),
-            eq(cashEntries.category, SALARY_CATEGORY),
+            cashCategorySql("salary"),
             not(like(cashEntries.sourceKey, "agent-commission:%")),
             sql`${cashEntries.entryDate} >= ${toMySqlDate(period.from)}`,
             sql`${cashEntries.entryDate} <= ${toMySqlDate(period.to)}`,
@@ -431,7 +437,7 @@ export const agentsRouter = router({
           sourceKey,
           entryDate,
           type: "expense",
-          category: "Ойлик",
+          category: SALARY_CATEGORY,
           agentId: input.agentId,
           description,
           cashAmount: input.amount,
@@ -445,7 +451,7 @@ export const agentsRouter = router({
           recordId: created.id,
           action: "create",
           userId: ctx.user.id,
-          after: { type: "expense", category: "Ойлик", agentId: input.agentId, cashAmount: input.amount, periodLabel: input.periodLabel },
+          after: { type: "expense", category: SALARY_CATEGORY, agentId: input.agentId, cashAmount: input.amount, periodLabel: input.periodLabel },
         });
         return { success: true };
       });

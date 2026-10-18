@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { requireDb } from "./db";
+import { requireSchemaDb } from "./db";
 
 const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS cash_journal_debt_repayments (
   id int AUTO_INCREMENT NOT NULL,
@@ -28,7 +28,7 @@ const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS cash_journal_debt_repayments (
 /** Restart-safe schema bootstrap used by the deployed server. */
 export async function ensureCashDebtRepaymentSchema() {
   if (!process.env.DATABASE_URL) return;
-  const db = await requireDb();
+  const db = await requireSchemaDb();
   const [rows] = await db.execute(sql`SELECT COUNT(*) AS count FROM information_schema.COLUMNS
     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cash_journal_debts' AND COLUMN_NAME = 'borrowerName'`);
   const count = Number((rows as unknown as Array<{ count: number }>)[0]?.count ?? 0);

@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
-import { agents, clientPayments, clients, transactions } from "../drizzle/schema";
+import { agents, clients, transactions } from "../drizzle/schema";
 import { requireDb } from "./db";
+import { clientPaymentTotal } from "./tenancy/scalars";
 
 const numberSql = (template: TemplateStringsArray, ...params: unknown[]) =>
   sql<number>(template, ...params).mapWith(Number);
@@ -27,10 +28,10 @@ export async function getClientFinancialRows() {
       transactionCount: numberSql`count(${transactions.id})`,
       // Qarz to'lovlari alohida subquery bilan olinadi — ikkinchi LEFT JOIN
       // qatorlarni ko'paytirib, savdo summalarini ham buzib yuborardi.
-      debtPaidCash: numberSql`coalesce((select sum(cp.cashAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
-      debtPaidTerminal: numberSql`coalesce((select sum(cp.terminalAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
-      debtPaidClick: numberSql`coalesce((select sum(cp.clickAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
-      debtPaidTransfer: numberSql`coalesce((select sum(cp.transferAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
+      debtPaidCash: clientPaymentTotal(sql`cp.cashAmount`, clients.id).mapWith(Number),
+      debtPaidTerminal: clientPaymentTotal(sql`cp.terminalAmount`, clients.id).mapWith(Number),
+      debtPaidClick: clientPaymentTotal(sql`cp.clickAmount`, clients.id).mapWith(Number),
+      debtPaidTransfer: clientPaymentTotal(sql`cp.transferAmount`, clients.id).mapWith(Number),
     })
     .from(clients)
     .leftJoin(agents, eq(clients.agentId, agents.id))
@@ -78,7 +79,7 @@ export async function getClientCurrentDebt(clientId: number): Promise<number> {
       openingDebt: clients.openingDebt,
       totalSales: numberSql`coalesce(sum(${transactions.totalAmount}), 0)`,
       salePaid: numberSql`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment} + ${transactions.transferPayment}), 0)`,
-      debtPaid: numberSql`coalesce((select sum(cp.cashAmount + cp.terminalAmount + cp.clickAmount + cp.transferAmount) from ${clientPayments} cp where cp.clientId = ${clients.id}), 0)`,
+      debtPaid: clientPaymentTotal(sql`cp.cashAmount + cp.terminalAmount + cp.clickAmount + cp.transferAmount`, clients.id).mapWith(Number),
     })
     .from(clients)
     .leftJoin(transactions, eq(transactions.clientId, clients.id))

@@ -10,7 +10,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { snapshotBusinessData } from "./audit";
 import { bindTenantDatabase } from "./bind";
 import { assertTenantDatabase } from "./database";
+import { applyTenantQueryScope } from "./scopeSchema";
 import type { RuntimeTenant } from "./config";
+import { drizzle } from "drizzle-orm/mysql2";
+import { cashEntries } from "../../drizzle/schema";
+import { cashExpenseSql, physicalCashBalanceSql, realizedIncomeSql } from "../cashAccounting";
 
 // Explicitly opt in with a DISPOSABLE local MySQL/MariaDB server. No .env loading.
 const testUrl = process.env.TENANT_ISOLATION_TEST_URL;
@@ -65,7 +69,10 @@ describe.skipIf(!testUrl)("real isolated company databases", () => {
       const db = await mysql.createConnection({ uri: uri.toString(), multipleStatements: true, dateStrings: true, timezone: "+05:00", supportBigNumbers: true, bigNumberStrings: true });
       connections.push(db);
       await db.query("SET time_zone = '+05:00'");
-      await db.query(schemaSql);
+      // Reconstruct the previous schema for the original firm, so the migration
+      // proof includes genuinely adding missing columns/keys to historical rows.
+      const oldSchema = schemaSql.replace(/^\s*`tenant_id` varchar\(63\) NOT NULL DEFAULT 'legacy',\r?\n/gm, "").replaceAll("`tenant_id`,", "");
+      await db.query(index === 0 ? oldSchema : schemaSql);
       await db.query("INSERT INTO users (id, name, email, passwordHash, role) VALUES (1, ?, 'owner@example.uz', 'test-only', 'admin')", [label]);
       await db.query("INSERT INTO agents (id, name) VALUES (1, 'Agent')");
       await db.query("INSERT INTO clients (id, code, name, agentId, openingDebt) VALUES (1, 'C1', ?, 1, 300000)", [`${label} client`]);
@@ -73,7 +80,7 @@ describe.skipIf(!testUrl)("real isolated company databases", () => {
       await db.query("INSERT INTO transactions (sourceKey, transactionDate, agentId, clientId, productId, productName, unit, quantity, totalAmount, cashPayment, createdBy) VALUES ('sale-1', '2026-10-16 12:00:00', 1, 1, 1, ?, 'dona', '2', 200000, 100000, 1)", [`${label} product`]);
       await db.query("INSERT INTO cash_entries (sourceKey, entryDate, type, category, cashAmount, terminalAmount, agentId, createdBy) VALUES ('income-1', '2026-10-16 12:00:00', 'income', 'Приход кег', ?, 50000, 1, 1), ('expense-1', '2026-10-16 12:00:00', 'expense', 'Расход', 20000, 0, 1, 1)", [index ? 700000 : 100000]);
       await db.query("INSERT INTO cash_journal_debts (entryDate, agentId, amount, borrowerName, description, createdBy) VALUES ('2026-10-16 12:00:00', 1, 25000, 'Ali', 'Eski qarz qaydi', 1)");
-      await db.query("INSERT INTO container_movements (sourceKey, movementDate, clientId, containerType, movementType, quantity) VALUES ('tara-1', '2026-10-16 12:00:00', 1, 'keg_30', 'issued', 3), ('tara-2', '2026-10-16 12:00:00', 1, 'keg_30', 'returned', 1)");
+      await db.query("INSERT INTO container_movements (sourceKey, movementDate, transactionId, clientId, containerType, movementType, quantity) VALUES ('tara-1', '2026-10-16 12:00:00', 1, 1, 'keg_30', 'issued', 3), ('tara-2', '2026-10-16 12:00:00', 1, 1, 'keg_30', 'returned', 1)");
       if (index === 0) { original = db; originalUrl = uri.toString(); originalSchema = schema; }
       else { other = db; otherUrl = uri.toString(); otherSchema = schema; }
     }
@@ -90,9 +97,24 @@ describe.skipIf(!testUrl)("real isolated company databases", () => {
 
   it("preserves every business row and actual daily cash report when converting the original company", async () => {
     const before = await snapshotBusinessData(original);
-    expect(before.tables).toHaveLength(24);
+    expect(before.tables).toHaveLength(27);
+    const [oldColumns] = await original.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND COLUMN_NAME='tenant_id'");
+    expect(oldColumns).toHaveLength(0);
+    const [cashBeforeScope] = await drizzle(original).select({ jamiPrihod: realizedIncomeSql(), jamiRasxod: cashExpenseSql(), kassaQoldigi: physicalCashBalanceSql() }).from(cashEntries);
+    await applyTenantQueryScope(original, "legacy");
     const legacyRuntime = await runtime(undefined, originalUrl);
     const cashBefore = await legacyRuntime.caller.daySummary({ date });
+    expect(cashBefore).toMatchObject(cashBeforeScope);
+    expect((await legacyRuntime.caller.daySummary({ date: date + 86_400_000 })).kassaQoldigi).toBe(cashBeforeScope.kassaQoldigi);
+    await expect(bindTenantDatabase(original, "not-original", before)).rejects.toThrow("Rebinding is forbidden");
+    const [unexpectedBinding] = await original.query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='saas_tenant_identity'");
+    expect(unexpectedBinding).toHaveLength(0);
+    const { transactionsRouter } = await import("../routers/transactions");
+    const transactionApi = transactionsRouter.createCaller({ user: (await legacyRuntime.db.getUserById(1))!, req: { headers: {} } as never, res: {} as never });
+    const transactionList = await transactionApi.list({ pageSize: 10 });
+    expect(transactionList.items[0]).toMatchObject({ issuedContainerType: "keg_30", issuedContainerQuantity: 3, returnedContainerQuantity: 1 });
+    const transactionExport = await transactionApi.exportData({});
+    expect(transactionExport.rows[0]).toMatchObject({ issuedContainerQuantity: 3, returnedContainerQuantity: 1 });
     const result = await bindTenantDatabase(original, "legacy", before);
     expect(result).toEqual(before);
     const converted = await runtime("legacy", originalUrl);
@@ -195,7 +217,7 @@ describe.skipIf(!testUrl)("real isolated company databases", () => {
     const options = { env: { ...process.env, DATABASE_URL: originalUrl }, encoding: "utf8" as const, timeout: 10_000 };
     const before = await snapshotBusinessData(original);
     const audit = execFileSync(process.execPath, ["--import", "tsx", "scripts/tenant-db.ts", "audit", "--out", baselinePath], options);
-    expect(audit).toContain("24 tables");
+    expect(audit).toContain("27 tables");
     expect(JSON.parse(await readFile(baselinePath, "utf8"))).toEqual(before);
     const binding = execFileSync(process.execPath, ["--import", "tsx", "scripts/tenant-db.ts", "bind", "--tenant-id", "legacy", "--baseline", baselinePath, "--apply"], options);
     expect(binding).toContain("All business data matches baseline");

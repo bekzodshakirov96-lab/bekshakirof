@@ -16,7 +16,7 @@ export async function snapshotBusinessData(db: TenantSql): Promise<DatabaseSnaps
     const [tableRows] = await db.query("SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME");
     const tables: DatabaseSnapshot["tables"] = [];
     for (const { name } of tableRows as { name: string }[]) {
-      if (name === TENANT_IDENTITY_TABLE) continue;
+      if (name === TENANT_IDENTITY_TABLE || name === "saas_tenant_scope") continue;
       const [keys] = await db.query(`SHOW KEYS FROM ${quote(name)} WHERE Key_name = 'PRIMARY'`);
       const columns = (keys as { Column_name: string; Seq_in_index: number }[])
         .sort((a, b) => a.Seq_in_index - b.Seq_in_index).map(key => quote(key.Column_name));
@@ -26,7 +26,12 @@ export async function snapshotBusinessData(db: TenantSql): Promise<DatabaseSnaps
       for (;;) {
         const [batch] = await db.query(`SELECT * FROM ${quote(name)} ORDER BY ${columns.join(", ")} LIMIT 1000 OFFSET ${rows}`);
         const records = batch as Record<string, unknown>[];
-        for (const record of records) hash.update(JSON.stringify(record) + "\n");
+        // Scope is verified separately; retain byte-for-byte proof of all original
+        // financial/history fields when adding or assigning the tenant_id column.
+        for (const record of records) {
+          const { tenant_id: _scope, ...businessFields } = record;
+          hash.update(JSON.stringify(businessFields) + "\n");
+        }
         rows += records.length;
         if (records.length < 1000) break;
       }

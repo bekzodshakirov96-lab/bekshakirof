@@ -1,5 +1,6 @@
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "./cashCategories";
 import { ELECTRONIC_PAYMENT_CATEGORY } from "../../../shared/cashAccounting";
+import { cashCategoryIdFromLegacy } from "../../../shared/cashCategoryRegistry";
 
 export const PAYMENT_CHANNEL_CATEGORY = ELECTRONIC_PAYMENT_CATEGORY;
 export const CASH_DRAFT_ENTRY_CATEGORIES = [
@@ -24,6 +25,7 @@ export function cashDraftEntryAmounts(draft: CashDraftAmounts, category: string)
     return {
       type: "income" as const,
       category,
+      categoryId: "electronic_collection" as const,
       cashAmount: 0,
       terminalAmount,
       clickAmount,
@@ -36,6 +38,7 @@ export function cashDraftEntryAmounts(draft: CashDraftAmounts, category: string)
   return {
     type: INCOME_CATEGORIES.includes(category) ? "income" as const : "expense" as const,
     category,
+    categoryId: cashCategoryIdFromLegacy(category) ?? undefined,
     cashAmount,
     terminalAmount: 0,
     clickAmount: 0,

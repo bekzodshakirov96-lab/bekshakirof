@@ -1,5 +1,9 @@
-import { and, desc, eq, gt, gte, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, lte, not, or, sql } from "drizzle-orm";
+import { cashCategorySql } from "../cashCategorySql";
 import { z } from "zod";
+import { matrixLayoutValueSchema } from "../../shared/matrixLayout";
+import { syncLegacyTaking, syncTaking, matrixCellVersion, recordMatrixCellWrite } from "../matrixInventory";
+import { randomUUID } from "node:crypto";
 import {
   agentCashSubmissions,
   agentTakingEntries,
@@ -21,7 +25,6 @@ import { tashkentDayRange, toMySqlDate } from "../businessDay";
 import { reconcileExpectedTransfers } from "../transferExpectation";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
-import { AGENT_SETTLEMENT_CASH_CATEGORIES, CASH_DEBT_REPAYMENT_CATEGORY } from "../../shared/cashAccounting";
 import { buildAgentDifferenceSummary } from "../../shared/agentDifference";
 import { buildDailyReconciliation, tashkentBusinessDate } from "../../shared/agentReconciliation";
 
@@ -32,16 +35,15 @@ const numberSql = (template: TemplateStringsArray, ...params: unknown[]) =>
  * uchun yagona mavjud tasdiqlash yo'li. Terminal/Click/Перечисление uchun bunday
  * "topshirish" tushunchasi yo'q (pul to'g'ridan-to'g'ri bankka/Click hisobiga tushadi),
  * shu sababli ular kassaDailyActuals'dagi qo'lda tasdiqlangan summa bilan solishtiriladi. */
-const CASH_SUBMISSION_CATEGORIES = ["Приход кег", "Приход пет"] as const;
 
 /** Agent x Tovar uchun yopilgan summa: naqd prihodlar va barcha elektron kanallar. */
 const agentSettlementAmountSql = () =>
   sql<number>`coalesce(sum(
     case when ${and(
       eq(cashEntries.type, "income"),
-      inArray(cashEntries.category, [...AGENT_SETTLEMENT_CASH_CATEGORIES]),
+      cashCategorySql("agent_cash_keg", "agent_cash_pet"),
     )} then ${cashEntries.cashAmount} else 0 end
-    + case when ${cashEntries.category} <> ${CASH_DEBT_REPAYMENT_CATEGORY}
+    + case when ${not(cashCategorySql("debt_repayment"))}
       then ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} + ${cashEntries.transferAmount} else 0 end
   ), 0)`.mapWith(Number);
 
@@ -49,16 +51,11 @@ const agentSettlementEntrySql = () =>
   or(
     and(
       eq(cashEntries.type, "income"),
-      inArray(cashEntries.category, [...AGENT_SETTLEMENT_CASH_CATEGORIES]),
+      cashCategorySql("agent_cash_keg", "agent_cash_pet"),
     ),
-    and(sql`${cashEntries.category} <> ${CASH_DEBT_REPAYMENT_CATEGORY}`, or(
+    and(not(cashCategorySql("debt_repayment")), or(
       gt(cashEntries.terminalAmount, 0), gt(cashEntries.clickAmount, 0), gt(cashEntries.transferAmount, 0))),
   );
-const matrixLayoutValueSchema = z.object({
-  productOrder: z.array(z.number().int().positive()).max(2_000),
-  visibleProductIds: z.array(z.number().int().positive()).max(2_000),
-  agentOrder: z.array(z.number().int().positive()).min(1).max(500),
-});
 
 function uniqueIds(ids: number[]) {
   return Array.from(new Set(ids));
@@ -138,7 +135,7 @@ async function computePendingByChannel(timestamp: number) {
     .where(
       and(
         eq(cashEntries.type, "income"),
-        inArray(cashEntries.category, [...CASH_SUBMISSION_CATEGORIES]),
+        cashCategorySql("agent_cash_keg", "agent_cash_pet"),
         sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`,
       ),
     );
@@ -173,7 +170,7 @@ async function computePendingByChannel(timestamp: number) {
       .leftJoin(transactions, eq(cashTransferLinks.transactionId, transactions.id))
       .leftJoin(clientPayments, eq(cashTransferLinks.clientPaymentId, clientPayments.id))
       .where(and(eq(cashEntries.type, "income"), gt(cashEntries.transferAmount, 0),
-        sql`${cashEntries.category} <> ${CASH_DEBT_REPAYMENT_CATEGORY}`,
+        not(cashCategorySql("debt_repayment")),
         sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`))
       .groupBy(cashEntries.id, cashEntries.entryDate, cashEntries.agentId, cashEntries.transferAmount),
   ]);
@@ -482,10 +479,16 @@ export const kassaRouter = router({
         const productIds = new Set(productRows.map(row => row.id));
         const activeAgentIds = new Set(agentRows.filter(row => row.isActive).map(row => row.id));
         const requestedOrder = uniqueIds(input.layout.productOrder).filter(id => productIds.has(id));
+        // Older clients omit widths; retain the effective dated widths instead of resetting them.
+        const { end: selectedEnd } = dayRange(input.date);
+        const [inherited] = await db.select({ layout: cashMatrixLayouts.layout }).from(cashMatrixLayouts)
+          .where(lte(cashMatrixLayouts.effectiveDate, selectedEnd)).orderBy(desc(cashMatrixLayouts.effectiveDate)).limit(1);
+        const inheritedWidths = inherited ? matrixLayoutValueSchema.parse(JSON.parse(inherited.layout)).columnWidths : undefined;
         const normalized = {
           productOrder: [...requestedOrder, ...productRows.map(row => row.id).filter(id => !requestedOrder.includes(id))],
           visibleProductIds: uniqueIds(input.layout.visibleProductIds).filter(id => productIds.has(id)),
           agentOrder: uniqueIds(input.layout.agentOrder).filter(id => activeAgentIds.has(id)),
+          columnWidths: input.layout.columnWidths ?? inheritedWidths ?? {},
         };
         if (normalized.agentOrder.length === 0) throw new Error("Kamida bitta agent ko‘rsatilishi kerak.");
         const effectiveDate = new Date(`${tashkentDateKey(input.date)}T07:00:00.000Z`);
@@ -498,7 +501,7 @@ export const kassaRouter = router({
         const serialized = JSON.stringify(normalized);
         return db.transaction(async tx => {
           if (existing) {
-            await tx.update(cashMatrixLayouts).set({ layout: serialized, updatedBy: ctx.user.id, updatedAt: new Date() }).where(eq(cashMatrixLayouts.id, existing.id));
+            await tx.update(cashMatrixLayouts).set({ effectiveDate: sql`${cashMatrixLayouts.effectiveDate}`, layout: serialized, updatedBy: ctx.user.id, updatedAt: new Date() }).where(eq(cashMatrixLayouts.id, existing.id));
             await logAudit(tx, {
               tableName: "cash_matrix_layouts", recordId: existing.id, action: "update", userId: ctx.user.id,
               before: { effectiveDate: existing.effectiveDate, layout: JSON.parse(existing.layout) },
@@ -545,9 +548,8 @@ export const kassaRouter = router({
         .where(and(sql`${agentTakingEntries.entryDate} >= ${toMySqlDate(start)}`, sql`${agentTakingEntries.entryDate} <= ${toMySqlDate(end)}`))
         .orderBy(agentTakingEntries.id);
     }),
-    /** Omborchi tovarni agentga topshirgan payti shu yerga yozadi — sklad qoldig'iga
-     * (stockMovements) tegmaydi, faqat "Agent x Tovar" moliyaviy hisobiga tushadi.
-     * Haqiqiy sklad qoldig'i faqat Tezkor KEG/Yangi savdo orqali savdo bo'lganda kamayadi. */
+    /** Configured products also synchronize warehouse stock from their explicit
+     * activation date. Earlier/unconfigured rows retain their original behavior. */
     addProduct: skladProcedure
       .input(
         z.object({
@@ -576,7 +578,9 @@ export const kassaRouter = router({
           .limit(1);
         const unitPrice = override?.unitPrice ?? product.price;
         const amount = Math.round(input.quantity * unitPrice);
-        const [created] = await db
+        return db.transaction(async tx => {
+        await tx.select({ id: products.id }).from(products).where(eq(products.id, product.id)).for("update");
+        const [created] = await tx
           .insert(agentTakingEntries)
           .values({
             entryDate: new Date(input.date),
@@ -589,32 +593,22 @@ export const kassaRouter = router({
             createdBy: ctx.user.id,
           })
           .$returningId();
+        await syncTaking(tx, { id: created.id, productId: product.id, entryDate: new Date(input.date), quantity: input.quantity.toFixed(3) }, ctx.user.id);
+        await recordMatrixCellWrite(tx, { productId: product.id, agentId: input.agentId, entryDate: new Date(input.date),
+          expectedVersion: await matrixCellVersion(tx, product.id, input.agentId, input.date),
+          expectedQuantity: 0, quantity: input.quantity, requestKey: randomUUID(), createdBy: ctx.user.id });
         return { id: created.id, amount } as const;
+        });
       }),
     updateQuantity: skladProcedure
       .input(z.object({ id: z.number().int().positive(), quantity: z.number().positive().max(1_000_000) }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const db = await requireDb();
-        const [row] = await db.select().from(agentTakingEntries).where(eq(agentTakingEntries.id, input.id)).limit(1);
-        if (!row) throw new Error("Yozuv topilmadi.");
-        await assertPeriodUnlocked(row.entryDate);
-        const amount = Math.round(input.quantity * row.unitPrice);
-        await db
-          .update(agentTakingEntries)
-          .set({ quantity: input.quantity.toFixed(3), amount })
-          .where(eq(agentTakingEntries.id, input.id));
-        return { success: true, amount } as const;
+        return syncLegacyTaking(db, input.id, ctx.user.id, input.quantity);
       }),
-    remove: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
+    remove: skladProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
       const db = await requireDb();
-      const [row] = await db
-        .select({ entryDate: agentTakingEntries.entryDate })
-        .from(agentTakingEntries)
-        .where(eq(agentTakingEntries.id, input.id))
-        .limit(1);
-      if (!row) throw new Error("Yozuv topilmadi.");
-      await assertPeriodUnlocked(row.entryDate);
-      await db.delete(agentTakingEntries).where(eq(agentTakingEntries.id, input.id));
+      await syncLegacyTaking(db, input.id, ctx.user.id, 0);
       return { success: true } as const;
     }),
   }),
@@ -651,7 +645,7 @@ export const kassaRouter = router({
         if (input.unitPrice && input.unitPrice > 0) {
           effectiveUnitPrice = input.unitPrice;
           if (existing) {
-            await db.update(dailyProductPrices).set({ unitPrice: input.unitPrice, updatedBy: ctx.user.id }).where(eq(dailyProductPrices.id, existing.id));
+            await db.update(dailyProductPrices).set({ entryDate: sql`${dailyProductPrices.entryDate}`, unitPrice: input.unitPrice, updatedBy: ctx.user.id }).where(eq(dailyProductPrices.id, existing.id));
           } else {
             await db.insert(dailyProductPrices).values({ entryDate: new Date(input.date), productId: input.productId, unitPrice: input.unitPrice, updatedBy: ctx.user.id });
           }
@@ -666,6 +660,7 @@ export const kassaRouter = router({
           .update(agentTakingEntries)
           .set({
             unitPrice: effectiveUnitPrice,
+            entryDate: sql`${agentTakingEntries.entryDate}`,
             amount: sql`round(cast(${agentTakingEntries.quantity} as decimal(18,3)) * ${effectiveUnitPrice})`,
           })
           .where(

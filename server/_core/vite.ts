@@ -15,6 +15,9 @@ export async function setupVite(app: Express, server: Server) {
 
   const vite = await createViteServer({
     ...viteConfig,
+    // Company previews run on separate ports in the same checkout. Sharing the
+    // optimizer cache lets one runtime replace React chunks served by another.
+    cacheDir: path.resolve(import.meta.dirname, "../..", "node_modules", `.vite-business-${/^\d+$/.test(process.env.PORT ?? "") ? process.env.PORT : process.pid}`),
     configFile: false,
     server: serverOptions,
     appType: "custom",

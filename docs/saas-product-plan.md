@@ -1,7 +1,32 @@
 # BiznesControl SaaS — boshlang‘ich loyiha
 
+To‘rtinchi bosqich: uchta faoliyat shabloni alohida lokal firmalarda audit qilindi.
+Parallel shablon tanlash himoyasi, KEGning Toshkent sanasi va yuklanish holatlari
+tuzatildi. Kassa/KEG formulalari va mavjud firma yozuvlari saqlandi. Natijalar:
+`docs/saas-template-pilot-audit-2026-10-18.md`. Productionga qo‘llanmagan.
+
+Uchinchi moslashtirish bosqichi localhostda qo‘shildi: bo‘sh yangi firma egasi
+ulgurji savdo, agent tarqatish yoki ichimlik/KEG shablonini oldindan ko‘rib,
+bir marta tanlaydi. Shablon faqat nom va menyuni sozlaydi; mavjud firmalar
+avtomatik o‘zgarmaydi. Tafsilot: `docs/saas-company-templates.md`.
+
+Firma moslashtirishining ikkinchi bosqichi localhostda qo‘shildi: Kunlik jurnal
+va Agent × Tovar ustun nomlari, modullarni menyudan yashirish, firma/sana bo‘yicha
+sozlamalar va rahbar uchun tahrirlash. Moliyaviy qoidalar o‘zgarmaydi; bu menyu
+sozlamalari xavfsizlik ruxsatlarini almashtirmaydi. Batafsil:
+`docs/saas-company-preferences.md`. Productionga qo‘llanmagan.
+
+Mahalliy moslashtirishning birinchi bosqichi: ichki kassa toifa IDlari, nomlardan
+ajratilgan moliyaviy ma'no va eski format bilan moslik qatlami qo'shildi. Mavjud
+firma tarixi qayta yozilmaydi; Kassa/Tezkor KEG ishlash tartibi saqlanadi. Bu hali
+sozlamalar konstruktori yoki yangi shablonlar emas. Batafsil:
+`docs/saas-business-identities.md`. Productionga qo'llanmagan.
+
 Holat: SaaS rejasi va birinchi bosqichning mahalliy implementatsiyasi. Firma chegarasi, sessiya/fayl ajratish va mavjud bazani tekshirib bog‘lash vositasi yozildi; productionga qo‘llanmagan. Ish tartibi: `docs/saas-tenant-isolation.md`.
+Ikkinchi bosqichning mahalliy qo‘shimchasi: alohida platforma bazasi, firma ro‘yxatdan o‘tishi/email tasdiqlash, bir oylik trial, firma kabineti, super admin va audit. Yangi firmalar uchun tayyorlash operator komandasi orqali, infratuzilma hali avtomatik yaratilmaydi. To‘lov integratsiyasi/narx, mavjud firmaga aktivlashtirish va production relizi bajarilmagan. Ish tartibi: `docs/saas-control-plane.md`.
 Sana: 2026-10-17, Asia/Tashkent.
+
+Keyingi tasdiqlangan o‘zgarish: barcha 24 biznes jadvalida `tenant_id` va so‘rovlarda majburiy firma chegarasi qo‘shildi. Alohida baza/instansiya arxitekturasi saqlanadi. Avvalgi “firma ustuni yo‘q” auditi tarixiy boshlang‘ich holatni bildiradi; amaldagi migratsiya va cheklovlar: `docs/saas-tenant-query-scope.md`. Productionga qo‘llanmagan.
 
 ## Tasdiqlangan mahsulot modeli
 

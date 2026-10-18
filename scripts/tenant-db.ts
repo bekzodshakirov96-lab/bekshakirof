@@ -3,6 +3,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import mysql from "mysql2/promise";
 import { snapshotBusinessData, type DatabaseSnapshot } from "../server/tenancy/audit";
 import { bindTenantDatabase } from "../server/tenancy/bind";
+import { applyTenantQueryScope } from "../server/tenancy/scopeSchema";
+import { assertSameBusinessData } from "../server/tenancy/audit";
 
 const args = process.argv.slice(2);
 function option(name: string) {
@@ -11,14 +13,14 @@ function option(name: string) {
 }
 async function main() {
   const action = args[0];
-  if (action !== "audit" && action !== "bind") {
-    throw new Error("Usage: tenant:db audit --out snapshot.json | tenant:db bind --tenant-id legacy --baseline snapshot.json --apply");
+  if (action !== "audit" && action !== "bind" && action !== "scope") {
+    throw new Error("Usage: tenant:db audit --out snapshot.json | tenant:db bind|scope --tenant-id legacy --baseline snapshot.json --apply");
   }
   const output = option("--out");
   const baselinePath = option("--baseline");
   const tenantId = option("--tenant-id");
   if (action === "audit" && !output) throw new Error("audit requires --out.");
-  if (action === "bind" && (!args.includes("--apply") || !baselinePath || !tenantId)) {
+  if ((action === "bind" || action === "scope") && (!args.includes("--apply") || !baselinePath || !tenantId)) {
     throw new Error("bind requires --apply, --tenant-id and --baseline. Take and test a backup, stop writes, then prepare a fresh audit baseline.");
   }
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
@@ -29,6 +31,12 @@ async function main() {
       const snapshot = await snapshotBusinessData(db);
       await writeFile(output!, JSON.stringify(snapshot, null, 2), { flag: "wx" });
       console.log(`Audit saved: ${snapshot.tables.length} tables, fingerprint ${snapshot.fingerprint}. No business data changed.`);
+    } else if (action === "scope") {
+      const baseline = JSON.parse(await readFile(baselinePath!, "utf8")) as DatabaseSnapshot;
+      assertSameBusinessData(baseline, await snapshotBusinessData(db));
+      await applyTenantQueryScope(db, tenantId!);
+      assertSameBusinessData(baseline, await snapshotBusinessData(db));
+      console.log("Tenant query scope prepared. Every original business field matches the baseline.");
     } else {
       const baseline = JSON.parse(await readFile(baselinePath!, "utf8")) as DatabaseSnapshot;
       const snapshot = await bindTenantDatabase(db, tenantId!, baseline);

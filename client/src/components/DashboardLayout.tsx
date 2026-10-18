@@ -11,6 +11,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useLanguage } from "@/lib/language";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useCompanyPreferences } from "@/lib/companyPreferences";
+import { CompanyOnboardingNotice } from "./CompanyTemplatePicker";
+import { moduleForPath } from "@shared/companyPreferences";
 import {
   Sidebar,
   SidebarContent,
@@ -38,6 +41,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleDollarSign,
+  CreditCard,
   Eye,
   EyeOff,
   Factory,
@@ -52,15 +56,25 @@ import {
   PackageOpen,
   ReceiptText,
   ShieldCheck,
+  Settings2,
   Sun,
   UserCog,
   UsersRound,
   WalletCards,
   Warehouse,
 } from "lucide-react";
-import { useEffect, useState, type ComponentType, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type ComponentType,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
+import { QueryError } from "./finance-ui";
+import "./company-workspace.css";
 
 type AppRole = "admin" | "accountant" | "agent" | "sklad" | "user";
 
@@ -81,14 +95,24 @@ function canSeeMenuItem(item: MenuItem, role: AppRole | undefined) {
   return (item.roles ?? defaultRoles).includes(role);
 }
 
-const menuGroups: Array<{ id: string; label: string; icon: MenuItem["icon"]; items: MenuItem[] }> = [
+const menuGroups: Array<{
+  id: string;
+  label: string;
+  icon: MenuItem["icon"];
+  items: MenuItem[];
+}> = [
   {
     id: "general",
     label: "Umumiy",
     icon: LayoutDashboard,
     items: [
       { icon: LayoutDashboard, label: "Boshqaruv paneli", path: "/" },
-      { icon: CircleDollarSign, label: "Qarzdorlik hisoboti", path: "/qarzdorlik", roles: ["admin", "accountant", "agent"] },
+      {
+        icon: CircleDollarSign,
+        label: "Qarzdorlik hisoboti",
+        path: "/qarzdorlik",
+        roles: ["admin", "accountant", "agent"],
+      },
     ],
   },
   {
@@ -96,9 +120,23 @@ const menuGroups: Array<{ id: string; label: string; icon: MenuItem["icon"]; ite
     label: "Savdo va moliya",
     icon: WalletCards,
     items: [
-      { icon: Beer, label: "Tezkor KEG savdosi", path: "/tezkor-keg", roles: ["admin", "accountant", "agent"] },
-      { icon: ReceiptText, label: "Yangi savdo", path: "/savdo", roles: ["admin", "accountant", "agent"] },
-      { icon: BarChart3, label: "Sotuv bo‘yicha hisobot", path: "/sotuv-hisoboti" },
+      {
+        icon: Beer,
+        label: "Tezkor KEG savdosi",
+        path: "/tezkor-keg",
+        roles: ["admin", "accountant", "agent"],
+      },
+      {
+        icon: ReceiptText,
+        label: "Yangi savdo",
+        path: "/savdo",
+        roles: ["admin", "accountant", "agent"],
+      },
+      {
+        icon: BarChart3,
+        label: "Sotuv bo‘yicha hisobot",
+        path: "/sotuv-hisoboti",
+      },
       { icon: WalletCards, label: "KASSA", path: "/kassa" },
       { icon: BarChart3, label: "Kassa hisobotlari", path: "/kassa-hisoboti" },
     ],
@@ -108,10 +146,30 @@ const menuGroups: Array<{ id: string; label: string; icon: MenuItem["icon"]; ite
     label: "Ombor",
     icon: Warehouse,
     items: [
-      { icon: PackageOpen, label: "Mahsulotlar", path: "/mahsulotlar", roles: ["admin", "accountant", "sklad"] },
-      { icon: Warehouse, label: "Sklad", path: "/sklad", roles: ["admin", "accountant", "sklad"] },
-      { icon: BarChart3, label: "Sklad hisoboti", path: "/sklad-hisoboti", roles: ["admin", "accountant", "sklad"] },
-      { icon: Factory, label: "Zavod hisob-kitobi", path: "/zavod", roles: ["admin", "accountant", "sklad"] },
+      {
+        icon: PackageOpen,
+        label: "Mahsulotlar",
+        path: "/mahsulotlar",
+        roles: ["admin", "accountant", "sklad"],
+      },
+      {
+        icon: Warehouse,
+        label: "Sklad",
+        path: "/sklad",
+        roles: ["admin", "accountant", "sklad"],
+      },
+      {
+        icon: BarChart3,
+        label: "Sklad hisoboti",
+        path: "/sklad-hisoboti",
+        roles: ["admin", "accountant", "sklad"],
+      },
+      {
+        icon: Factory,
+        label: "Zavod hisob-kitobi",
+        path: "/zavod",
+        roles: ["admin", "accountant", "sklad"],
+      },
     ],
   },
   {
@@ -120,9 +178,24 @@ const menuGroups: Array<{ id: string; label: string; icon: MenuItem["icon"]; ite
     icon: UsersRound,
     items: [
       { icon: UsersRound, label: "Agentlar", path: "/agentlar" },
-      { icon: BriefcaseBusiness, label: "Xodimlar", path: "/xodimlar", roles: ["admin", "accountant"] },
-      { icon: Building2, label: "Mijozlar", path: "/mijozlar", roles: ["admin", "accountant", "agent"] },
-      { icon: FileText, label: "Akt sverka", path: "/akt-sverka", roles: ["admin", "accountant", "agent"] },
+      {
+        icon: BriefcaseBusiness,
+        label: "Xodimlar",
+        path: "/xodimlar",
+        roles: ["admin", "accountant"],
+      },
+      {
+        icon: Building2,
+        label: "Mijozlar",
+        path: "/mijozlar",
+        roles: ["admin", "accountant", "agent"],
+      },
+      {
+        icon: FileText,
+        label: "Akt sverka",
+        path: "/akt-sverka",
+        roles: ["admin", "accountant", "agent"],
+      },
     ],
   },
   {
@@ -132,8 +205,19 @@ const menuGroups: Array<{ id: string; label: string; icon: MenuItem["icon"]; ite
     items: [
       { icon: Boxes, label: "Tara nazorati", path: "/tara" },
       { icon: FileSpreadsheet, label: "Excel import", path: "/import" },
-      { icon: UserCog, label: "Foydalanuvchilar", path: "/foydalanuvchilar", roles: ["admin"] },
-      { icon: ShieldCheck, label: "O‘zgarishlar tarixi", path: "/ozgarishlar-tarixi", roles: ["admin"] },
+      { icon: Settings2, label: "Firma sozlamalari", path: "/firma-sozlamalari", roles: ["admin"] },
+      {
+        icon: UserCog,
+        label: "Foydalanuvchilar",
+        path: "/foydalanuvchilar",
+        roles: ["admin"],
+      },
+      {
+        icon: ShieldCheck,
+        label: "O‘zgarishlar tarixi",
+        path: "/ozgarishlar-tarixi",
+        roles: ["admin"],
+      },
     ],
   },
 ];
@@ -148,13 +232,36 @@ function getInitials(name?: string | null) {
 }
 
 function LoginScreen() {
-  const { login, loginPending, loginError, register, registerPending, registerError } = useAuth();
+  const {
+    login,
+    loginPending,
+    loginError,
+    register,
+    registerPending,
+    registerError,
+  } = useAuth();
   const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const needsSetup = trpc.auth.needsSetup.useQuery();
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
-  const [setupForm, setSetupForm] = useState({ name: "", email: "", password: "" });
+  const [setupForm, setSetupForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+  });
   const [showPassword, setShowPassword] = useState(false);
+  const [platformLogin, setPlatformLogin] = useState<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/runtime", { signal: controller.signal })
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => {
+        if (typeof data?.platformLogin === "string")
+          setPlatformLogin(data.platformLogin);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -185,19 +292,37 @@ function LoginScreen() {
         aria-label={theme === "dark" ? "Yorug‘ rejim" : "Qorong‘i rejim"}
         className="absolute right-5 top-5 grid h-10 w-10 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {theme === "dark" ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
+        {theme === "dark" ? (
+          <Sun className="h-[18px] w-[18px]" />
+        ) : (
+          <Moon className="h-[18px] w-[18px]" />
+        )}
       </button>
       <div className="relative w-full max-w-[460px] rounded-xl border border-border bg-card p-6 shadow-sm sm:p-9">
         <div className="mb-8 flex items-center gap-3">
           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-sidebar text-sidebar-foreground">
-            <img src="/logo.svg" className="h-7 w-7 object-contain" alt="BiznesControl" />
+            <img
+              src="/logo.svg"
+              className="h-7 w-7 object-contain"
+              alt="BiznesControl"
+            />
           </div>
           <div className="min-w-0 flex-1">
-            <p data-no-translit className="text-lg font-bold tracking-tight text-foreground">BiznesControl</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Moliyaviy boshqaruv</p>
+            <p
+              data-no-translit
+              className="text-lg font-bold tracking-tight text-foreground"
+            >
+              BiznesControl
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Moliyaviy boshqaruv
+            </p>
           </div>
           {/* Yozuvni tanlash — kirishdan oldin ham ishlaydi, tanlov brauzerda saqlanadi */}
-          <div data-no-translit className="flex shrink-0 rounded-lg border border-border bg-muted p-0.5 text-[11px] font-semibold">
+          <div
+            data-no-translit
+            className="flex shrink-0 rounded-lg border border-border bg-muted p-0.5 text-[11px] font-semibold"
+          >
             <button
               type="button"
               onClick={() => setLanguage("latin")}
@@ -222,17 +347,21 @@ function LoginScreen() {
           </div>
         ) : isFirstRun ? (
           <>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Boshlang‘ich sozlash</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+              Boshlang‘ich sozlash
+            </h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Tizimda hali birorta ham hisob yo‘q. Shu yerda yaratiladigan birinchi hisob avtomatik rahbar
-              huquqiga ega bo‘ladi.
+              Tizimda hali birorta ham hisob yo‘q. Shu yerda yaratiladigan
+              birinchi hisob avtomatik rahbar huquqiga ega bo‘ladi.
             </p>
             <div className="mt-6 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
               <div className="flex items-start gap-3">
                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
                 <p className="text-xs leading-5 text-muted-foreground">
-                  Bu forma faqat bir marta, tizim birinchi ishga tushirilganda ko‘rinadi. Shu hisob yaratilgach,
-                  keyingi barcha hisoblar Foydalanuvchilar bo‘limidan rahbar/buxgalter tomonidan yaratiladi.
+                  Bu forma faqat bir marta, tizim birinchi ishga tushirilganda
+                  ko‘rinadi. Shu hisob yaratilgach, keyingi barcha hisoblar
+                  Foydalanuvchilar bo‘limidan rahbar/buxgalter tomonidan
+                  yaratiladi.
                 </p>
               </div>
             </div>
@@ -246,7 +375,9 @@ function LoginScreen() {
                   autoFocus
                   autoComplete="name"
                   value={setupForm.name}
-                  onChange={e => setSetupForm(f => ({ ...f, name: e.target.value }))}
+                  onChange={e =>
+                    setSetupForm(f => ({ ...f, name: e.target.value }))
+                  }
                 />
               </div>
               <div className="space-y-1.5">
@@ -257,7 +388,9 @@ function LoginScreen() {
                   required
                   autoComplete="email"
                   value={setupForm.email}
-                  onChange={e => setSetupForm(f => ({ ...f, email: e.target.value }))}
+                  onChange={e =>
+                    setSetupForm(f => ({ ...f, email: e.target.value }))
+                  }
                 />
               </div>
               <div className="space-y-1.5">
@@ -271,20 +404,30 @@ function LoginScreen() {
                     autoComplete="new-password"
                     className="pr-10"
                     value={setupForm.password}
-                    onChange={e => setSetupForm(f => ({ ...f, password: e.target.value }))}
+                    onChange={e =>
+                      setSetupForm(f => ({ ...f, password: e.target.value }))
+                    }
                   />
                   <button
                     type="button"
-                    aria-label={showPassword ? "Parolni yashirish" : "Parolni ko‘rsatish"}
+                    aria-label={
+                      showPassword ? "Parolni yashirish" : "Parolni ko‘rsatish"
+                    }
                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => setShowPassword(current => !current)}
                   >
-                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    {showPassword ? (
+                      <EyeOff className="size-4" />
+                    ) : (
+                      <Eye className="size-4" />
+                    )}
                   </button>
                 </div>
               </div>
               {registerError ? (
-                <p className="break-words text-sm font-medium text-destructive">{registerError.message}</p>
+                <p className="break-words text-sm font-medium text-destructive">
+                  {registerError.message}
+                </p>
               ) : null}
               <Button
                 type="submit"
@@ -292,27 +435,45 @@ function LoginScreen() {
                 disabled={registerPending}
                 className="h-11 w-full gap-2 rounded-lg font-semibold"
               >
-                {registerPending ? <Loader2 className="size-4 animate-spin" /> : null}
-                {registerPending ? "Yaratilmoqda..." : "Rahbar hisobini yaratish"}
+                {registerPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : null}
+                {registerPending
+                  ? "Yaratilmoqda..."
+                  : "Rahbar hisobini yaratish"}
               </Button>
             </form>
           </>
         ) : (
           <>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Tizimga xush kelibsiz</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+              Tizimga xush kelibsiz
+            </h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Savdo, qarzdorlik, kassa va mijozlar ma’lumotlarini yagona xavfsiz muhitda boshqaring.
+              Savdo, qarzdorlik, kassa va mijozlar ma’lumotlarini yagona xavfsiz
+              muhitda boshqaring.
             </p>
             <div className="mt-6 rounded-lg border border-border bg-muted/40 p-3">
               <div className="flex items-start gap-3">
                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <p className="text-xs leading-5 text-muted-foreground">
-                  Yangi hisob rahbar yoki buxgalter tomonidan Foydalanuvchilar bo‘limida yaratiladi — login va
-                  parolni o‘zingiz ro‘yxatdan o‘tolmaysiz, ma’muriyatdan so‘rang.
+                  Yangi hisob rahbar yoki buxgalter tomonidan Foydalanuvchilar
+                  bo‘limida yaratiladi — login va parolni o‘zingiz ro‘yxatdan
+                  o‘tolmaysiz, ma’muriyatdan so‘rang.
                 </p>
               </div>
             </div>
 
+            {platformLogin && (
+              <div className="mt-5 space-y-2">
+                <Button asChild className="w-full">
+                  <a href={platformLogin}>Firma egasi: platformadan kirish</a>
+                </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  Xodimlar quyidagi email va parol orqali kiradi.
+                </p>
+              </div>
+            )}
             <form onSubmit={handleLogin} className="mt-6 space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="login-email">Email</Label>
@@ -323,7 +484,9 @@ function LoginScreen() {
                   autoFocus
                   autoComplete="email"
                   value={loginForm.email}
-                  onChange={e => setLoginForm(f => ({ ...f, email: e.target.value }))}
+                  onChange={e =>
+                    setLoginForm(f => ({ ...f, email: e.target.value }))
+                  }
                 />
               </div>
               <div className="space-y-1.5">
@@ -336,20 +499,30 @@ function LoginScreen() {
                     autoComplete="current-password"
                     className="pr-10"
                     value={loginForm.password}
-                    onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
+                    onChange={e =>
+                      setLoginForm(f => ({ ...f, password: e.target.value }))
+                    }
                   />
                   <button
                     type="button"
-                    aria-label={showPassword ? "Parolni yashirish" : "Parolni ko‘rsatish"}
+                    aria-label={
+                      showPassword ? "Parolni yashirish" : "Parolni ko‘rsatish"
+                    }
                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => setShowPassword(current => !current)}
                   >
-                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    {showPassword ? (
+                      <EyeOff className="size-4" />
+                    ) : (
+                      <Eye className="size-4" />
+                    )}
                   </button>
                 </div>
               </div>
               {loginError ? (
-                <p className="break-words text-sm font-medium text-destructive">{loginError.message}</p>
+                <p className="break-words text-sm font-medium text-destructive">
+                  {loginError.message}
+                </p>
               ) : null}
               <Button
                 type="submit"
@@ -357,14 +530,18 @@ function LoginScreen() {
                 disabled={loginPending}
                 className="h-11 w-full gap-2 rounded-lg font-semibold"
               >
-                {loginPending ? <Loader2 className="size-4 animate-spin" /> : null}
+                {loginPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : null}
                 {loginPending ? "Kirilmoqda..." : "Kirish"}
               </Button>
             </form>
           </>
         )}
 
-        <p className="mt-6 border-t border-border pt-5 text-center text-xs leading-5 text-muted-foreground">Kirish orqali korxona ma’lumotlari maxfiyligi ta’minlanadi.</p>
+        <p className="mt-6 border-t border-border pt-5 text-center text-xs leading-5 text-muted-foreground">
+          Kirish orqali korxona ma’lumotlari maxfiyligi ta’minlanadi.
+        </p>
       </div>
     </div>
   );
@@ -377,11 +554,18 @@ function AccessPending({ onLogout }: { onLogout: () => void }) {
         <div className="mx-auto grid h-14 w-14 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
           <LockKeyhole className="h-8 w-8" />
         </div>
-        <h1 className="mt-6 text-2xl font-bold text-foreground">Kirish hali tasdiqlanmagan</h1>
+        <h1 className="mt-6 text-2xl font-bold text-foreground">
+          Kirish hali tasdiqlanmagan
+        </h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-          Bu hisob tizimga kirdi, ammo rahbar unga hali ruxsat rolini bermagan. Rahbar foydalanuvchilar bo‘limidan ruxsat berishi mumkin.
+          Bu hisob tizimga kirdi, ammo rahbar unga hali ruxsat rolini bermagan.
+          Rahbar foydalanuvchilar bo‘limidan ruxsat berishi mumkin.
         </p>
-        <Button onClick={onLogout} variant="outline" className="mt-7 rounded-lg">
+        <Button
+          onClick={onLogout}
+          variant="outline"
+          className="mt-7 rounded-lg"
+        >
           <LogOut className="mr-2 h-4 w-4" /> Boshqa hisob bilan kirish
         </Button>
       </div>
@@ -393,38 +577,160 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { loading, user, logout } = useAuth();
   if (loading) return <DashboardLayoutSkeleton />;
   if (!user) return <LoginScreen />;
-  if (user.role !== "admin" && user.role !== "accountant" && user.role !== "agent" && user.role !== "sklad") {
+  if (
+    user.role !== "admin" &&
+    user.role !== "accountant" &&
+    user.role !== "agent" &&
+    user.role !== "sklad"
+  ) {
     return <AccessPending onLogout={logout} />;
   }
 
   return (
-    <SidebarProvider defaultOpen style={{ "--sidebar-width": "17rem", "--sidebar-width-icon": "4rem" } as CSSProperties}>
+    <WorkspaceProvider key={user.id} userId={user.id}>
       <DashboardShell onLogout={logout}>{children}</DashboardShell>
+    </WorkspaceProvider>
+  );
+}
+
+function WorkspaceProvider({
+  userId,
+  children,
+}: {
+  userId: number;
+  children: ReactNode;
+}) {
+  const key = `bc:workspace:sidebar:v1:${window.location.host}:${userId}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(key) !== "collapsed";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, open ? "expanded" : "collapsed");
+    } catch {
+      /* Sidebar remains usable without storage. */
+    }
+  }, [key, open]);
+  return (
+    <SidebarProvider
+      open={open}
+      onOpenChange={setOpen}
+      className="company-workspace"
+      style={
+        {
+          "--sidebar-width": "15rem",
+          "--sidebar-width-icon": "4rem",
+        } as CSSProperties
+      }
+    >
+      {children}
     </SidebarProvider>
   );
 }
 
-function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout: () => void }) {
+function DashboardShell({
+  children,
+  onLogout,
+}: {
+  children: ReactNode;
+  onLogout: () => void;
+}) {
   const { user } = useAuth();
+  const company = useCompanyPreferences();
   const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
-  const { state: sidebarState, isMobile, setOpen } = useSidebar();
+  const {
+    state: sidebarState,
+    isMobile,
+    setOpen,
+    setOpenMobile,
+  } = useSidebar();
   const [location, setLocation] = useLocation();
+  const [billingPortal, setBillingPortal] = useState<string | null>(null);
+  useEffect(() => {
+    if (user?.id !== 1 || user.role !== "admin") return;
+    const controller = new AbortController();
+    void fetch("/api/runtime", { signal: controller.signal })
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => {
+        if (typeof data?.platformLogin !== "string") return;
+        const url = new URL(data.platformLogin);
+        if (
+          url.protocol !== "https:" &&
+          !(
+            url.protocol === "http:" &&
+            ["localhost", "127.0.0.1"].includes(url.hostname)
+          )
+        )
+          return;
+        url.pathname = "/platforma";
+        url.search = "";
+        url.hash = "";
+        setBillingPortal(url.href);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [user?.id, user?.role]);
+  const groupStorageKey = `bc:workspace:groups:v1:${window.location.host}:${user?.id}`;
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
-    const currentGroup = menuGroups.find(group => group.items.some(item => item.path === location));
+    try {
+      const saved: unknown = JSON.parse(
+        localStorage.getItem(groupStorageKey) ?? "null"
+      );
+      if (Array.isArray(saved))
+        return new Set(
+          saved.filter(
+            (id): id is string =>
+              typeof id === "string" &&
+              menuGroups.some(group => group.id === id)
+          )
+        );
+    } catch {
+      /* Start with the current section when preferences are unavailable. */
+    }
+    const currentGroup = menuGroups.find(group =>
+      group.items.some(item => item.path === location)
+    );
     return new Set(currentGroup ? [currentGroup.id] : []);
   });
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        groupStorageKey,
+        JSON.stringify(Array.from(openGroups))
+      );
+    } catch {
+      /* Navigation does not depend on storage. */
+    }
+  }, [groupStorageKey, openGroups]);
+  const protectedWorkspace = ["/kassa", "/tezkor-keg"].includes(
+    location.replace(/\/+$/, "")
+  );
   const visibleGroups = menuGroups
     .map(group => ({
       ...group,
-      items: group.items.filter(item => canSeeMenuItem(item, user?.role as AppRole | undefined)),
+      items: group.items.filter(item =>
+        canSeeMenuItem(item, user?.role as AppRole | undefined) && (!moduleForPath(item.path) || company.visible(moduleForPath(item.path)!))
+      ),
     }))
     .filter(group => group.items.length > 0);
-  const activeItem = visibleGroups.flatMap(group => group.items).find(item => item.path === location);
-  const activeGroup = visibleGroups.find(group => group.items.some(item => item.path === location));
+  const activeItem = visibleGroups
+    .flatMap(group => group.items)
+    .find(item => item.path === location);
+  const activeGroup = visibleGroups.find(group =>
+    group.items.some(item => item.path === location)
+  );
   useEffect(() => {
     if (!activeGroup) return;
-    setOpenGroups(current => current.has(activeGroup.id) ? current : new Set(current).add(activeGroup.id));
+    setOpenGroups(current =>
+      current.has(activeGroup.id)
+        ? current
+        : new Set(current).add(activeGroup.id)
+    );
   }, [location, activeGroup?.id]);
   const roleLabels: Record<AppRole, string> = {
     admin: "Rahbar",
@@ -435,80 +741,121 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
   };
   const roleLabel = roleLabels[(user?.role as AppRole | undefined) ?? "user"];
 
+  // Do not briefly expose another profile's default menu/forms while a saved
+  // company configuration is still loading, or silently ignore a read failure.
+  if (company.query.isLoading) return <DashboardLayoutSkeleton />;
+  if (company.query.isError) return <div className="mx-auto w-full max-w-2xl p-6"><QueryError description="Firma sozlamalarini yuklab bo‘lmadi. Davom etish uchun qayta urinib ko‘ring." onRetry={() => void company.query.refetch()} /><Button variant="outline" className="mt-3" onClick={onLogout}>Tizimdan chiqish</Button></div>;
+
   return (
     <>
+      <a
+        href="#company-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50 focus:rounded-lg focus:border focus:bg-card focus:p-3"
+      >
+        Asosiy qismga o‘tish
+      </a>
       <Sidebar collapsible="icon" className="border-sidebar-border">
-        <SidebarHeader className="h-16 justify-center border-b border-sidebar-border px-4 group-data-[collapsible=icon]:px-2">
+        <SidebarHeader className="h-14 justify-center border-b border-sidebar-border px-4 group-data-[collapsible=icon]:px-2">
           <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-sidebar-border bg-sidebar-accent text-sidebar-foreground">
-              <img src="/logo.svg" className="h-6 w-6 object-contain" alt="BiznesControl" />
+            <div
+              data-no-translit
+              className="grid size-8 shrink-0 place-items-center rounded-lg bg-foreground text-[11px] font-bold text-background"
+            >
+              BC
             </div>
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <p data-no-translit className="truncate text-[15px] font-bold tracking-tight text-sidebar-foreground">BiznesControl</p>
-              <p className="mt-0.5 truncate text-[11px] text-sidebar-foreground/60">Savdo va moliya</p>
+              <p
+                data-no-translit
+                className="truncate text-sm font-semibold tracking-tight text-sidebar-foreground"
+              >
+                BiznesControl
+              </p>
+              <p className="mt-0.5 truncate text-[11px] text-sidebar-foreground/60">
+                Firma kabineti
+              </p>
             </div>
           </div>
         </SidebarHeader>
-        <SidebarContent className="gap-0 px-2 py-3 group-data-[collapsible=icon]:overflow-y-auto">
+        <SidebarContent className="gap-1 px-2 py-3 group-data-[collapsible=icon]:overflow-y-auto">
           {visibleGroups.map(group => {
             const isOpen = openGroups.has(group.id);
             const isCurrentGroup = activeGroup?.label === group.label;
             const contentId = `sidebar-group-${group.id}`;
             return (
               <SidebarGroup key={group.id} className="px-0 py-0.5">
-              <button
-                type="button"
-                aria-expanded={sidebarState === "collapsed" && !isMobile ? false : isOpen}
-                aria-controls={contentId}
-                title={group.label}
-                onClick={() => {
-                  if (!isMobile && sidebarState === "collapsed") {
-                    setOpenGroups(current => new Set(current).add(group.id));
-                    setOpen(true);
-                  } else {
-                    setOpenGroups(current => {
-                      const next = new Set(current);
-                      if (next.has(group.id)) next.delete(group.id);
-                      else next.add(group.id);
-                      return next;
-                    });
+                <button
+                  type="button"
+                  aria-expanded={
+                    sidebarState === "collapsed" && !isMobile ? false : isOpen
                   }
-                }}
-                className={`flex h-10 w-full items-center gap-2.5 rounded-lg px-3 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 ${isCurrentGroup ? "bg-sidebar-accent text-sidebar-foreground" : "text-sidebar-foreground/65 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"}`}
-              >
-                <group.icon className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">{group.label}</span>
-                <span className="rounded-md bg-sidebar-accent px-1.5 py-0.5 text-[10px] tabular-nums text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden">{group.items.length}</span>
-                <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[collapsible=icon]:hidden ${isOpen ? "rotate-180" : ""}`} />
-              </button>
-              <SidebarGroupContent id={contentId} hidden={!isOpen} className="group-data-[collapsible=icon]:hidden">
-                <SidebarMenu className="mt-1 gap-0.5 border-l border-sidebar-border ml-5 pl-2">
-                  {group.items.map(item => {
-                    const isActive = location === item.path;
-                    return (
-                      <SidebarMenuItem key={item.path}>
-                        <SidebarMenuButton
-                          isActive={isActive}
-                          aria-current={isActive ? "page" : undefined}
-                          tooltip={item.label}
-                          onClick={() => setLocation(item.path)}
-                          className="h-10 gap-2.5 rounded-md px-3 text-[13px] font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground data-[active=true]:bg-sidebar-primary data-[active=true]:font-semibold data-[active=true]:text-sidebar-primary-foreground md:h-8"
-                        >
-                          <item.icon className={`h-4 w-4 ${isActive ? "text-sidebar-primary-foreground" : "text-sidebar-foreground/60"}`} />
-                          <span>{item.label}</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
+                  aria-controls={contentId}
+                  title={group.label}
+                  onClick={() => {
+                    if (!isMobile && sidebarState === "collapsed") {
+                      setOpenGroups(current => new Set(current).add(group.id));
+                      setOpen(true);
+                    } else {
+                      setOpenGroups(current => {
+                        const next = new Set(current);
+                        if (next.has(group.id)) next.delete(group.id);
+                        else next.add(group.id);
+                        return next;
+                      });
+                    }
+                  }}
+                  className={`flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 ${isCurrentGroup ? "text-sidebar-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"}`}
+                >
+                  <group.icon className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">
+                    {group.label}
+                  </span>
+                  <span className="rounded-md bg-sidebar-accent px-1.5 py-0.5 text-[10px] tabular-nums text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden">
+                    {group.items.length}
+                  </span>
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[collapsible=icon]:hidden ${isOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+                <SidebarGroupContent
+                  id={contentId}
+                  hidden={!isOpen}
+                  className="group-data-[collapsible=icon]:hidden"
+                >
+                  <SidebarMenu className="ml-5 mt-1 w-auto gap-0.5 border-l border-sidebar-border pl-2">
+                    {group.items.map(item => {
+                      const isActive = location === item.path;
+                      return (
+                        <SidebarMenuItem key={item.path}>
+                          <SidebarMenuButton
+                            isActive={isActive}
+                            aria-current={isActive ? "page" : undefined}
+                            tooltip={item.label}
+                            onClick={() => {
+                              setLocation(item.path);
+                              if (isMobile) setOpenMobile(false);
+                            }}
+                            className="h-10 gap-2 rounded-md px-2.5 text-xs font-normal text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground data-[active=true]:bg-sidebar-primary data-[active=true]:font-medium data-[active=true]:text-sidebar-primary-foreground data-[active=true]:shadow-sm data-[active=true]:ring-1 data-[active=true]:ring-border md:h-8"
+                          >
+                            <item.icon
+                              className={`h-4 w-4 ${isActive ? "text-sidebar-primary-foreground" : "text-sidebar-foreground/60"}`}
+                            />
+                            <span>{item.label}</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
               </SidebarGroup>
             );
           })}
         </SidebarContent>
         <SidebarFooter className="gap-2 border-t border-sidebar-border p-3 group-data-[collapsible=icon]:px-2">
           {/* Ko‘rinish va yozuvni tez almashtirish — hisob kartochkasi ustida */}
-          <div data-no-translit className="flex gap-2 group-data-[collapsible=icon]:flex-col">
+          <div
+            data-no-translit
+            className="flex gap-2 group-data-[collapsible=icon]:flex-col"
+          >
             <button
               type="button"
               onClick={toggleTheme}
@@ -516,35 +863,73 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
               aria-label={theme === "dark" ? "Yorug‘ rejim" : "Qorong‘i rejim"}
               className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-sidebar-border text-[11px] font-medium text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:min-h-8"
             >
-              {theme === "dark" ? <Sun className="h-4 w-4 shrink-0" /> : <Moon className="h-4 w-4 shrink-0" />}
-              <span className="group-data-[collapsible=icon]:hidden">{theme === "dark" ? "Yorug‘" : "Qorong‘i"}</span>
+              {theme === "dark" ? (
+                <Sun className="h-4 w-4 shrink-0" />
+              ) : (
+                <Moon className="h-4 w-4 shrink-0" />
+              )}
+              <span className="group-data-[collapsible=icon]:hidden">
+                {theme === "dark" ? "Yorug‘" : "Qorong‘i"}
+              </span>
             </button>
             <button
               type="button"
-              onClick={() => setLanguage(language === "latin" ? "cyrillic" : "latin")}
-              title={language === "latin" ? "Ўзбекчага o‘tish" : "Lotinchaga o‘tish"}
-              aria-label={language === "latin" ? "Ўзбекчага o‘tish" : "Lotinchaga o‘tish"}
+              onClick={() =>
+                setLanguage(language === "latin" ? "cyrillic" : "latin")
+              }
+              title={
+                language === "latin" ? "Ўзбекчага o‘tish" : "Lotinchaga o‘tish"
+              }
+              aria-label={
+                language === "latin" ? "Ўзбекчага o‘tish" : "Lotinchaga o‘tish"
+              }
               className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-sidebar-border text-[11px] font-medium text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:min-h-8"
             >
               <Languages className="h-4 w-4 shrink-0" />
-              <span className="group-data-[collapsible=icon]:hidden">{language === "latin" ? "O‘zb" : "Ўзб"}</span>
+              <span className="group-data-[collapsible=icon]:hidden">
+                {language === "latin" ? "O‘zb" : "Ўзб"}
+              </span>
             </button>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button aria-label={`${user?.name || "Foydalanuvchi"}: hisob menyusi`} className="flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:justify-center">
+              <button
+                aria-label={`${user?.name || "Foydalanuvchi"}: hisob menyusi`}
+                className="flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:justify-center"
+              >
                 <Avatar className="h-8 w-8 shrink-0 rounded-lg">
-                  <AvatarFallback className="rounded-lg bg-sidebar-accent text-xs font-semibold text-sidebar-foreground">{getInitials(user?.name)}</AvatarFallback>
+                  <AvatarFallback className="rounded-lg bg-sidebar-accent text-xs font-semibold text-sidebar-foreground">
+                    {getInitials(user?.name)}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-                  <p className="truncate text-xs font-semibold text-sidebar-foreground">{user?.name || "Foydalanuvchi"}</p>
-                  <p className="mt-0.5 truncate text-[11px] text-sidebar-foreground/60">{roleLabel}</p>
+                  <p className="truncate text-xs font-semibold text-sidebar-foreground">
+                    {user?.name || "Foydalanuvchi"}
+                  </p>
+                  <p className="mt-0.5 truncate text-[11px] text-sidebar-foreground/60">
+                    {roleLabel}
+                  </p>
                 </div>
                 <ChevronDown className="h-4 w-4 text-sidebar-foreground/50 group-data-[collapsible=icon]:hidden" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" side="right" className="w-52 rounded-lg p-1.5">
-              <DropdownMenuItem onClick={onLogout} className="cursor-pointer rounded-md text-destructive focus:text-destructive">
+            <DropdownMenuContent
+              align="end"
+              side="right"
+              className="w-52 rounded-lg p-1.5"
+            >
+              {billingPortal && (
+                <DropdownMenuItem asChild className="cursor-pointer rounded-md">
+                  <a href={billingPortal}>
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    Obuna va to‘lovlar
+                  </a>
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                onClick={onLogout}
+                className="cursor-pointer rounded-md text-destructive focus:text-destructive"
+              >
                 <LogOut className="mr-2 h-4 w-4" /> Tizimdan chiqish
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -553,27 +938,49 @@ function DashboardShell({ children, onLogout }: { children: ReactNode; onLogout:
       </Sidebar>
 
       <SidebarInset className="min-w-0 bg-background">
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 md:px-6">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 md:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <SidebarTrigger aria-label="Menyuni ochish yoki yopish" className="h-8 w-8 shrink-0 rounded-md text-muted-foreground" />
+            <SidebarTrigger
+              aria-label="Menyuni ochish yoki yopish"
+              className="h-8 w-8 shrink-0 rounded-md text-muted-foreground"
+            />
             <div className="hidden h-5 w-px bg-border sm:block" />
             <div className="flex min-w-0 items-center gap-2">
-              <span className="hidden shrink-0 text-xs text-muted-foreground lg:inline">{activeGroup?.label ?? "Ish maydoni"}</span>
+              <span className="hidden shrink-0 text-xs text-muted-foreground lg:inline">
+                {activeGroup?.label ?? "Ish maydoni"}
+              </span>
               <ChevronRight className="hidden h-3.5 w-3.5 shrink-0 text-muted-foreground/60 lg:block" />
-              <h1 className="truncate text-sm font-semibold text-foreground">{activeItem?.label ?? "Boshqaruv paneli"}</h1>
+              <h1 className="truncate text-xs font-medium text-foreground">
+                {activeItem?.label ?? "Boshqaruv paneli"}
+              </h1>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-4">
             <div className="hidden items-center gap-2 text-xs tabular-nums text-muted-foreground md:flex">
               <CalendarDays className="h-3.5 w-3.5" />
-              <span>{new Date().toLocaleDateString("en-GB").replaceAll("/", ".")}</span>
+              <span>
+                {new Date()
+                  .toLocaleDateString("en-GB", { timeZone: "Asia/Tashkent" })
+                  .replaceAll("/", ".")}
+              </span>
             </div>
-            <Badge variant="outline" className="hidden rounded-md border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground sm:inline-flex">
+            <Badge
+              variant="outline"
+              className="hidden rounded-md border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground sm:inline-flex"
+            >
               {roleLabel}
             </Badge>
           </div>
         </header>
-        <div className="min-h-[calc(100vh-4rem)] min-w-0 p-4 md:p-6">{children}</div>
+        <main
+          id="company-content"
+          tabIndex={-1}
+          data-company-style={protectedWorkspace ? "original" : "compact"}
+          className="min-h-[calc(100vh-3.5rem)] min-w-0 p-4 outline-none md:p-6"
+        >
+          <CompanyOnboardingNotice enabled={user?.role === "admin" && location !== "/firma-sozlamalari"} onOpen={() => setLocation("/firma-sozlamalari#shablonlar")} />
+          {children}
+        </main>
       </SidebarInset>
     </>
   );

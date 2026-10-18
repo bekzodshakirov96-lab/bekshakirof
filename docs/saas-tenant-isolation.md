@@ -2,6 +2,10 @@
 
 Status: implemented and tested locally; **not applied to the existing production database**.
 
+## Current query-scope increment
+
+The later `tenant_id` increment now adds columns, tenant-prefixed keys, mandatory Drizzle query filtering and ownership triggers across all 24 tables, while keeping separate company databases/runtimes. Both legacy and isolated runtimes require explicit schema preparation before deployment. See [the current migration/runbook](saas-tenant-query-scope.md). `tenant:db bind` now prepares this scope too; it is no longer a metadata-only operation. Earlier stage-1 verification figures below describe the previous increment.
+
 ## Decision and scope
 
 One immutable company per Node process, one MySQL database and restricted database account per company, one configured hostname set, separate session issuer/cookie and upload directory. The same application version is deployed for all companies. Central self-service signup, provisioning, memberships and subscription billing are later phases.
@@ -41,7 +45,7 @@ Do these operations first on a restored, private staging copy. Commands below in
    npm run tenant:db -- bind --tenant-id legacy --baseline backups/legacy-before-binding.json --apply
    ```
 
-   It checks the current data against the baseline, creates only the metadata table and inserts its identity, then checks all business data again. An existing different identity is never overwritten. Re-running for the same identity is safe. A baseline mismatch fails; if writes happened during preparation, keep maintenance mode and investigate rather than deleting/replacing business data.
+   It checks the current data against the baseline, binds identity, prepares the tenant columns/keys/write guards described in the current query-scope runbook, then checks every original business field again. An existing different identity is never overwritten. Re-running for the same identity is safe. A baseline mismatch fails; if writes happened during preparation, keep maintenance mode and investigate rather than deleting/replacing business data.
 
 5. Configure the original deployment:
 
@@ -64,7 +68,7 @@ Database/schema creation and cloud resource provisioning are intentionally not p
 
 ## Rollback
 
-Binding adds metadata only. Before writers resume, the original company can revert to its recorded application revision and original environment because business tables/IDs and original upload paths were never rewritten. Leave metadata in place; deletion is unnecessary.
+The current binding also adds tenant columns/keys/guards; it does not change original financial/history values or upload paths. Before writers resume, verify the recorded previous application revision against this additive schema in staging. Leave tenant metadata in place; deletion is unnecessary. See the current query-scope runbook for preparation/partial-failure limits.
 
 After writers resume, preserve every newer record; restoring an earlier backup blindly would lose new entries. Do not downgrade newly provisioned company deployments to an older build without company-bound authentication and file guards. Keep them suspended until a tested compatible version is available.
 

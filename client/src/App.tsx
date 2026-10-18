@@ -2,7 +2,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LanguageProvider } from "@/lib/language";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
+import Platform from "./pages/Platform";
 import DashboardLayout from "./components/DashboardLayout";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -25,6 +26,7 @@ import Stock from "./pages/Stock";
 import StockReport from "./pages/StockReport";
 import Transactions from "./pages/Transactions";
 import Users from "./pages/Users";
+import CompanySettings from "./pages/CompanySettings";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -49,6 +51,7 @@ function Router() {
       <Route path={"/import"} component={ImportExcel} />
       <Route path={"/foydalanuvchilar"} component={Users} />
       <Route path={"/ozgarishlar-tarixi"} component={AuditLog} />
+      <Route path={"/firma-sozlamalari"} component={CompanySettings} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
@@ -62,6 +65,8 @@ function Router() {
 // - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
 
 function App() {
+  const [location] = useLocation();
+  const platformPage = location === "/platforma" || location.startsWith("/platforma/") || location === "/super-admin" || location.startsWith("/super-admin/");
   return (
     <ErrorBoundary>
       <ThemeProvider
@@ -71,9 +76,9 @@ function App() {
         <LanguageProvider>
           <TooltipProvider>
             <Toaster />
-            <DashboardLayout>
+            {platformPage ? <Platform /> : <DashboardLayout>
               <Router />
-            </DashboardLayout>
+            </DashboardLayout>}
           </TooltipProvider>
         </LanguageProvider>
       </ThemeProvider>

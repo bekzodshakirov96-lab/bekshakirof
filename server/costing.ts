@@ -9,6 +9,8 @@
  * holda o'rtacha narx sun'iy ravishda pasayib, foyda haqiqatdan katta ko'rinardi.
  */
 
+import { LEGACY_GOODS_PAYMENT_ALIASES, isGoodsPaymentReference, type CashCategoryReference } from "../shared/cashCategoryRegistry";
+
 export type StockInRow = {
   productId: number;
   /** Kirim miqdori (dona). */
@@ -55,11 +57,10 @@ export type ProfitLine = {
  * qiymati allaqachon tannarx (COGS) orqali ayirilgan. Ikkalasini ham ayirsak,
  * bir xil pul ikki marta hisobdan chiqib, foyda haqiqatdan past ko'rinadi.
  */
-export const GOODS_PAYMENT_CATEGORIES = ["Завод", "Zavod", "Tovar uchun to'lov"];
+export const GOODS_PAYMENT_CATEGORIES = [...LEGACY_GOODS_PAYMENT_ALIASES];
 
-export function isGoodsPaymentCategory(category: string): boolean {
-  const normalized = category.trim().toLowerCase();
-  return GOODS_PAYMENT_CATEGORIES.some(name => name.toLowerCase() === normalized);
+export function isGoodsPaymentCategory(category: string | CashCategoryReference): boolean {
+  return isGoodsPaymentReference(typeof category === "string" ? { category } : category);
 }
 
 export type ProfitSummary = {
@@ -114,7 +115,7 @@ export function summarizeProfit(lines: ProfitLine[]): ProfitSummary {
   };
 }
 
-export type ExpenseLine = { category: string; amount: number };
+export type ExpenseLine = CashCategoryReference & { amount: number };
 
 export type OperatingExpenses = {
   /** Sof foydadan ayiriladigan xarajatlar jami. */
@@ -131,7 +132,7 @@ export function summarizeOperatingExpenses(lines: ExpenseLine[]): OperatingExpen
   let total = 0;
   let excludedGoodsPayments = 0;
   for (const line of lines) {
-    if (isGoodsPaymentCategory(line.category)) excludedGoodsPayments += line.amount;
+    if (isGoodsPaymentCategory(line)) excludedGoodsPayments += line.amount;
     else total += line.amount;
   }
   return { total, excludedGoodsPayments };

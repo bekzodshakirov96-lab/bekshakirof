@@ -5,7 +5,9 @@ import { skladProcedure } from "../access";
 import { logAudit } from "../auditLog";
 import { normalizeContainerType } from "../containerAccounting";
 import { requireDb } from "../db";
+import { assertInventoryHistoryMutable } from "../inventoryBoundary";
 import { router } from "../_core/trpc";
+import { bottleReportInput, readBottleReport } from "../bottleReport";
 
 const operationTypeSchema = z.enum(["tara_sent", "filled_received", "brak_returned", "brak_replaced"]);
 
@@ -197,6 +199,7 @@ export const factoryRouter = router({
       await db.transaction(async tx => {
         let stockMovementId: number | null = null;
         if (impact) {
+          await assertInventoryHistoryMutable(tx, [{ productId: input.productId, movementDate: operationDate }]);
           const [movement] = await tx
             .insert(stockMovements)
             .values({
@@ -241,6 +244,10 @@ export const factoryRouter = router({
       .limit(1);
     if (!existing) throw new Error("Yozuv topilmadi yoki allaqachon o'chirilgan.");
     await db.transaction(async tx => {
+      if (existing.stockMovementId) {
+        const movements = await tx.select().from(stockMovements).where(eq(stockMovements.id, existing.stockMovementId));
+        await assertInventoryHistoryMutable(tx, movements);
+      }
       await tx.delete(factoryOperations).where(eq(factoryOperations.id, input.id));
       if (existing.stockMovementId) await tx.delete(stockMovements).where(eq(stockMovements.id, existing.stockMovementId));
       await logAudit(tx, {
@@ -259,6 +266,9 @@ export const factoryRouter = router({
    * Kassa bilan bog'lanmagan: zavoddan olingan pul shu yerda alohida yuritiladi.
    */
   bottles: router({
+    report: skladProcedure.input(bottleReportInput).query(async ({ input }) =>
+      readBottleReport(await requireDb(), input)),
+
     /** Umumiy holat: qo'ldagi zaxira, sotib olish xarajati, sotuv summasi,
      * foyda, zavod to'lagan pul va zavod qarzi. */
     summary: skladProcedure.query(async () => {

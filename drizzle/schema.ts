@@ -9,6 +9,7 @@ import {
   mysqlEnum,
   index,
   uniqueIndex,
+  primaryKey,
   mysqlTable,
 } from "drizzle-orm/mysql-core";
 
@@ -18,6 +19,7 @@ import {
  * Columns use camelCase to match both database fields and generated types.
  */
 export const users = mysqlTable("users", {
+  tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
   /**
    * Surrogate primary key. Auto-incremented numeric value managed by the database.
    * Use this for relations between tables. The very first user created (id = 1)
@@ -26,7 +28,7 @@ export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 255 }),
   /** Login identifier for self-hosted email + password authentication. */
-  email: varchar("email", { length: 255 }).notNull().unique(),
+  email: varchar("email", { length: 255 }).notNull(),
   /** bcrypt hash of the user's password. Never store or return plaintext. */
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
   role: mysqlEnum("role", ["user", "admin", "accountant", "agent", "sklad"]).default("user").notNull(),
@@ -44,7 +46,7 @@ export const users = mysqlTable("users", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
-});
+}, table => [uniqueIndex("users_email_unique").on(table.tenantId, table.email)]);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
@@ -52,6 +54,7 @@ export type InsertUser = typeof users.$inferInsert;
 export const agents = mysqlTable(
   "agents",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     name: varchar("name", { length: 255 }).notNull(),
     phone: varchar("phone", { length: 255 }),
@@ -64,7 +67,7 @@ export const agents = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
-  table => [uniqueIndex("agents_name_unique").on(table.name), index("agents_position_idx").on(table.positionId)],
+  table => [uniqueIndex("agents_name_unique").on(table.tenantId, table.name), index("agents_position_idx").on(table.tenantId, table.positionId)],
 );
 
 /**
@@ -78,13 +81,14 @@ export const agents = mysqlTable(
 export const positions = mysqlTable(
   "positions",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     name: varchar("name", { length: 255 }).notNull(),
     isActive: boolean("isActive").default(true).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
-  table => [uniqueIndex("positions_name_unique").on(table.name)],
+  table => [uniqueIndex("positions_name_unique").on(table.tenantId, table.name)],
 );
 
 /**
@@ -98,6 +102,7 @@ export const positions = mysqlTable(
 export const employees = mysqlTable(
   "employees",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     name: varchar("name", { length: 255 }).notNull(),
     positionId: int("positionId").references(() => positions.id, { onDelete: "set null" }),
@@ -107,12 +112,13 @@ export const employees = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
-  table => [uniqueIndex("employees_name_unique").on(table.name), index("employees_position_idx").on(table.positionId)],
+  table => [uniqueIndex("employees_name_unique").on(table.tenantId, table.name), index("employees_position_idx").on(table.tenantId, table.positionId)],
 );
 
 export const clients = mysqlTable(
   "clients",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     code: varchar("code", { length: 255 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(),
@@ -129,15 +135,16 @@ export const clients = mysqlTable(
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
   table => [
-    uniqueIndex("clients_code_unique").on(table.code),
-    index("clients_agent_idx").on(table.agentId),
-    index("clients_name_idx").on(table.name),
+    uniqueIndex("clients_code_unique").on(table.tenantId, table.code),
+    index("clients_agent_idx").on(table.tenantId, table.agentId),
+    index("clients_name_idx").on(table.tenantId, table.name),
   ],
 );
 
 export const products = mysqlTable(
   "products",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     code: varchar("code", { length: 255 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(),
@@ -154,14 +161,15 @@ export const products = mysqlTable(
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
   table => [
-    uniqueIndex("products_code_unique").on(table.code),
-    index("products_name_idx").on(table.name),
+    uniqueIndex("products_code_unique").on(table.tenantId, table.code),
+    index("products_name_idx").on(table.tenantId, table.name),
   ],
 );
 
 export const transactions = mysqlTable(
   "transactions",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     sourceKey: varchar("sourceKey", { length: 255 }).notNull(),
     transactionDate: timestamp("transactionDate").notNull(),
@@ -192,16 +200,17 @@ export const transactions = mysqlTable(
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
   table => [
-    uniqueIndex("transactions_source_key_unique").on(table.sourceKey),
-    index("transactions_date_idx").on(table.transactionDate),
-    index("transactions_agent_idx").on(table.agentId),
-    index("transactions_client_idx").on(table.clientId),
+    uniqueIndex("transactions_source_key_unique").on(table.tenantId, table.sourceKey),
+    index("transactions_date_idx").on(table.tenantId, table.transactionDate),
+    index("transactions_agent_idx").on(table.tenantId, table.agentId),
+    index("transactions_client_idx").on(table.tenantId, table.clientId),
   ],
 );
 
 export const cashEntries = mysqlTable(
   "cash_entries",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     sourceKey: varchar("sourceKey", { length: 255 }).notNull(),
     entryDate: timestamp("entryDate").notNull(),
@@ -226,10 +235,10 @@ export const cashEntries = mysqlTable(
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
   table => [
-    uniqueIndex("cash_entries_source_key_unique").on(table.sourceKey),
-    index("cash_entries_date_idx").on(table.entryDate),
-    index("cash_entries_agent_idx").on(table.agentId),
-    index("cash_entries_employee_idx").on(table.employeeId),
+    uniqueIndex("cash_entries_source_key_unique").on(table.tenantId, table.sourceKey),
+    index("cash_entries_date_idx").on(table.tenantId, table.entryDate),
+    index("cash_entries_agent_idx").on(table.tenantId, table.agentId),
+    index("cash_entries_employee_idx").on(table.tenantId, table.employeeId),
   ],
 );
 
@@ -237,6 +246,7 @@ export const cashEntries = mysqlTable(
 export const cashTransferLinks = mysqlTable(
   "cash_transfer_links",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     cashEntryId: int("cashEntryId").notNull().references(() => cashEntries.id, { onDelete: "cascade" }),
     transactionId: int("transactionId").references(() => transactions.id, { onDelete: "restrict" }),
@@ -244,9 +254,9 @@ export const cashTransferLinks = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   table => [
-    index("cash_transfer_links_cash_idx").on(table.cashEntryId),
-    uniqueIndex("cash_transfer_links_transaction_unique").on(table.transactionId),
-    uniqueIndex("cash_transfer_links_payment_unique").on(table.clientPaymentId),
+    index("cash_transfer_links_cash_idx").on(table.tenantId, table.cashEntryId),
+    uniqueIndex("cash_transfer_links_transaction_unique").on(table.tenantId, table.transactionId),
+    uniqueIndex("cash_transfer_links_payment_unique").on(table.tenantId, table.clientPaymentId),
   ],
 );
 
@@ -254,6 +264,7 @@ export const cashTransferLinks = mysqlTable(
 export const cashJournalDebts = mysqlTable(
   "cash_journal_debts",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     entryDate: timestamp("entryDate").notNull(),
     agentId: int("agentId").references(() => agents.id, { onDelete: "set null" }),
@@ -266,9 +277,9 @@ export const cashJournalDebts = mysqlTable(
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
   table => [
-    index("cash_journal_debts_date_idx").on(table.entryDate),
-    index("cash_journal_debts_agent_idx").on(table.agentId),
-    index("cash_journal_debts_employee_idx").on(table.employeeId),
+    index("cash_journal_debts_date_idx").on(table.tenantId, table.entryDate),
+    index("cash_journal_debts_agent_idx").on(table.tenantId, table.agentId),
+    index("cash_journal_debts_employee_idx").on(table.tenantId, table.employeeId),
   ],
 );
 
@@ -276,6 +287,7 @@ export const cashJournalDebts = mysqlTable(
 export const cashJournalDebtRepayments = mysqlTable(
   "cash_journal_debt_repayments",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     debtId: int("debtId").notNull().references(() => cashJournalDebts.id, { onDelete: "restrict" }),
     paymentDate: timestamp("paymentDate").notNull(),
@@ -291,15 +303,16 @@ export const cashJournalDebtRepayments = mysqlTable(
     voidReason: varchar("voidReason", { length: 500 }),
   },
   table => [
-    index("cash_debt_repayments_debt_idx").on(table.debtId),
-    uniqueIndex("cash_debt_repayments_cash_entry_unique").on(table.cashEntryId),
-    index("cash_debt_repayments_date_idx").on(table.paymentDate),
+    index("cash_debt_repayments_debt_idx").on(table.tenantId, table.debtId),
+    uniqueIndex("cash_debt_repayments_cash_entry_unique").on(table.tenantId, table.cashEntryId),
+    index("cash_debt_repayments_date_idx").on(table.tenantId, table.paymentDate),
   ],
 );
 
 export const containerMovements = mysqlTable(
   "container_movements",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     sourceKey: varchar("sourceKey", { length: 255 }).notNull(),
     movementDate: timestamp("movementDate").notNull(),
@@ -317,15 +330,15 @@ export const containerMovements = mysqlTable(
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
   table => [
-    uniqueIndex("container_movements_source_key_unique").on(table.sourceKey),
-    uniqueIndex("container_movements_transaction_unique").on(
+    uniqueIndex("container_movements_source_key_unique").on(table.tenantId, table.sourceKey),
+    uniqueIndex("container_movements_transaction_unique").on(table.tenantId,
       table.transactionId,
       table.movementType,
       table.containerType,
     ),
-    index("container_movements_date_idx").on(table.movementDate),
-    index("container_movements_client_idx").on(table.clientId),
-    index("container_movements_transaction_idx").on(table.transactionId),
+    index("container_movements_date_idx").on(table.tenantId, table.movementDate),
+    index("container_movements_client_idx").on(table.tenantId, table.clientId),
+    index("container_movements_transaction_idx").on(table.tenantId, table.transactionId),
   ],
 );
 
@@ -339,6 +352,7 @@ export const containerMovements = mysqlTable(
 export const stockMovements = mysqlTable(
   "stockMovements",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     productId: int("productId").references(() => products.id, { onDelete: "cascade" }).notNull(),
     movementType: mysqlEnum("movementType", ["in", "out"]).notNull(),
@@ -355,9 +369,9 @@ export const stockMovements = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   table => [
-    index("stock_movements_product_idx").on(table.productId),
-    index("stock_movements_date_idx").on(table.movementDate),
-    index("stock_movements_transaction_idx").on(table.transactionId),
+    index("stock_movements_product_idx").on(table.tenantId, table.productId),
+    index("stock_movements_date_idx").on(table.tenantId, table.movementDate),
+    index("stock_movements_transaction_idx").on(table.tenantId, table.transactionId),
   ],
 );
 
@@ -371,6 +385,7 @@ export const stockMovements = mysqlTable(
 export const factoryOperations = mysqlTable(
   "factory_operations",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     operationDate: timestamp("operationDate").notNull(),
     operationType: mysqlEnum("operationType", ["tara_sent", "filled_received", "brak_returned", "brak_replaced"]).notNull(),
@@ -382,8 +397,8 @@ export const factoryOperations = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   table => [
-    index("factory_operations_product_idx").on(table.productId),
-    index("factory_operations_date_idx").on(table.operationDate),
+    index("factory_operations_product_idx").on(table.tenantId, table.productId),
+    index("factory_operations_date_idx").on(table.tenantId, table.operationDate),
   ],
 );
 
@@ -398,6 +413,7 @@ export const factoryOperations = mysqlTable(
 export const clientPayments = mysqlTable(
   "client_payments",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     clientId: int("clientId").references(() => clients.id, { onDelete: "cascade" }).notNull(),
     /** To'lovni qabul qilgan agent — komissiya (oylik) hisobida shu mijozning
@@ -413,9 +429,9 @@ export const clientPayments = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   table => [
-    index("client_payments_client_idx").on(table.clientId),
-    index("client_payments_date_idx").on(table.paymentDate),
-    index("client_payments_agent_idx").on(table.agentId),
+    index("client_payments_client_idx").on(table.tenantId, table.clientId),
+    index("client_payments_date_idx").on(table.tenantId, table.paymentDate),
+    index("client_payments_agent_idx").on(table.tenantId, table.agentId),
   ],
 );
 
@@ -434,6 +450,7 @@ export const clientPayments = mysqlTable(
 export const bottleMovements = mysqlTable(
   "bottle_movements",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     movementDate: timestamp("movementDate").notNull(),
     movementType: mysqlEnum("movementType", ["purchase", "sent", "payment"]).notNull(),
@@ -447,12 +464,13 @@ export const bottleMovements = mysqlTable(
     createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
-  table => [index("bottle_movements_date_idx").on(table.movementDate)],
+  table => [index("bottle_movements_date_idx").on(table.tenantId, table.movementDate)],
 );
 
 export const importHistory = mysqlTable(
   "import_history",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     fileName: varchar("fileName", { length: 255 }).notNull(),
     fileKey: varchar("fileKey", { length: 255 }),
@@ -469,13 +487,14 @@ export const importHistory = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     completedAt: timestamp("completedAt"),
   },
-  table => [index("import_history_created_idx").on(table.createdAt)],
+  table => [index("import_history_created_idx").on(table.tenantId, table.createdAt)],
 );
 
 /** One row per calendar day: the actual counted cash, compared against the computed Kassa qoldig'i. */
 export const kassaDailyActuals = mysqlTable(
   "kassa_daily_actuals",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     entryDate: timestamp("entryDate").notNull(),
     actualCash: int("actualCash").default(0).notNull(),
@@ -491,7 +510,7 @@ export const kassaDailyActuals = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
-  table => [uniqueIndex("kassa_daily_actuals_date_unique").on(table.entryDate)],
+  table => [uniqueIndex("kassa_daily_actuals_date_unique").on(table.tenantId, table.entryDate)],
 );
 
 /**
@@ -499,11 +518,64 @@ export const kassaDailyActuals = mysqlTable(
  * sale). unitPrice is snapshotted at entry time so later price changes don't rewrite
  * history — mirrors transactions.currentPrice/salePrice.
  */
+export const matrixStockConfigs = mysqlTable("matrix_stock_configs", {
+  tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("productId").notNull().references(() => products.id),
+  effectiveDate: timestamp("effectiveDate").notNull(),
+  openingQuantity: decimal("openingQuantity", { precision: 12, scale: 3 }).notNull(),
+  createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [uniqueIndex("matrix_stock_product_unique").on(table.tenantId, table.productId)]);
+
+/** Immutable explanations for matrix-generated stock movements. Taking source IDs
+ * intentionally survive removal of the editable financial source row. */
+export const matrixStockEvents = mysqlTable("matrix_stock_events", {
+  tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("productId").notNull().references(() => products.id),
+  kind: mysqlEnum("kind", ["opening", "receipt", "receipt_reversal", "taking"]).notNull(),
+  quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull(),
+  movementDate: timestamp("movementDate").notNull(),
+  sourceEntryId: int("sourceEntryId"),
+  reversesId: int("reversesId"),
+  requestKey: varchar("requestKey", { length: 100 }).notNull(),
+  stockMovementId: int("stockMovementId").references(() => stockMovements.id),
+  note: varchar("note", { length: 1000 }),
+  createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("matrix_stock_request_unique").on(table.tenantId, table.requestKey),
+  uniqueIndex("matrix_stock_reversal_unique").on(table.tenantId, table.reversesId),
+  index("matrix_stock_event_date_idx").on(table.tenantId, table.productId, table.movementDate),
+  index("matrix_stock_event_source_idx").on(table.tenantId, table.sourceEntryId),
+]);
+
+/** Durable cell edits, including deletions. IDs are monotonic edit versions;
+ * request IDs survive retries and quantity cycles (40 -> 10 -> 40). */
+export const matrixCellWrites = mysqlTable("matrix_cell_writes", {
+  tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
+  id: int("id").autoincrement().primaryKey(),
+  entryDate: timestamp("entryDate").defaultNow().notNull(),
+  productId: int("productId").notNull().references(() => products.id),
+  agentId: int("agentId").notNull().references(() => agents.id),
+  requestKey: varchar("requestKey", { length: 100 }).notNull(),
+  expectedVersion: int("expectedVersion").notNull(),
+  expectedQuantity: decimal("expectedQuantity", { precision: 12, scale: 3 }).notNull(),
+  quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull(),
+  createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("matrix_cell_request_unique").on(table.tenantId, table.requestKey),
+  index("matrix_cell_version_idx").on(table.tenantId, table.entryDate, table.productId, table.agentId, table.id),
+]);
+
 export const agentTakingEntries = mysqlTable(
   "agent_taking_entries",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
-    entryDate: timestamp("entryDate").notNull(),
+    entryDate: timestamp("entryDate").defaultNow().notNull(),
     agentId: int("agentId")
       .notNull()
       .references(() => agents.id, { onDelete: "cascade" }),
@@ -516,7 +588,7 @@ export const agentTakingEntries = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
-  table => [index("agent_taking_entries_date_agent_idx").on(table.entryDate, table.agentId)],
+  table => [index("agent_taking_entries_date_agent_idx").on(table.tenantId, table.entryDate, table.agentId)],
 );
 
 /**
@@ -528,6 +600,7 @@ export const agentTakingEntries = mysqlTable(
 export const dailyProductPrices = mysqlTable(
   "daily_product_prices",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     entryDate: timestamp("entryDate").notNull(),
     productId: int("productId")
@@ -538,7 +611,7 @@ export const dailyProductPrices = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
-  table => [uniqueIndex("daily_product_prices_date_product_unique").on(table.entryDate, table.productId)],
+  table => [uniqueIndex("daily_product_prices_date_product_unique").on(table.tenantId, table.entryDate, table.productId)],
 );
 
 /**
@@ -549,6 +622,7 @@ export const dailyProductPrices = mysqlTable(
 export const cashMatrixLayouts = mysqlTable(
   "cash_matrix_layouts",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     effectiveDate: timestamp("effectiveDate").notNull(),
     layout: text("layout").notNull(),
@@ -556,13 +630,14 @@ export const cashMatrixLayouts = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
-  table => [uniqueIndex("cash_matrix_layouts_date_unique").on(table.effectiveDate)],
+  table => [uniqueIndex("cash_matrix_layouts_date_unique").on(table.tenantId, table.effectiveDate)],
 );
 
 /** How much cash each agent handed over on a given day, one row per agent per day. */
 export const agentCashSubmissions = mysqlTable(
   "agent_cash_submissions",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     entryDate: timestamp("entryDate").notNull(),
     agentId: int("agentId")
@@ -574,7 +649,7 @@ export const agentCashSubmissions = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   },
-  table => [uniqueIndex("agent_cash_submissions_date_agent_unique").on(table.entryDate, table.agentId)],
+  table => [uniqueIndex("agent_cash_submissions_date_agent_unique").on(table.tenantId, table.entryDate, table.agentId)],
 );
 
 /**
@@ -586,6 +661,7 @@ export const agentCashSubmissions = mysqlTable(
 export const auditLog = mysqlTable(
   "audit_log",
   {
+    tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
     tableName: varchar("tableName", { length: 64 }).notNull(),
     recordId: int("recordId").notNull(),
@@ -599,19 +675,20 @@ export const auditLog = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   table => [
-    index("audit_log_table_record_idx").on(table.tableName, table.recordId),
-    index("audit_log_created_idx").on(table.createdAt),
-    index("audit_log_user_idx").on(table.userId),
+    index("audit_log_table_record_idx").on(table.tenantId, table.tableName, table.recordId),
+    index("audit_log_created_idx").on(table.tenantId, table.createdAt),
+    index("audit_log_user_idx").on(table.tenantId, table.userId),
   ],
 );
 
 /** Oddiy kalit-qiymat sozlamalar — masalan davr qulfi sanasi. */
 export const appSettings = mysqlTable("app_settings", {
-  key: varchar("key", { length: 64 }).primaryKey(),
+  tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
+  key: varchar("key", { length: 64 }).notNull(),
   value: varchar("value", { length: 500 }),
   updatedBy: int("updatedBy").references(() => users.id, { onDelete: "set null" }),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+}, table => [primaryKey({ columns: [table.tenantId, table.key] })]);
 
 export type Agent = typeof agents.$inferSelect;
 export type InsertAgent = typeof agents.$inferInsert;
