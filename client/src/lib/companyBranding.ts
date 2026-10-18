@@ -25,8 +25,10 @@ export function useCompanyBrandTheme(
       cardDark: branding.cardDark,
       tableLight: branding.tableLight,
       tableDark: branding.tableDark,
+      sidebarLight: branding.sidebarLight,
+      sidebarDark: branding.sidebarDark,
     });
-    const attributes = ["card", "table"].map(kind => {
+    const attributes = ["card", "table", "sidebar"].map(kind => {
       const name = `data-company-${kind}-color`;
       const prior = root.getAttribute(name);
       const value = values[`--company-${kind}-background`] ? "custom" : null;
@@ -66,6 +68,8 @@ export function useCompanyBrandTheme(
     branding.cardDark,
     branding.tableLight,
     branding.tableDark,
+    branding.sidebarLight,
+    branding.sidebarDark,
     theme,
   ]);
   useLayoutEffect(() => {

@@ -26,6 +26,8 @@ describe("per-company visual identity input", () => {
       cardDark: null,
       tableLight: null,
       tableDark: null,
+      sidebarLight: null,
+      sidebarDark: null,
       logoUrl: null,
     });
     expect(companyBrandingSaveSchema.parse(input).branding.color).toBe(
@@ -100,6 +102,8 @@ describe("per-company visual identity input", () => {
       "cardDark",
       "tableLight",
       "tableDark",
+      "sidebarLight",
+      "sidebarDark",
     ])
       for (const value of [
         "red",
@@ -124,6 +128,8 @@ describe("per-company visual identity input", () => {
       "cardDark",
       "tableLight",
       "tableDark",
+      "sidebarLight",
+      "sidebarDark",
     ] as const) {
       expect(read[field]).toBeNull();
       expect(
