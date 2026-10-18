@@ -33,6 +33,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --legacy-peer-deps
+      - name: Allow trigger fixtures on disposable CI MySQL only
+        run: |
+          node --input-type=module <<'NODE'
+          import mysql from 'mysql2/promise';
+          const u = new URL(process.env.TENANT_ISOLATION_TEST_URL);
+          if (process.env.CI !== 'true' || u.hostname !== '127.0.0.1' || u.port !== '43317' || u.pathname !== '/mysql') throw Error('Disposable CI server only');
+          const db = await mysql.createConnection(u.href);
+          try { await db.query('SET GLOBAL log_bin_trust_function_creators = 1'); }
+          finally { await db.end(); }
+          NODE
       - run: npm run check
       - run: npm test
       - run: npm run build
