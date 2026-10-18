@@ -15,6 +15,7 @@ import { ensureCashJournalDebtTable } from "../cashJournalDebtSchema";
 import { ensureCashMatrixLayoutTable } from "../cashMatrixLayoutSchema";
 import { ensureCashTransferLinkTable } from "../cashTransferLinkSchema";
 import { ensureCashDebtRepaymentSchema } from "../cashDebtRepaymentSchema";
+import { installReleaseMaintenance } from "../releaseMaintenance";
 
 // Kun chegaralari (Kassa, hisobotlar) server jarayonining LOKAL vaqt mintaqasiga tayanadi
 // (masalan, `new Date(...).setHours(0,0,0,0)`). Biznes doim Toshkentda ishlaydi, shuning
@@ -53,6 +54,7 @@ async function startServer() {
     await ensureMatrixInventorySchema();
   }
   const app = express();
+  installReleaseMaintenance(app, UPLOADS_DIR);
   const server = createServer(app);
   // Reverse proxy ortida ishlaganda haqiqiy mijoz IP'sini olish uchun (rate-limit shunga tayanadi).
   app.set("trust proxy", 1);
