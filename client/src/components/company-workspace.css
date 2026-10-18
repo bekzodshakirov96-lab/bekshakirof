@@ -2,20 +2,36 @@
 .company-workspace,
 [data-sidebar="sidebar"][data-mobile="true"] {
   --sidebar: var(--company-sidebar, #f0f2f6);
-  --sidebar-foreground: var(--foreground);
+  --sidebar-foreground: var(--company-sidebar-foreground, var(--foreground));
   --sidebar-primary: var(--company-sidebar-primary, var(--card));
   --sidebar-primary-foreground: var(
     --company-sidebar-primary-foreground,
     var(--foreground)
   );
-  --sidebar-accent: var(--secondary);
-  --sidebar-accent-foreground: var(--foreground);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--ring);
+  --sidebar-accent: var(--company-sidebar-accent, var(--secondary));
+  --sidebar-accent-foreground: var(
+    --company-sidebar-accent-foreground,
+    var(--foreground)
+  );
+  --sidebar-border: var(--company-sidebar-border, var(--border));
+  --sidebar-ring: var(--company-sidebar-ring, var(--ring));
 }
 .dark .company-workspace,
 .dark [data-sidebar="sidebar"][data-mobile="true"] {
   --sidebar: var(--company-sidebar, #141c29);
+}
+
+/* Keep muted labels/icons readable even when the owner picks a mid-tone.
+ * Scope includes the portalled mobile sheet, and never changes legacy themes. */
+html[data-company-sidebar-color="custom"]
+  [data-sidebar="sidebar"]
+  [class*="text-sidebar-foreground/"]:not([data-active="true"]) {
+  color: var(--sidebar-foreground);
+}
+html[data-company-sidebar-color="custom"]
+  [data-sidebar="sidebar"]
+  [data-active="true"] {
+  --tw-ring-color: var(--sidebar-primary-foreground);
 }
 
 /* Opt-in scopes: legacy firms keep their exact existing palette. The draft

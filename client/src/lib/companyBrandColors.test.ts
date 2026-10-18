@@ -1,6 +1,77 @@
 import { describe, it, expect } from "vitest";
 import { companyBrandVariables, colorContrast } from "./companyBrandColors";
 describe("readable company color palettes", () => {
+  it("keeps sidebar choices independent and removes overrides on automatic reset", () => {
+    const fields = {
+      light: "#FFF1E0",
+      dark: "#17202E",
+      cardLight: "#E8F5EF",
+      tableLight: "#EDF2FF",
+    };
+    for (const dark of [false, true]) {
+      const original = companyBrandVariables("#0F766E", dark, fields);
+      const custom = companyBrandVariables("#0F766E", dark, {
+        ...fields,
+        sidebarLight: "#45345C",
+        sidebarDark: "#F7EDDA",
+      });
+      for (const [key, value] of Object.entries(original))
+        if (!key.startsWith("--company-sidebar"))
+          expect(custom[key]).toBe(value);
+      expect(custom["--company-sidebar"]).toBe(dark ? "#F7EDDA" : "#45345C");
+      expect(custom["--primary"]).toBe(original["--primary"]);
+      expect(
+        companyBrandVariables("#0F766E", dark, {
+          ...fields,
+          sidebarLight: null,
+          sidebarDark: null,
+        })
+      ).toEqual(original);
+    }
+    expect(
+      companyBrandVariables(null, true, { sidebarLight: "#FFFFFF" })
+    ).toEqual({});
+    expect(
+      companyBrandVariables(null, false, { sidebarLight: "url(bad)" })
+    ).toEqual({});
+    const sidebarOnly = companyBrandVariables(null, false, {
+      sidebarLight: "#000000",
+    });
+    expect(sidebarOnly).not.toHaveProperty("--background");
+    expect(sidebarOnly).not.toHaveProperty("--primary");
+    expect(sidebarOnly).not.toHaveProperty("--card");
+    expect(sidebarOnly["--company-sidebar-primary"]).toBe("#285BD4");
+  });
+  it.each([
+    "#000000",
+    "#FFFFFF",
+    "#808080",
+    "#FF0000",
+    "#00FF00",
+    "#0000FF",
+    "#FFFF00",
+  ])("keeps sidebar text, hover and active item readable on %s", color => {
+    for (const dark of [false, true])
+      for (const primary of [null, "#FFFFFF", "#000000", "#0F766E"]) {
+        const v = companyBrandVariables(primary, dark, {
+          sidebarLight: color,
+          sidebarDark: color,
+        });
+        for (const bg of ["--company-sidebar", "--company-sidebar-accent"])
+          expect(
+            colorContrast(v[bg], v["--company-sidebar-foreground"])
+          ).toBeGreaterThanOrEqual(4.5);
+        expect(
+          colorContrast(
+            v["--company-sidebar-primary"],
+            v["--company-sidebar-primary-foreground"]
+          )
+        ).toBeGreaterThanOrEqual(4.5);
+        expect(
+          Object.keys(v).some(k => /destructive|success|warning|chart/.test(k))
+        ).toBe(false);
+      }
+  });
   it("changes card/table surfaces independently without changing the page, accent or financial tokens", () => {
     const choices = {
       cardLight: "#F0FFF4",

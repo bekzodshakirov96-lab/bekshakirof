@@ -30,7 +30,10 @@ export function contrastText(color: string) {
     ? "#FFFFFF"
     : "#000000";
 }
-function surfaceVariables(kind: "card" | "table", color?: string | null) {
+function surfaceVariables(
+  kind: "card" | "table" | "sidebar",
+  color?: string | null
+) {
   if (!color || !/^#[0-9a-f]{6}$/i.test(color)) return {};
   const foreground = contrastText(color);
   // Shade away from the text so the header and hover retain its contrast.
@@ -41,6 +44,24 @@ function surfaceVariables(kind: "card" | "table", color?: string | null) {
     [`--company-${kind}-muted`]: mix(color, shade, 0.08),
     [`--company-${kind}-hover`]: mix(color, shade, 0.05),
     [`--company-${kind}-border`]: mix(color, foreground, 0.25),
+  };
+}
+function sidebarVariables(
+  color: string | null | undefined,
+  primary: string | null
+) {
+  const surface = surfaceVariables("sidebar", color);
+  if (!surface["--company-sidebar-background"]) return {};
+  const active = primary ?? "#285BD4";
+  return {
+    ...surface,
+    "--company-sidebar": color!,
+    "--company-sidebar-accent": surface["--company-sidebar-hover"],
+    "--company-sidebar-accent-foreground":
+      surface["--company-sidebar-foreground"],
+    "--company-sidebar-ring": surface["--company-sidebar-foreground"],
+    "--company-sidebar-primary": active,
+    "--company-sidebar-primary-foreground": contrastText(active),
   };
 }
 /** Brand accents/tints only. Financial success, warning and error colors retain
@@ -55,6 +76,8 @@ export function companyBrandVariables(
     cardDark?: string | null;
     tableLight?: string | null;
     tableDark?: string | null;
+    sidebarLight?: string | null;
+    sidebarDark?: string | null;
   } = {}
 ): Record<string, string> {
   const valid = (value: string | null | undefined): value is string =>
@@ -72,7 +95,11 @@ export function companyBrandVariables(
       dark ? backgrounds.tableDark : backgrounds.tableLight
     ),
   };
-  if (!primary && !customBackground) return surfaces;
+  const sidebar = sidebarVariables(
+    dark ? backgrounds.sidebarDark : backgrounds.sidebarLight,
+    primary
+  );
+  if (!primary && !customBackground) return { ...surfaces, ...sidebar };
   // The chosen background is exact. Adapt nearby surfaces/text when the owner
   // picks e.g. black in light mode or white in dark mode, preserving legibility.
   const surfaceDark = customBackground
@@ -126,5 +153,6 @@ export function companyBrandVariables(
     "--company-sidebar": surfaceDark
       ? mix(tint, "#060B14", 0.94)
       : mix(tint, "#FFFFFF", 0.93),
+    ...sidebar,
   };
 }
