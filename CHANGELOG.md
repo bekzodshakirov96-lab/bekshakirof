@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- SaaS super-admin yon menyusi va umumiy oynalar silliq ochilib-yopiladi;
+  harakatni kamaytirish sozlamasi qo‘llab-quvvatlanadi.
+
 - Agent × Tovar jadvalida yangi kelgan tovarlarni bevosita Prixod katagiga yozish
   va har bir tovarning kun yakunidagi ombor qoldig'ini ko'rish mumkin.
 - Qoldiq keyingi kunga o'tadi; rahbar sanab tasdiqlagan boshlang'ich qoldiq
