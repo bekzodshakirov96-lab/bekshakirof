@@ -2,6 +2,7 @@ import { jsxLocPlugin } from "@builder.io/vite-plugin-jsx-loc";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
@@ -152,10 +153,19 @@ function vitePluginManusDebugCollector(): Plugin {
 
 // Developer inspection tools must never ship to customer browsers.
 const developmentPlugins: Plugin[] = [jsxLocPlugin(), ...(process.env.PLATFORM_SERVER === "true" ? [] : [vitePluginManusRuntime(), vitePluginManusDebugCollector()])];
-const plugins = [react(), tailwindcss(), ...developmentPlugins.map(plugin => ({ ...plugin, apply: "serve" as const }))];
+const clientBuildId = randomUUID();
+const buildVersionPlugin: Plugin = {
+  name: "app-build-version",
+  apply: "build",
+  generateBundle() {
+    this.emitFile({ type: "asset", fileName: "app-version.json", source: JSON.stringify({ schema: 1, buildId: clientBuildId }) });
+  },
+};
+const plugins = [react(), tailwindcss(), buildVersionPlugin, ...developmentPlugins.map(plugin => ({ ...plugin, apply: "serve" as const }))];
 
 export default defineConfig({
   plugins,
+  define: { __APP_BUILD_ID__: JSON.stringify(clientBuildId) },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Yangi versiya chiqqanda ochiq sahifalarda yangilanish xabari va “Yangilash”
+  tugmasi ko‘rinadi. Saqlash davomida qayta yuklash bloklanadi; yozuv yoki fayl
+  kiritilgan bo‘lsa, foydalanuvchidan avval saqlash so‘raladi.
+
 - Kassa sahifasida Kunlik jurnal va Agent × Tovar uchun alohida yoki birgalikdagi
   ko‘rinish, ixcham/qulay qatorlar va diqqat rejimi qo‘shildi. Jadval, prixod,
   qoldiq, saqlash va sana bo‘yicha tartib/kenglik sozlamalari saqlandi.
