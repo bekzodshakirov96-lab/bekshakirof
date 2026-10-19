@@ -1,3 +1,4 @@
+import { CashWorkspace } from "@/components/CashWorkspace";
 import { MetricCard, PageHeader, QueryError } from "@/components/finance-ui";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,6 +32,7 @@ import {
   ArrowLeftRight,
   Banknote,
   Calculator,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -651,8 +653,9 @@ function DailyJournalGrid({
   if (debtEntries.isError || openingBalanceQuery.isError || agents.isError || (showEmployees && employees.isError)) return <QueryError description="Kunlik jurnalni to‘liq yuklab bo‘lmadi. Tahrirlashdan oldin qayta urinib ko‘ring." onRetry={() => { void debtEntries.refetch(); void openingBalanceQuery.refetch(); void agents.refetch(); if (showEmployees) void employees.refetch(); }} />;
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-border">
-      <table className="w-full min-w-[1320px] text-sm">
+    <div className="cash-grid-shell">
+      <div className="cash-table-scroll cash-journal-scroll" role="region" aria-label="Kunlik jurnal — gorizontal va vertikal surish" tabIndex={0}>
+      <table data-cash-journal className="w-full min-w-[1320px] text-sm">
         <thead>
           <tr className="border-b border-border bg-muted text-xs font-semibold tracking-wide text-muted-foreground">
             <th className="whitespace-nowrap px-3 py-2.5 text-left">{company.label("journalAgent")}</th>
@@ -666,7 +669,7 @@ function DailyJournalGrid({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          <tr className="border-b-2 border-sky-100 bg-sky-50/70 text-xs font-bold text-sky-900">
+          <tr data-cash-balance="opening" className="border-b-2 border-sky-100 bg-sky-50/70 text-xs font-bold text-sky-900">
             <td colSpan={REASON_COL} className="px-3 py-2">Boshlang'ich qoldiq (naqd)</td>
             <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(openingBalance)}</td>
             <td />
@@ -1054,14 +1057,15 @@ function DailyJournalGrid({
             <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">{formatMoney(transferTotal)}</td>
             <td colSpan={3} />
           </tr>
-          <tr className="border-t-2 border-sky-100 bg-sky-50/70 text-xs font-bold text-sky-900">
+          <tr data-cash-balance="closing" className="border-t-2 border-sky-100 bg-sky-50/70 text-xs font-bold text-sky-900">
             <td colSpan={REASON_COL} className="px-3 py-2">Yakuniy qoldiq (naqd)</td>
             <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatMoney(closingBalance)}</td>
             <td />
           </tr>
         </tfoot>
       </table>
-      <div className="border-t border-border px-3 py-2">
+      </div>
+      <div className="cash-grid-footer border-t border-border px-3 py-2">
         <button
           type="button"
           className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/5 hover:underline"
@@ -1323,9 +1327,9 @@ function AgentProductMatrix() {
   }
 
   const header = (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <div className="cash-panel-header mb-3 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <div className="flex items-center gap-2"><Users className="size-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Агент x Товар</h3></div>
+        <div className="flex items-center gap-2"><Users className="size-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Agent × Tovar</h3></div>
         <p className="mt-1 text-xs text-muted-foreground">Mahsulotni ⋮⋮ belgisidan ushlab suring. Tab yoki ←/→ — qo‘shni katak, Enter/↑/↓ — keyingi/oldingi mahsulot.</p>
       </div>
       <div className="flex items-center gap-1.5">
@@ -1378,12 +1382,12 @@ function AgentProductMatrix() {
   });
 
   return (
-    <div>
+    <div className="cash-matrix-content">
       {header}
       {inventory.dialog}
       <p className="mb-3 text-xs text-muted-foreground">Ostatka — tanlangan kun yakunidagi ombor qoldig'i. Prixod katagiga yangi kelgan miqdorni yozib, Enter yoki Tab bosing; kunlik jami katak ostida ko'rinadi. Agent kataklari — omborchi bergan tayyor miqdor.</p>
       {inventory.query.isError && <div role="alert" className="mb-3 flex items-center gap-2 text-sm text-destructive">Ombor qoldig'ini yuklab bo'lmadi.<Button size="sm" variant="outline" onClick={() => void inventory.query.refetch()}>Qayta urinish</Button></div>}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="cash-matrix-toolbar mb-3 flex flex-wrap items-center gap-2">
         <div className="relative" ref={agentPickerRef}>
           <Button
             type="button" variant="outline" size="sm" className="h-8 gap-1.5 bg-card text-xs font-semibold"
@@ -1396,12 +1400,14 @@ function AgentProductMatrix() {
               <div className="max-h-56 overflow-y-auto">
                 {agentList.map(agent => (
                   <button
-                    key={agent.id} type="button"
+                    key={agent.id} type="button" role="checkbox" aria-checked={activeLayout.agentOrder.includes(agent.id)}
                     className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={layoutIsSaving || isHistoricalLayout}
                     onClick={() => toggleAgentVisible(agent.id)}
                   >
-                    <Checkbox checked={activeLayout.agentOrder.includes(agent.id)} />
+                    <span aria-hidden="true" className={`flex size-4 shrink-0 items-center justify-center rounded border ${activeLayout.agentOrder.includes(agent.id) ? "border-primary bg-primary text-primary-foreground" : "border-input"}`}>
+                      {activeLayout.agentOrder.includes(agent.id) && <Check className="size-3" />}
+                    </span>
                     <span className="flex-1 truncate font-medium text-foreground">{agent.name}</span>
                   </button>
                 ))}
@@ -1502,7 +1508,7 @@ function AgentProductMatrix() {
       <p className="mb-2 text-xs text-muted-foreground">Ustun chegarasini sichqoncha bilan surib kengligini o‘zgartiring. Kenglik shu sana va keyingi kunlarga saqlanadi.</p>
       {isHistoricalLayout && <p className="mb-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">Bu tarixiy sana: agentlar va mahsulotlar ko‘rinishi saqlangan, uni bu yerdan o‘zgartirib bo‘lmaydi.</p>}
       {hiddenWithEntries.length > 0 && <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">Yashirilgan mahsulotlarda shu kun uchun yozuvlar bor. Ularning summalari jami hisobga kiradi.</p>}
-      <div className="overflow-x-auto rounded-2xl border border-border">
+      <div className="cash-table-scroll cash-matrix-scroll" role="region" aria-label="Agent × Tovar — ustunlarni surish va kengligini o‘zgartirish" tabIndex={0}>
       <table data-matrix-resizable className="table-fixed text-sm" style={{ width: matrixColumns.reduce((sum, key) => sum + columnWidth(key), 0) }}>
         <colgroup>{matrixColumns.map(key => <col key={key} style={{ width: columnWidth(key) }} />)}</colgroup>
         <thead>
@@ -1881,21 +1887,21 @@ export default function Cash() {
   const data = daySummary.data;
   const kassaQoldigi = data?.kassaQoldigi ?? 0;
 
-  return (
-    <div className="mx-auto w-full max-w-none">
-      <PageHeader
-        eyebrow="Pul oqimi"
-        title="КАССА"
+  return <CashWorkspace
+    date={date}
+    actualStatus={<span className={data?.actualCash != null && data.actualDiff !== 0 ? "cash-control-status text-destructive" : "cash-control-status"}>{data?.actualCash == null ? "Hali sanalmagan" : data.actualDiff === 0 ? "Mos" : `Farq: ${formatMoney(data.actualDiff ?? 0)}`}</span>}
+    pendingStatus={data?.pendingByChannel && Object.values(data.pendingByChannel).some(channel => channel.cumulative > 0) ? <span className="cash-control-status text-destructive">Qoldiq bor</span> : null}
+    header={<PageHeader
+        eyebrow="Kundalik ish maydoni"
+        title="Kassa"
         description="Kunlik jurnal va agentlar bo'yicha tezkor nazorat."
-      />
-
-      {import.meta.env.VITE_LOCAL_PREVIEW === "true" && (
+      />}
+    preview={import.meta.env.VITE_LOCAL_PREVIEW === "true" && (
         <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs font-medium text-sky-800 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
           Local ko‘rish rejimi: namunaviy ma’lumotlar ishlatiladi, kiritilgan qiymatlar bazaga saqlanmaydi.
         </div>
       )}
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    metrics={<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Jami Приход" value={formatMoney(data?.jamiPrihod, true)} helper="Naqd + Terminal + Click; o‘tkazma alohida" icon={Banknote} tone="green" />
         <MetricCard label="Jami Расход" value={formatMoney(data?.jamiRasxod, true)} helper="Tanlangan kun" icon={Banknote} tone="rose" />
         <MetricCard label="Naqd qoldiq" value={formatMoney(kassaQoldigi, true)} helper="Tanlangan kun yakunida" icon={Landmark} tone="cyan" />
@@ -1906,24 +1912,21 @@ export default function Cash() {
           icon={Users}
           tone={data && data.problemAgentCount > 0 ? "rose" : "green"}
         />
-      </div>
-
-      <PendingKassaPanel
+      </div>}
+    pending={<PendingKassaPanel
         timestamp={timestamp}
         data={data}
         onSaved={() => daySummary.refetch()}
-      />
-
-      <ActualCashCard
+      />}
+    actual={<ActualCashCard
         date={date}
         timestamp={timestamp}
         kassaQoldigi={kassaQoldigi}
         data={data}
         onSaved={() => daySummary.refetch()}
-      />
-
-      <div className="mt-5 min-w-0 rounded-2xl border border-border bg-card p-5">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+      />}
+    journal={<div className="cash-panel cash-journal-panel min-w-0 border border-border bg-card">
+        <div className="cash-panel-header mb-3 flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-sm font-bold text-foreground">Kunlik jurnal</h3>
           <div className="flex items-center gap-1.5">
             <Button
@@ -1935,7 +1938,7 @@ export default function Cash() {
             </Button>
             <Input
               className="finance-input h-8 w-[150px] text-center"
-              type="date" value={date}
+              type="date" aria-label="Kunlik jurnal sanasi" value={date}
               onChange={event => setDate(event.target.value)}
             />
             <Button
@@ -1970,11 +1973,7 @@ export default function Cash() {
           showEmployees={showEmployees}
           onChanged={() => prihodEntries.refetch()}
         />
-      </div>
-
-      {company.visible("agentMatrix") && <div className="mt-5 min-w-0 rounded-2xl border border-border bg-card p-5">
-        <AgentProductMatrix />
       </div>}
-    </div>
-  );
+    matrix={company.visible("agentMatrix") ? <div className="cash-panel cash-matrix-panel min-w-0 border border-border bg-card"><AgentProductMatrix /></div> : undefined}
+  />;
 }

@@ -1,3 +1,4 @@
+import { SelectionMark } from "@/components/ui/selection-mark";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { PageHeader, SectionCard } from "@/components/finance-ui";
 import { Badge } from "@/components/ui/badge";
@@ -340,10 +341,12 @@ export default function Transactions() {
                 <button
                   key={product.id}
                   type="button"
+                  role="checkbox"
+                  aria-checked={cartProductIds.has(product.id)}
                   className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-muted"
                   onClick={() => toggleProduct(product)}
                 >
-                  <Checkbox checked={cartProductIds.has(product.id)} />
+                  <SelectionMark checked={cartProductIds.has(product.id)} />
                   <span className="min-w-0 flex-1"><span className="font-semibold text-foreground">{product.name}</span><span className="ml-2 text-xs text-muted-foreground">{product.code}</span></span>
                   <span className="shrink-0 text-muted-foreground">{formatMoney(product.price)}</span>
                 </button>

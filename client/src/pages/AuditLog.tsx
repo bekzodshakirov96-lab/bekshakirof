@@ -146,7 +146,7 @@ export default function AuditLog() {
     <PeriodLockCard />
 
     <SectionCard title="Amallar tarixi" description="Filtr orqali aniq foydalanuvchi, sana yoki amal turini toping" className="mt-5">
-      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[200px_180px_200px_160px_160px_auto]">
+      <div className="mb-4 grid gap-3 grid-cols-[repeat(auto-fit,minmax(min(100%,160px),1fr))]">
         <select className="finance-input border px-3 text-muted-foreground" value={tableName} onChange={event => { setTableName(event.target.value); setPage(1); }}>
           <option value="">Barcha bo‘limlar</option>
           {(options.data?.tables ?? []).map(item => <option key={item.value} value={item.value}>{item.label}</option>)}

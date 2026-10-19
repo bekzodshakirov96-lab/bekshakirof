@@ -1,7 +1,7 @@
+import { SelectionMark } from "@/components/ui/selection-mark";
 import { EmptyState, MetricCard, PageHeader, QueryError, SectionCard, TableLoading } from "@/components/finance-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate, formatMoney, formatNumber, localDateInputValue, sanitizeDecimalInput } from "@/lib/format";
@@ -145,10 +145,12 @@ function StockInBatchForm() {
                 <button
                   key={product.id}
                   type="button"
+                  role="checkbox"
+                  aria-checked={cartProductIds.has(product.id)}
                   className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-muted"
                   onClick={() => toggleProduct(product)}
                 >
-                  <Checkbox checked={cartProductIds.has(product.id)} />
+                  <SelectionMark checked={cartProductIds.has(product.id)} />
                   <span className="min-w-0 flex-1 font-semibold text-foreground">{product.name}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">Qoldiq: {formatNumber(product.currentStock, 1)} {product.unit}</span>
                 </button>

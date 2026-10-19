@@ -266,7 +266,7 @@ export default function SalesReport() {
     </SectionCard>
 
     <SectionCard title="Operatsiyalar jurnali" description="Qidiruv, filter va ustun sarlavhalari orqali saralang" className="mt-5">
-      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(210px,1fr)_160px_180px_180px_145px_145px_auto]">
+      <div className="mb-4 grid gap-3 grid-cols-[repeat(auto-fit,minmax(min(100%,160px),1fr))]">
         <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="finance-input pl-9" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Mijoz, agent yoki mahsulot..." /></div>
         <select className="finance-input border px-3 text-muted-foreground" value={agentFilter} onChange={event => { setAgentFilter(event.target.value); setPage(1); }}><option value="">Barcha agentlar</option>{(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select>
         <select className="finance-input border px-3 text-muted-foreground" value={clientFilter} onChange={event => { setClientFilter(event.target.value); setPage(1); }}><option value="">Barcha mijozlar</option>{(clients.data ?? []).map(client => <option key={client.id} value={client.id}>{client.code} — {client.name}</option>)}</select>
