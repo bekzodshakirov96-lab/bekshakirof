@@ -1,23 +1,27 @@
 import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { withPendingWrite } from "@/lib/pendingWrites";
 import { accessLabels, companyAccess, type Company } from "@shared/platform";
 export async function api<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`/api/platform${path}`, {
-    credentials: "same-origin",
-    ...(body === undefined
-      ? {}
-      : {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }),
-  });
-  const data = await response.json().catch(() => ({
-    error: "Platforma xizmati ushbu manzilda ishga tushirilmagan.",
-  }));
-  if (!response.ok) throw new Error(data.error ?? "Xizmatga ulanib bo‘lmadi.");
-  return data;
+  const request = async (): Promise<T> => {
+    const response = await fetch(`/api/platform${path}`, {
+      credentials: "same-origin",
+      ...(body === undefined
+        ? {}
+        : {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }),
+    });
+    const data = await response.json().catch(() => ({
+      error: "Platforma xizmati ushbu manzilda ishga tushirilmagan.",
+    }));
+    if (!response.ok) throw new Error(data.error ?? "Xizmatga ulanib bo‘lmadi.");
+    return data;
+  };
+  return body === undefined ? request() : withPendingWrite(request);
 }
 export const date = (value: number | null) =>
   value

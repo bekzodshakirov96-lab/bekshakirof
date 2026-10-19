@@ -6,6 +6,7 @@ import { Route, Switch, useLocation } from "wouter";
 import DashboardLayout from "./components/DashboardLayout";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { AppUpdateNotice } from "./components/AppUpdateNotice";
 
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Platform = lazy(() => import("./pages/Platform"));
@@ -87,9 +88,12 @@ function App() {
         <LanguageProvider>
           <TooltipProvider>
             <Toaster />
-            {platformPage ? <Suspense fallback={<PageLoading />}><Platform /></Suspense> : <DashboardLayout>
-              <Suspense fallback={<PageLoading />}><Router /></Suspense>
-            </DashboardLayout>}
+            <AppUpdateNotice />
+            <ErrorBoundary>
+              {platformPage ? <Suspense fallback={<PageLoading />}><Platform /></Suspense> : <DashboardLayout>
+                <Suspense fallback={<PageLoading />}><Router /></Suspense>
+              </DashboardLayout>}
+            </ErrorBoundary>
           </TooltipProvider>
         </LanguageProvider>
       </ThemeProvider>
