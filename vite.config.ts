@@ -150,7 +150,9 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), ...(process.env.PLATFORM_SERVER === "true" ? [] : [vitePluginManusRuntime(), vitePluginManusDebugCollector()])];
+// Developer inspection tools must never ship to customer browsers.
+const developmentPlugins: Plugin[] = [jsxLocPlugin(), ...(process.env.PLATFORM_SERVER === "true" ? [] : [vitePluginManusRuntime(), vitePluginManusDebugCollector()])];
+const plugins = [react(), tailwindcss(), ...developmentPlugins.map(plugin => ({ ...plugin, apply: "serve" as const }))];
 
 export default defineConfig({
   plugins,

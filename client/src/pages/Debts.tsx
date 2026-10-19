@@ -152,14 +152,14 @@ export default function Debts() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Topilgan mijozlar" value={(summary?.clientCount ?? 0).toLocaleString("uz-UZ")} helper="Amaldagi filter bo‘yicha" icon={UsersRound} tone="cyan" />
         <MetricCard label="Filtrlangan savdo" value={formatMoney(summary?.totalSales ?? 0, true)} helper="Barcha topilgan yozuvlar" icon={CircleDollarSign} tone="blue" />
-        <MetricCard label="Filtrlangan to‘lov" value={formatMoney(summary?.totalPaid ?? 0, true)} helper="Naqd, terminal va Click" icon={HandCoins} tone="green" />
+        <MetricCard label="Filtrlangan to‘lov" value={formatMoney(summary?.totalPaid ?? 0, true)} helper="Naqd, terminal, Click va o‘tkazma" icon={HandCoins} tone="green" />
         <MetricCard label="Joriy qarz" value={formatMoney(summary?.currentDebt ?? 0, true)} helper={`${(summary?.debtorCount ?? 0).toLocaleString("uz-UZ")} ta qarzdor`} icon={Banknote} tone="rose" />
       </div>
 
       <CashJournalDebtReport />
 
       <SectionCard title="Mijozlar qarzdorligi" description="Qidiruv, filter va ustun sarlavhalari orqali saralang" className="mt-5">
-        <div className="mb-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_180px_160px_150px_150px_auto]">
+        <div className="mb-4 grid gap-3 grid-cols-[repeat(auto-fit,minmax(min(100%,160px),1fr))]">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Kod, mijoz yoki agentni qidiring..." className="finance-input pl-9" />

@@ -31,9 +31,11 @@ export function formatDateTime(value: string | number | Date | null | undefined)
 }
 
 export function formatMonth(value: string) {
-  const [year, month] = value.split("-").map(Number);
-  if (!year || !month) return value;
-  return new Intl.DateTimeFormat("uz-UZ", { month: "short", year: "2-digit" }).format(new Date(year, month - 1, 1));
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value);
+  if (!match) return value;
+  // Some browsers lack Uzbek month names and render ICU placeholders (M09).
+  const months = ["Yan", "Fev", "Mar", "Apr", "May", "Iyun", "Iyul", "Avg", "Sen", "Okt", "Noy", "Dek"];
+  return `${months[Number(match[2]) - 1]} ${match[1]}`;
 }
 
 /**

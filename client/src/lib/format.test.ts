@@ -1,11 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  formatMonth,
   formatTashkentDate,
   shiftDateInputValue,
   tashkentDateInputValue,
   tashkentDateToTimestamp,
   tashkentDayBoundary,
 } from "./format";
+
+describe("month labels", () => {
+  it("shows readable Uzbek months without depending on browser ICU data", () => {
+    expect(formatMonth("2026-09")).toBe("Sen 2026");
+    expect(formatMonth("2027-01")).toBe("Yan 2027");
+    expect(formatMonth("2026-12")).toBe("Dek 2026");
+  });
+
+  it("does not silently roll invalid months into another year", () => {
+    for (const value of ["2026-00", "2026-13", "2026-1", "invalid"]) {
+      expect(formatMonth(value)).toBe(value);
+    }
+  });
+});
 
 describe("Toshkent biznes sanasi", () => {
   it("keeps Kassa and KEG's default date at the Tashkent day across device offsets and month boundaries", () => {
