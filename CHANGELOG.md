@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Yon menyu bo‘limlari, Kassa panellari, hisobot tafsilotlari va tanlash
+  ro‘yxatlari silliq ochilib-yopiladi; harakatni kamaytirish sozlamasi hisobga olinadi.
+- Kassa ko‘rsatkichlarining matni firma tanlagan karta rangida o‘qilishi tuzatildi.
+- Tezkor KEG mijoz qidiruvi Escape bilan yopilgach qayta bosishda ochiladi.
+
 - Yangi versiya chiqqanda ochiq sahifalarda yangilanish xabari va “Yangilash”
   tugmasi ko‘rinadi. Saqlash davomida qayta yuklash bloklanadi; yozuv yoki fayl
   kiritilgan bo‘lsa, foydalanuvchidan avval saqlash so‘raladi.

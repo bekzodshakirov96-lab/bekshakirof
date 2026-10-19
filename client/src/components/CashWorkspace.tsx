@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button";
 import {
   Calculator,
-  ChevronDown,
   Expand,
   Minimize2,
   Rows3,
@@ -9,6 +8,7 @@ import {
 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import "./cash-workspace.css";
+import { AnimatedDisclosure } from "./ui/expandable";
 
 /** Presentation only. Both tables and control forms remain mounted when hidden,
  * so switching views cannot discard drafts or interrupt their existing savers. */
@@ -85,10 +85,10 @@ export function CashWorkspace({
         Kassa va kunlik jurnal sanasi{" "}
         <strong>{date.split("-").reverse().join(".")}</strong>
       </div>
-      <div className="cash-metrics">{metrics}</div>
+      {/* Transparent metric children must share the parent's company card palette. */}
+      <div className="cash-metrics bg-card text-card-foreground">{metrics}</div>
       <div className="cash-control-panels">
-        <details className="cash-disclosure">
-          <summary>
+        <AnimatedDisclosure className="cash-disclosure" title={
             <span>
               <Calculator className="size-4" />
               <strong>Naqd pulni solishtirish</strong>
@@ -97,12 +97,10 @@ export function CashWorkspace({
               </span>
               {actualStatus}
             </span>
-            <ChevronDown className="cash-disclosure-chevron size-4" />
-          </summary>
+        }>
           {actual}
-        </details>
-        <details className="cash-disclosure">
-          <summary>
+        </AnimatedDisclosure>
+        <AnimatedDisclosure className="cash-disclosure" title={
             <span>
               <WalletCards className="size-4" />
               <strong>Kutilayotgan kassa</strong>
@@ -111,10 +109,9 @@ export function CashWorkspace({
               </span>
               {pendingStatus}
             </span>
-            <ChevronDown className="cash-disclosure-chevron size-4" />
-          </summary>
+        }>
           {pending}
-        </details>
+        </AnimatedDisclosure>
       </div>
       <div className="cash-view-toolbar">
         <div

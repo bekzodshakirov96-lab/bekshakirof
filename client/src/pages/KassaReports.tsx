@@ -1,4 +1,5 @@
 import { ExportMenu } from "@/components/ExportMenu";
+import { ExpandableNote } from "@/components/ui/expandable";
 import { AgentDifferenceReport } from "@/components/AgentDifferenceReport";
 import { EmptyState, MetricCard, PageHeader, QueryError, SectionCard, TableLoading } from "@/components/finance-ui";
 import { Badge } from "@/components/ui/badge";
@@ -208,7 +209,7 @@ export default function KassaReports() {
                 <TableCell><Badge className={row.category === ELECTRONIC_PAYMENT_CATEGORY ? "rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-50" : row.type === "income" ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50"}>{row.category === ELECTRONIC_PAYMENT_CATEGORY ? "Elektron" : row.type === "income" ? "Prihod" : "Rasxod"}</Badge></TableCell>
                 <TableCell className="font-semibold text-foreground">{row.category}</TableCell>
                 <TableCell>{row.agentName || "—"}</TableCell>
-                <TableCell className="max-w-64"><button type="button" className={`block max-w-64 text-left ${openNotes.includes(row.reportKey) ? "whitespace-pre-wrap break-words" : "truncate"}`} onClick={() => setOpenNotes(current => current.includes(row.reportKey) ? current.filter(id => id !== row.reportKey) : [...current, row.reportKey])} aria-expanded={openNotes.includes(row.reportKey)} title={row.description || undefined}>{row.description || "—"}</button></TableCell>
+                <TableCell className="max-w-64"><ExpandableNote text={row.description || "—"} expanded={openNotes.includes(row.reportKey)} onToggle={() => setOpenNotes(current => current.includes(row.reportKey) ? current.filter(id => id !== row.reportKey) : [...current, row.reportKey])} /></TableCell>
                 <TableCell className={`text-right font-bold tabular-nums ${row.type === "expense" ? "text-rose-500" : ""}`}>{row.type === "expense" && row.cashAmount > 0 ? "−" : ""}{formatMoney(row.cashAmount)}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatMoney(row.terminalAmount)}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatMoney(row.clickAmount)}</TableCell>
