@@ -1,3 +1,4 @@
+import { AnimatedPanel } from "@/components/ui/expandable";
 import { SelectionMark } from "@/components/ui/selection-mark";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { PageHeader, SectionCard } from "@/components/finance-ui";
@@ -328,8 +329,9 @@ export default function Transactions() {
             onChange={event => { setProductSearch(event.target.value); setPickerOpen(true); }}
           />
         </div>
+        <AnimatedPanel open={pickerOpen} unmountOnExit className="absolute z-20 mt-1 w-full">
         {pickerOpen && (
-          <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xl">
             <div className="flex items-center justify-between border-b border-border px-4 py-2">
               <span className="text-xs font-semibold text-muted-foreground">{cartProductIds.size > 0 ? `${cartProductIds.size} ta tanlandi` : "Tanlash uchun bosing"}</span>
               <button type="button" className="text-xs font-semibold text-primary hover:underline" onClick={() => setPickerOpen(false)}>Tayyor</button>
@@ -354,6 +356,7 @@ export default function Transactions() {
             </div>
           </div>
         )}
+        </AnimatedPanel>
       </div>
 
       {cart.length === 0 ? (

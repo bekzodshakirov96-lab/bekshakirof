@@ -1,4 +1,5 @@
 import { CashWorkspace } from "@/components/CashWorkspace";
+import { AnimatedDisclosure, AnimatedPanel } from "@/components/ui/expandable";
 import { MetricCard, PageHeader, QueryError } from "@/components/finance-ui";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -733,13 +734,12 @@ function DailyJournalGrid({
                   {items.map(item => <div key={journalRowKey(item)} className="space-y-2 border-b border-border pb-3 last:border-0">
                     <span className="text-xs text-muted-foreground">{item.category} · #{item.id} · {formatMoney(item.type === "memo" ? item.amount : item.cashAmount)}</span>
                     <p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{item.type === "memo" ? debtNoteText(item) || "Izoh kiritilmagan." : item.description || "Izoh kiritilmagan."}</p>
-                    {!isSettlementLocked(item) ? <details>
-                      <summary className="cursor-pointer text-xs text-primary">Izohni tahrirlash</summary>
+                    {!isSettlementLocked(item) ? <AnimatedDisclosure title="Izohni tahrirlash" triggerClassName="justify-start text-xs text-primary">
                       <textarea key={`${journalRowKey(item)}-${item.description}-${item.type === "memo" ? item.borrowerName : ""}`} rows={3}
                         aria-label={`${title} #${item.id}`} defaultValue={item.type === "memo" ? debtNoteText(item) : item.description ?? ""}
                         maxLength={1000} className={`${textInputClass} mt-2 resize-y whitespace-pre-wrap`}
                         onBlur={event => item.type === "memo" ? commitExistingDebtNote(item, event.target.value) : commitExistingReason(item, event.target.value)} />
-                    </details> : null}
+                    </AnimatedDisclosure> : null}
                   </div>)}
                 </JournalDetails>;
               };
@@ -1395,8 +1395,9 @@ function AgentProductMatrix() {
           >
             <Users className="size-3.5" /> Agentlar ({visibleAgents.length}/{agentList.length})
           </Button>
+          <AnimatedPanel open={agentPickerOpen} unmountOnExit className="absolute z-20 mt-1 w-64">
           {agentPickerOpen && (
-            <div className="absolute z-20 mt-1 w-64 overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xl">
               <div className="max-h-56 overflow-y-auto">
                 {agentList.map(agent => (
                   <button
@@ -1422,7 +1423,9 @@ function AgentProductMatrix() {
                   >
                     <Plus className="size-3.5" /> Yangi agent qo'shish
                   </button>
-                ) : (
+                ) : null}
+                <AnimatedPanel open={newAgentOpen} unmountOnExit>
+                {newAgentOpen && (
                   <div className="flex items-center gap-1.5">
                     <Input
                       autoFocus className="finance-input h-8 flex-1 text-xs" placeholder="Agent nomi"
@@ -1439,9 +1442,11 @@ function AgentProductMatrix() {
                     </Button>
                   </div>
                 )}
+                </AnimatedPanel>
               </div>
             </div>
           )}
+          </AnimatedPanel>
         </div>
 
         <Popover>
@@ -1479,8 +1484,9 @@ function AgentProductMatrix() {
           >
             <Plus className="size-3.5" /> Mahsulot qo'shish
           </Button>
+          <AnimatedPanel open={newProductOpen} unmountOnExit className="absolute z-20 mt-1 w-64">
           {newProductOpen && (
-            <div className="absolute z-20 mt-1 w-64 space-y-2 rounded-xl border border-border bg-card p-3 shadow-xl">
+            <div className="space-y-2 rounded-xl border border-border bg-card p-3 shadow-xl">
               <Input className={`finance-input h-8 text-xs ${!newProductForm.code.trim() ? "border-rose-300" : ""}`} placeholder="Kodi" value={newProductForm.code} onChange={event => setNewProductForm(prev => ({ ...prev, code: event.target.value }))} />
               <Input className={`finance-input h-8 text-xs ${!newProductForm.name.trim() ? "border-rose-300" : ""}`} placeholder="Nomi" value={newProductForm.name} onChange={event => setNewProductForm(prev => ({ ...prev, name: event.target.value }))} />
               <Input className={`finance-input h-8 text-xs ${!newProductForm.unit.trim() ? "border-rose-300" : ""}`} placeholder="O'lchov birligi" value={newProductForm.unit} onChange={event => setNewProductForm(prev => ({ ...prev, unit: event.target.value }))} />
@@ -1501,6 +1507,7 @@ function AgentProductMatrix() {
               </Button>
             </div>
           )}
+          </AnimatedPanel>
         </div>
       </div>
 

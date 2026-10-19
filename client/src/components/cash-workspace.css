@@ -104,7 +104,7 @@
   border: 1px solid var(--border);
   border-radius: 7px;
 }
-.cash-disclosure > summary {
+.cash-disclosure > .app-disclosure-trigger {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -115,17 +115,17 @@
   color: var(--muted-foreground);
   font-size: 11px;
 }
-.cash-disclosure > summary::-webkit-details-marker {
+.cash-disclosure > .app-disclosure-trigger::-webkit-details-marker {
   display: none;
 }
-.cash-disclosure > summary > span {
+.cash-disclosure > .app-disclosure-trigger > span {
   display: flex;
   align-items: center;
   gap: 9px;
   min-width: 0;
   flex-wrap: wrap;
 }
-.cash-disclosure summary strong {
+.cash-disclosure .app-disclosure-trigger strong {
   font-weight: 500;
   color: var(--foreground);
 }
@@ -135,17 +135,10 @@
   padding: 2px 6px;
   border-radius: 4px;
 }
-.cash-disclosure-chevron {
-  flex-shrink: 0;
-  transition: transform 0.15s;
-}
-.cash-disclosure[open] .cash-disclosure-chevron {
-  transform: rotate(180deg);
-}
-.cash-disclosure[open] {
+.cash-disclosure[data-expanded="true"] {
   grid-column: 1 / -1;
 }
-.cash-disclosure > div {
+.cash-disclosure > .app-expand-panel > .app-expand-inner > div {
   margin-top: 0;
   padding: 16px;
   border: 0;
@@ -179,7 +172,7 @@
   font-weight: 600;
 }
 .cash-view-tabs > button:focus-visible,
-.cash-disclosure > summary:focus-visible {
+.cash-disclosure > .app-disclosure-trigger:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 3px;
   border-radius: 3px;
@@ -505,10 +498,5 @@
   }
   .cash-both-toggle {
     padding: 8px 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .cash-disclosure-chevron {
-    transition: none;
   }
 }

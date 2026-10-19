@@ -814,7 +814,7 @@ function DashboardShell({
                       });
                     }
                   }}
-                  className={`flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 ${isCurrentGroup ? "text-sidebar-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"}`}
+                  className={`company-nav-trigger flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 ${isCurrentGroup ? "text-sidebar-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"}`}
                 >
                   <group.icon className="h-4 w-4 shrink-0" />
                   <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">
@@ -824,38 +824,46 @@ function DashboardShell({
                     {group.items.length}
                   </span>
                   <ChevronDown
-                    className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[collapsible=icon]:hidden ${isOpen ? "rotate-180" : ""}`}
+                    aria-hidden="true"
+                    className="company-nav-chevron h-3.5 w-3.5 shrink-0 group-data-[collapsible=icon]:hidden"
                   />
                 </button>
                 <SidebarGroupContent
                   id={contentId}
-                  hidden={!isOpen}
-                  className="group-data-[collapsible=icon]:hidden"
+                  aria-hidden={!isOpen}
+                  inert={!isOpen}
+                  data-open={isOpen}
+                  className="company-nav-panel group-data-[collapsible=icon]:hidden"
                 >
-                  <SidebarMenu className="ml-5 mt-1 w-auto gap-0.5 border-l border-sidebar-border pl-2">
-                    {group.items.map(item => {
-                      const isActive = location === item.path;
-                      return (
-                        <SidebarMenuItem key={item.path}>
-                          <SidebarMenuButton
-                            isActive={isActive}
-                            aria-current={isActive ? "page" : undefined}
-                            tooltip={item.label}
-                            onClick={() => {
-                              setLocation(item.path);
-                              if (isMobile) setOpenMobile(false);
-                            }}
-                            className="h-10 gap-2 rounded-md px-2.5 text-xs font-normal text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground data-[active=true]:bg-sidebar-primary data-[active=true]:font-medium data-[active=true]:text-sidebar-primary-foreground data-[active=true]:shadow-sm data-[active=true]:ring-1 data-[active=true]:ring-border md:h-8"
+                  <div className="company-nav-panel-inner">
+                    <SidebarMenu className="ml-5 mt-1 w-auto gap-0.5 border-l border-sidebar-border pl-2">
+                      {group.items.map((item, index) => {
+                        const isActive = location === item.path;
+                        return (
+                          <SidebarMenuItem
+                            key={item.path}
+                            style={{ "--nav-item-index": Math.min(index, 5) } as CSSProperties}
                           >
-                            <item.icon
-                              className={`h-4 w-4 ${isActive ? "text-sidebar-primary-foreground" : "text-sidebar-foreground/60"}`}
-                            />
-                            <span>{item.label}</span>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      );
-                    })}
-                  </SidebarMenu>
+                            <SidebarMenuButton
+                              isActive={isActive}
+                              aria-current={isActive ? "page" : undefined}
+                              tooltip={item.label}
+                              onClick={() => {
+                                setLocation(item.path);
+                                if (isMobile) setOpenMobile(false);
+                              }}
+                              className="h-10 gap-2 rounded-md px-2.5 text-xs font-normal text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground data-[active=true]:bg-sidebar-primary data-[active=true]:font-medium data-[active=true]:text-sidebar-primary-foreground data-[active=true]:shadow-sm data-[active=true]:ring-1 data-[active=true]:ring-border md:h-8"
+                            >
+                              <item.icon
+                                className={`h-4 w-4 ${isActive ? "text-sidebar-primary-foreground" : "text-sidebar-foreground/60"}`}
+                              />
+                              <span>{item.label}</span>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  </div>
                 </SidebarGroupContent>
               </SidebarGroup>
             );

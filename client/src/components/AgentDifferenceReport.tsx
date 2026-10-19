@@ -2,6 +2,7 @@ import { EmptyState, MetricCard, QueryError, SectionCard, TableLoading } from "@
 import { ExportMenu } from "@/components/ExportMenu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AnimatedPanel } from "@/components/ui/expandable";
 import {
   Command,
   CommandEmpty,
@@ -256,7 +257,9 @@ export function AgentDifferenceReport() {
               </Table>
             )}
           </div>
-          {detailAgent && <AgentProductDetails key={detailAgent.agentId} agentId={detailAgent.agentId} agentName={detailAgent.agentName} fromDate={fromDate} toDate={toDate} onClose={() => setDetailAgentId(null)} />}
+          <AnimatedPanel id="agent-product-details" open={Boolean(detailAgent)} unmountOnExit>
+            {detailAgent && <AgentProductDetails key={detailAgent.agentId} agentId={detailAgent.agentId} agentName={detailAgent.agentName} fromDate={fromDate} toDate={toDate} onClose={() => setDetailAgentId(null)} />}
+          </AnimatedPanel>
           <div className="mt-9 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
             <div><h3 className="font-semibold">Kunlik solishtirish tarixi</h3><p className="text-xs text-muted-foreground">Yuqoridagi sana va agent tanlovi bo‘yicha</p></div>
             <ExportMenu onExcel={() => exportHistory("xlsx")} onPdf={() => exportHistory("pdf")} isLoading={isExportingHistory} disabled={!datesValid || historyQuery.isLoading} />
@@ -340,7 +343,7 @@ function AgentProductDetails({ agentId, agentName, fromDate, toDate, onClose }: 
   }
 
   return (
-    <section id="agent-product-details" className="mt-5 rounded-xl border border-border bg-muted/20 p-4" aria-label={`${agentName} tovar tafsilotlari`}>
+    <section className="mt-5 rounded-xl border border-border bg-muted/20 p-4" aria-label={`${agentName} tovar tafsilotlari`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold text-foreground">{agentName} — tovarlar bo‘yicha tafsilotlar</h3>
