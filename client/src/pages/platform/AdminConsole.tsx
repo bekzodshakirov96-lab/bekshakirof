@@ -115,7 +115,7 @@ export function AdminConsole({
   return (
     <div
       className={cn(
-        "min-h-screen bg-background text-foreground transition-[padding] duration-150 motion-reduce:transition-none",
+        "platform-nav-motion min-h-screen bg-background text-foreground transition-[padding] motion-reduce:transition-none",
         collapsed ? "lg:pl-16" : "lg:pl-60"
       )}
     >
@@ -128,7 +128,7 @@ export function AdminConsole({
       <aside
         id="platform-sidebar"
         className={cn(
-          "fixed inset-y-0 left-0 z-30 hidden flex-col border-r bg-[#f0f2f6] transition-[width] duration-150 motion-reduce:transition-none dark:bg-[#141c29] lg:flex",
+          "platform-nav-motion fixed inset-y-0 left-0 z-30 hidden flex-col border-r bg-[#f0f2f6] transition-[width] motion-reduce:transition-none dark:bg-[#141c29] lg:flex",
           collapsed ? "w-16" : "w-60"
         )}
       >
@@ -155,7 +155,7 @@ export function AdminConsole({
             BC
           </span>
           {!collapsed && (
-            <span className="text-sm font-semibold tracking-tight">
+            <span className="platform-label-motion text-sm font-semibold tracking-tight">
               BiznesControl
               <span className="mt-0.5 block text-[9px] font-medium tracking-[0.12em] text-muted-foreground">
                 PLATFORMA
@@ -164,7 +164,7 @@ export function AdminConsole({
           )}
         </a>
         {!collapsed && (
-          <div className="px-5 pb-2 pt-6 text-[10px] font-medium tracking-[0.08em] text-muted-foreground">
+          <div className="platform-label-motion px-5 pb-2 pt-6 text-[10px] font-medium tracking-[0.08em] text-muted-foreground">
             BOSHQARUV
           </div>
         )}
@@ -201,7 +201,7 @@ export function AdminConsole({
               <section.icon className="size-4 shrink-0" />
               {!collapsed && (
                 <>
-                  <span className="flex-1">{section.label}</span>
+                  <span className="platform-label-motion flex-1">{section.label}</span>
                   {section.id === "companies" && data && (
                     <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground tabular-nums">
                       {total}
@@ -228,7 +228,7 @@ export function AdminConsole({
               {account.name.trim().slice(0, 1).toUpperCase()}
             </span>
             {!collapsed && (
-              <div className="min-w-0">
+              <div className="platform-label-motion min-w-0">
                 <p className="truncate text-xs font-medium">{account.name}</p>
                 <p className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
                   <ShieldCheck className="size-3" />
