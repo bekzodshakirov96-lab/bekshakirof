@@ -2,7 +2,8 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, products, stockMovements, transactions } from "../../drizzle/schema";
 import { skladProcedure } from "../access";
-import { logAudit } from "../auditLog";
+import { stockQuantity } from "../inventoryQuantity";
+import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { requireDb } from "../db";
 import { assertInventoryHistoryMutable } from "../inventoryBoundary";
 import { assertExportRowLimit } from "../reportExport";
@@ -96,12 +97,13 @@ export const stockRouter = router({
     .input(
       z.object({
         productId: z.number().int().positive(),
-        quantity: z.number().positive().max(1_000_000),
+        quantity: stockQuantity,
         movementDate: z.number().int(),
         note: z.string().trim().max(1_000).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
+      await assertPeriodUnlocked(new Date(input.movementDate));
       const db = await requireDb();
       return db.transaction(async tx => {
         await assertInventoryHistoryMutable(tx, [{ productId: input.productId, movementDate: new Date(input.movementDate) }]);
@@ -135,7 +137,7 @@ export const stockRouter = router({
           .array(
             z.object({
               productId: z.number().int().positive(),
-              quantity: z.number().positive().max(1_000_000),
+              quantity: stockQuantity,
               /** Bitta dona tannarxi — foyda hisobi shu narxga tayanadi.
                * Ixtiyoriy: kiritilmasa, bu kirim o'rtacha tannarxga qo'shilmaydi. */
               unitCost: z.number().int().min(0).max(1_000_000_000).optional(),
@@ -149,6 +151,7 @@ export const stockRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
+      await assertPeriodUnlocked(new Date(input.movementDate));
       const db = await requireDb();
       const movementDate = new Date(input.movementDate);
       await db.transaction(async tx => {
@@ -181,13 +184,14 @@ export const stockRouter = router({
     .input(
       z.object({
         productId: z.number().int().positive(),
-        quantity: z.number().positive().max(1_000_000),
+        quantity: stockQuantity,
         movementDate: z.number().int(),
         reason: z.string().trim().min(2).max(255),
         note: z.string().trim().max(1_000).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
+      await assertPeriodUnlocked(new Date(input.movementDate));
       const db = await requireDb();
       return db.transaction(async tx => {
         await assertInventoryHistoryMutable(tx, [{ productId: input.productId, movementDate: new Date(input.movementDate) }]);
@@ -220,6 +224,7 @@ export const stockRouter = router({
       .where(eq(stockMovements.id, input.id))
       .limit(1);
     if (!existing) throw new Error("Harakat topilmadi yoki allaqachon o'chirilgan.");
+    await assertPeriodUnlocked(existing.movementDate);
     if (existing.isAutomatic) throw new Error("Avtomatik harakatni shu yerdan o'chirib bo'lmaydi — tegishli Savdo, Zavod yoki Agent × Tovar qaydini o'z bo'limida tuzating.");
     return db.transaction(async tx => {
       await assertInventoryHistoryMutable(tx, [existing]);

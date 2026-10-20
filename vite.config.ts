@@ -1,4 +1,3 @@
-import { jsxLocPlugin } from "@builder.io/vite-plugin-jsx-loc";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
@@ -152,7 +151,7 @@ function vitePluginManusDebugCollector(): Plugin {
 }
 
 // Developer inspection tools must never ship to customer browsers.
-const developmentPlugins: Plugin[] = [jsxLocPlugin(), ...(process.env.PLATFORM_SERVER === "true" ? [] : [vitePluginManusRuntime(), vitePluginManusDebugCollector()])];
+const developmentPlugins: Plugin[] = [...(process.env.PLATFORM_SERVER === "true" ? [] : [vitePluginManusRuntime(), vitePluginManusDebugCollector()])];
 const clientBuildId = randomUUID();
 const buildVersionPlugin: Plugin = {
   name: "app-build-version",

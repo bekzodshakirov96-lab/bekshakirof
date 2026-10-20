@@ -85,7 +85,7 @@ function App() {
         defaultTheme="light"
         switchable
       >
-        <LanguageProvider>
+        <LanguageProvider syncAccount={!platformPage}>
           <TooltipProvider>
             <Toaster />
             <AppUpdateNotice />

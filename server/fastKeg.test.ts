@@ -41,7 +41,7 @@ function createTransactionDouble() {
       // mahsulotlar → mijoz qatorlarini FOR UPDATE bilan qulflash (natija ishlatilmaydi,
       // shuning uchun bo'sh massiv) → moliyaviy qatorlar → tara qoldig'i.
       const rows =
-        [state.existingRows, state.productRows, [], state.financialRows, state.balanceRows][selectIndex] ?? [];
+        [[], state.productRows, state.existingRows, state.financialRows, state.balanceRows][selectIndex] ?? [];
       selectIndex += 1;
       return createSelectChain(rows);
     },
@@ -81,6 +81,8 @@ vi.mock("./db", () => ({
 
 // Bu testlar KEG savdosi mantiqini tekshiradi — davr qulfi va audit yozuvi
 // alohida mavzular, shuning uchun ular bu yerda o'chirib qo'yiladi.
+vi.mock("./costingQueries", () => ({ fetchAverageCosts: async () => new Map() }));
+
 vi.mock("./auditLog", () => ({
   assertPeriodUnlocked: async () => undefined,
   logAudit: async () => undefined,

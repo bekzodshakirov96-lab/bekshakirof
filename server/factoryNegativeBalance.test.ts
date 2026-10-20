@@ -80,7 +80,8 @@ function createDbDouble() {
 }
 
 vi.mock("./db", () => ({ requireDb: async () => createDbDouble() }));
-vi.mock("./auditLog", () => ({ logAudit: async () => undefined }));
+vi.mock("./auditLog", () => ({ assertPeriodUnlocked: async () => undefined,
+  logAudit: async () => undefined }));
 
 import { factoryRouter } from "./routers/factory";
 

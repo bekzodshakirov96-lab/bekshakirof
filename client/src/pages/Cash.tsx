@@ -1896,7 +1896,7 @@ export default function Cash() {
 
   return <CashWorkspace
     date={date}
-    actualStatus={<span className={data?.actualCash != null && data.actualDiff !== 0 ? "cash-control-status text-destructive" : "cash-control-status"}>{data?.actualCash == null ? "Hali sanalmagan" : data.actualDiff === 0 ? "Mos" : `Farq: ${formatMoney(data.actualDiff ?? 0)}`}</span>}
+    actualStatus={<span className={data?.actualCash != null && data.actualDiff !== 0 ? "cash-control-status text-destructive" : "cash-control-status"}>{data?.actualCash == null ? (data?.actualCashNeedsConfirmation ? "Sanalgan summani tasdiqlang" : "Hali sanalmagan") : data.actualDiff === 0 ? "Mos" : `Farq: ${formatMoney(data.actualDiff ?? 0)}`}</span>}
     pendingStatus={data?.pendingByChannel && Object.values(data.pendingByChannel).some(channel => channel.cumulative > 0) ? <span className="cash-control-status text-destructive">Qoldiq bor</span> : null}
     header={<PageHeader
         eyebrow="Kundalik ish maydoni"
