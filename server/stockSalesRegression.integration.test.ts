@@ -160,4 +160,3 @@ describe.skipIf(!testUrl)("stock and sales real SQL regression", { timeout: 1500
     await expect(factory.bottles.delete({ id: (bottles as any)[0].id })).rejects.toThrow("yopilgan davr");
   });
 });
-
