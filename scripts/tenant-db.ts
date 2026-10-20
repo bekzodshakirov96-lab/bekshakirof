@@ -5,6 +5,7 @@ import { snapshotBusinessData, type DatabaseSnapshot } from "../server/tenancy/a
 import { bindTenantDatabase } from "../server/tenancy/bind";
 import { applyTenantQueryScope } from "../server/tenancy/scopeSchema";
 import { assertSameBusinessData } from "../server/tenancy/audit";
+import { accountingHistoryHash, accountingHistoryProjection, applyAccountingAuditSchema, assertAccountingScopeUpgradeable, ACCOUNTING_PREVIOUS_SCOPE_HASH } from "../server/accountingAuditSchema";
 
 const args = process.argv.slice(2);
 function option(name: string) {
@@ -13,15 +14,15 @@ function option(name: string) {
 }
 async function main() {
   const action = args[0];
-  if (action !== "audit" && action !== "bind" && action !== "scope") {
-    throw new Error("Usage: tenant:db audit --out snapshot.json | tenant:db bind|scope --tenant-id legacy --baseline snapshot.json --apply");
+  if (!["audit", "bind", "scope", "audit-fixes"].includes(action)) {
+    throw new Error("Usage: tenant:db audit --out snapshot.json | tenant:db bind|scope|audit-fixes --tenant-id legacy --baseline snapshot.json --apply");
   }
   const output = option("--out");
   const baselinePath = option("--baseline");
   const tenantId = option("--tenant-id");
   if (action === "audit" && !output) throw new Error("audit requires --out.");
-  if ((action === "bind" || action === "scope") && (!args.includes("--apply") || !baselinePath || !tenantId)) {
-    throw new Error("bind requires --apply, --tenant-id and --baseline. Take and test a backup, stop writes, then prepare a fresh audit baseline.");
+  if (action !== "audit" && (!args.includes("--apply") || !baselinePath || !tenantId)) {
+    throw new Error("Migration requires --apply, --tenant-id and --baseline. Take and test a backup, stop writes, then prepare a fresh audit baseline.");
   }
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
   const db = await mysql.createConnection({ uri: process.env.DATABASE_URL, timezone: "+05:00", dateStrings: true, supportBigNumbers: true, bigNumberStrings: true });
@@ -31,6 +32,16 @@ async function main() {
       const snapshot = await snapshotBusinessData(db);
       await writeFile(output!, JSON.stringify(snapshot, null, 2), { flag: "wx" });
       console.log(`Audit saved: ${snapshot.tables.length} tables, fingerprint ${snapshot.fingerprint}. No business data changed.`);
+    } else if (action === "audit-fixes") {
+      const baseline = JSON.parse(await readFile(baselinePath!, "utf8")) as DatabaseSnapshot;
+      assertSameBusinessData(baseline, await snapshotBusinessData(db));
+      await assertAccountingScopeUpgradeable(db, tenantId!);
+      const projection = await accountingHistoryProjection(db);
+      const before = await accountingHistoryHash(db, projection);
+      await applyAccountingAuditSchema(db);
+      await applyTenantQueryScope(db, tenantId!, ACCOUNTING_PREVIOUS_SCOPE_HASH);
+      if (before !== await accountingHistoryHash(db, projection)) throw new Error("Original history changed; keep runtime stopped.");
+      console.log("Accounting safeguards prepared. Every original field and history row is unchanged.");
     } else if (action === "scope") {
       const baseline = JSON.parse(await readFile(baselinePath!, "utf8")) as DatabaseSnapshot;
       assertSameBusinessData(baseline, await snapshotBusinessData(db));

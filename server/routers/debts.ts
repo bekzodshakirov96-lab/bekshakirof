@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, gte, lt, lte } from "drizzle-orm";
 import { z } from "zod";
 import { agents, cashTransferLinks, clientPayments, clients, containerMovements, transactions } from "../../drizzle/schema";
-import { businessProcedure, debtsViewProcedure, requireOwnAgent, salesProcedure } from "../access";
+import { businessProcedure, debtsViewProcedure, salesProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import {
   enrichClientFinancialRows,
@@ -134,6 +134,7 @@ export const debtsRouter = router({
     create: salesProcedure
       .input(
         z.object({
+          requestId: z.string().uuid(),
           clientId: z.number().int().positive(),
           paymentDate: z.number().int(),
           cashAmount: z.number().int().min(0).default(0),
@@ -147,18 +148,33 @@ export const debtsRouter = router({
       )
       .mutation(async ({ ctx, input }) => {
         const db = await requireDb();
-        // Agent faqat o'ziga biriktirilgan mijozdan to'lov qabul qila oladi.
-        const [client] = await db
-          .select({ id: clients.id, agentId: clients.agentId })
-          .from(clients)
-          .where(eq(clients.id, input.clientId))
-          .limit(1);
-        if (!client) throw new Error("Mijoz topilmadi.");
-        if (client.agentId !== null) requireOwnAgent(ctx.user.role, ctx.user.agentId, client.agentId);
         await assertPeriodUnlocked(new Date(input.paymentDate));
-
         return db.transaction(async tx => {
+          // Ownership and payment creation share the client lock. An unassigned
+          // client is not writable by an agent, just as it is not readable.
+          const [client] = await tx.select({ id: clients.id, agentId: clients.agentId })
+            .from(clients).where(eq(clients.id, input.clientId)).limit(1).for("update");
+          if (!client) throw new TRPCError({ code: "NOT_FOUND", message: "Mijoz topilmadi." });
+          if (ctx.user.role === "agent" && client.agentId !== ctx.user.agentId) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Bu mijoz sizga biriktirilmagan." });
+          }
+          if (ctx.user.role === "agent" && client.agentId === null) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Bu mijoz sizga biriktirilmagan." });
+          }
+          const [previous] = await tx.select().from(clientPayments)
+            .where(eq(clientPayments.requestId, input.requestId)).limit(1).for("update");
+          if (previous) {
+            if (previous.clientId !== input.clientId || previous.createdBy !== ctx.user.id
+              || previous.paymentDate.getTime() !== input.paymentDate
+              || previous.cashAmount !== input.cashAmount || previous.terminalAmount !== input.terminalAmount
+              || previous.clickAmount !== input.clickAmount || previous.transferAmount !== input.transferAmount
+              || previous.note !== (input.note?.trim() || null)) {
+              throw new TRPCError({ code: "CONFLICT", message: "Bu so‘rov IDsi boshqa to‘lov uchun ishlatilgan. Avval to‘lovlar tarixini tekshiring." });
+            }
+            return { success: true };
+          }
           const [created] = await tx.insert(clientPayments).values({
+            requestId: input.requestId,
             clientId: input.clientId,
             agentId: client.agentId,
             paymentDate: new Date(input.paymentDate),
@@ -198,16 +214,17 @@ export const debtsRouter = router({
           .where(eq(clientPayments.id, input.id))
           .limit(1);
         if (!existing) throw new Error("To'lov topilmadi yoki allaqachon o'chirilgan.");
-        const [owner] = await db
-          .select({ agentId: clients.agentId })
-          .from(clients)
-          .where(eq(clients.id, existing.clientId))
-          .limit(1);
-        if (owner?.agentId != null) requireOwnAgent(ctx.user.role, ctx.user.agentId, owner.agentId);
-        await assertPeriodUnlocked(existing.paymentDate);
         return db.transaction(async tx => {
-          await tx.select({ id: clientPayments.id }).from(clientPayments)
+          // Use the same client-first lock order as payment creation.
+          const [owner] = await tx.select({ agentId: clients.agentId }).from(clients)
+            .where(eq(clients.id, existing.clientId)).limit(1).for("update");
+          if (!owner || (ctx.user.role === "agent" && (owner.agentId === null || owner.agentId !== ctx.user.agentId))) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Bu mijoz sizga biriktirilmagan." });
+          }
+          const [locked] = await tx.select().from(clientPayments)
             .where(eq(clientPayments.id, input.id)).limit(1).for("update");
+          if (!locked) throw new TRPCError({ code: "NOT_FOUND", message: "To‘lov topilmadi yoki allaqachon o‘chirilgan." });
+          await assertPeriodUnlocked(locked.paymentDate);
           const [link] = await tx.select({ id: cashTransferLinks.id }).from(cashTransferLinks)
             .where(eq(cashTransferLinks.clientPaymentId, input.id)).limit(1);
           if (link) throw new Error("Qarz to‘lovi Kassa IDsi bilan bog‘langan. O‘chirishdan oldin bog‘lanishni olib tashlang.");

@@ -75,6 +75,31 @@ export function billingApi(store: PlatformStore, config: PlatformConfig) {
     })
   );
   router.post(
+    "/admin/billing/reconcile",
+    endpoint(async (req, res) => {
+      const admin = await account(req, true);
+      const input = z.object({
+        id: z.string().uuid(),
+        transactionId: z.number().int().positive(),
+        externalId: z.string().min(1).max(100),
+        mode: z.enum(["test", "live"]),
+        outcome: z.enum(["paid", "cancelled"]),
+        reference: z.string().trim().min(5).max(300),
+        providerVerified: z.literal(true),
+      }).strict().parse(req.body);
+      await service.reconcile(admin, input);
+      res.json({ ok: true });
+    }),
+  );
+  router.get(
+    "/admin/billing/review",
+    endpoint(async (req, res) => {
+      await account(req, true);
+      const page = z.coerce.number().int().min(1).max(100000).parse(req.query.page ?? 1);
+      res.json(await service.reviewOrders(page));
+    }),
+  );
+  router.post(
     "/admin/billing/price",
     endpoint(async (req, res) => {
       const admin = await account(req, true);

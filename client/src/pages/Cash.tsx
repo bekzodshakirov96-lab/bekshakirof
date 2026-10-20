@@ -1782,7 +1782,7 @@ function ActualCashCard({
   date: string;
   timestamp: number;
   kassaQoldigi: number;
-  data: { actualCash: number | null; actualCashNote: string; actualDiff: number | null } | undefined;
+  data: { actualCash: number | null; actualCashNote: string; actualDiff: number | null; actualCashNeedsConfirmation?: boolean } | undefined;
   onSaved: () => void;
 }) {
   const [value, setValue] = useState("");
@@ -1807,6 +1807,7 @@ function ActualCashCard({
   return (
     <div className="mt-5 rounded-2xl border border-border bg-card p-5">
       <div className="mb-1 flex items-center gap-2"><Calculator className="size-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Haqiqiy sanalgan naqd — {date}</h3></div>
+      {!hasValue && data?.actualCashNeedsConfirmation && <p className="mb-2 text-xs text-amber-600">Naqd sanash tasdiqlanmagan. Sanalgan summani kiriting.</p>}
       <p className="mb-3 text-xs text-muted-foreground">
         Kassadagi pulni jismonan sanab shu yerga kiriting — tizim hisoblangan qoldiq bilan
         ({formatMoney(kassaQoldigi)}) solishtirib, farqni (kamomad yoki ortiqcha) ko'rsatadi.

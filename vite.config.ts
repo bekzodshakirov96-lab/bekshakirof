@@ -1,4 +1,3 @@
-import { jsxLocPlugin } from "@builder.io/vite-plugin-jsx-loc";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
@@ -150,7 +149,9 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), ...(process.env.PLATFORM_SERVER === "true" ? [] : [vitePluginManusRuntime(), vitePluginManusDebugCollector()])];
+// Inspection tooling is for the local dev server, never customer builds.
+const developmentPlugins: Plugin[] = [...(process.env.PLATFORM_SERVER === "true" ? [] : [vitePluginManusRuntime(), vitePluginManusDebugCollector()])];
+const plugins = [react(), tailwindcss(), ...developmentPlugins.map(plugin => ({ ...plugin, apply: "serve" as const }))];
 
 export default defineConfig({
   plugins,
@@ -165,6 +166,7 @@ export default defineConfig({
   root: path.resolve(import.meta.dirname, "client"),
   publicDir: path.resolve(import.meta.dirname, "client", "public"),
   build: {
+    manifest: true,
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
   },

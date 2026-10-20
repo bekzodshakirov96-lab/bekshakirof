@@ -63,9 +63,9 @@ function convertTree(root: Node) {
   }
 }
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
+export function LanguageProvider({ children, syncAccount = true }: { children: ReactNode; syncAccount?: boolean }) {
   const utils = trpc.useUtils();
-  const me = trpc.auth.me.useQuery();
+  const me = trpc.auth.me.useQuery(undefined, { enabled: syncAccount });
   const setLanguageMutation = trpc.auth.setLanguage.useMutation({
     onSuccess: () => utils.auth.me.invalidate(),
     // Kirishdan oldin (login ekranida) hisob yo'q — tanlov faqat brauzerda saqlanadi.
@@ -77,7 +77,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const observerRef = useRef<MutationObserver | null>(null);
 
   // Hisobdagi tanlov brauzerdagidan ustun — boshqa qurilmada kirganda ham o'sha holat.
-  const accountLanguage = me.data?.language;
+  const accountLanguage = syncAccount ? me.data?.language : undefined;
   useEffect(() => {
     if (accountLanguage && accountLanguage !== language) {
       setLanguageState(accountLanguage);
@@ -91,6 +91,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     (next: Language) => {
       setLanguageState(next);
       window.localStorage.setItem(STORAGE_KEY, next);
+      // The separate SaaS platform has no tenant tRPC endpoint.
+      if (!syncAccount) {
+        if (next === "latin") window.location.reload();
+        return;
+      }
       // Lotinga qaytish DOM'ni orqaga o'gira olmaydi (o'girish bir tomonlama),
       // shuning uchun sahifani qayta yuklaymiz — React toza lotin matnini chizadi.
       if (next === "latin") {
@@ -102,7 +107,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       }
       setLanguageMutation.mutate({ language: next });
     },
-    [setLanguageMutation],
+    [setLanguageMutation, syncAccount],
   );
 
   useEffect(() => {

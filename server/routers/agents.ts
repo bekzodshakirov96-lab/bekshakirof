@@ -16,6 +16,7 @@ import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
 import { cashStorageCategory } from "../../shared/cashCategoryRegistry";
+import { commissionPaymentPeriod, commissionSettlementStatus } from "../commissionSettlement";
 import { cashCategorySql } from "../cashCategorySql";
 
 function toMySqlDate(d: Date): string {
@@ -299,23 +300,17 @@ export const agentsRouter = router({
       const salaryPeriodConditions = [
         eq(cashEntries.type, "expense"),
         cashCategorySql("salary"),
-        periodLabel ? or(
-          and(
-            input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
-            input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
-            not(like(cashEntries.sourceKey, "agent-commission:%")),
-          ),
-          and(
-            like(cashEntries.sourceKey, "agent-commission:%"),
-            eq(cashEntries.description, `Komissiya (${periodLabel})`),
-          ),
-        ) : and(
-          input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
-          input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
-        ),
+        input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
+        input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+        periodLabel ? not(like(cashEntries.sourceKey, "agent-commission:%")) : undefined,
       ].filter(Boolean);
 
       const agentRows = await db.select().from(agents).orderBy(asc(agents.name));
+      const commissionPayments = periodLabel ? await db.select({
+        agentId: cashEntries.agentId, sourceKey: cashEntries.sourceKey,
+        description: cashEntries.description, cashAmount: cashEntries.cashAmount,
+      }).from(cashEntries).where(like(cashEntries.sourceKey, "agent-commission:%")) : [];
+      const requestedPeriod = periodLabel ? commissionPeriod(periodLabel) : null;
 
       /** Agent davr ichida kassadan olib bo'lgan pul (avans va to'langan komissiya). */
       const takenRows = await db
@@ -363,7 +358,10 @@ export const agentsRouter = router({
           const commissionAmount = Math.round((collectedAmount * commissionPercent) / 100);
           // Oy davomida olingan avans (va allaqachon to'langan komissiya) ayiriladi —
           // aks holda oy oxirida to'liq komissiya qayta to'lanib, ikki marta berilardi.
-          const takenAmount = takenByAgent.get(agent.id) ?? 0;
+          const settlement = requestedPeriod
+            ? commissionSettlementStatus(commissionPayments.filter(row => row.agentId === agent.id), requestedPeriod)
+            : { paidForExactPeriod: 0, overlappingPeriods: [] };
+          const takenAmount = (takenByAgent.get(agent.id) ?? 0) + settlement.paidForExactPeriod;
           return {
             agentId: agent.id,
             agentName: agent.name,
@@ -373,6 +371,7 @@ export const agentsRouter = router({
             takenAmount,
             /** Manfiy bo'lishi mumkin: agent hisoblangan komissiyadan ko'p avans olgan. */
             remainingAmount: commissionAmount - takenAmount,
+            overlappingPeriods: settlement.overlappingPeriods,
           };
         });
     }),
@@ -398,14 +397,18 @@ export const agentsRouter = router({
         if (!agent?.isActive) throw new TRPCError({ code: "NOT_FOUND", message: "Faol agent topilmadi." });
         const sourceKey = `agent-commission:${input.agentId}:${period.fromDate}:${period.toDate}`;
         const description = `Komissiya (${input.periodLabel})`;
-        const [alreadyPaid] = await tx.select({ id: cashEntries.id }).from(cashEntries).where(and(
-          eq(cashEntries.agentId, input.agentId),
-          or(
-            eq(cashEntries.sourceKey, sourceKey),
-            and(like(cashEntries.sourceKey, "agent-commission:%"), eq(cashEntries.description, description)),
-          ),
-        )).limit(1);
-        if (alreadyPaid) return { success: true };
+        const previousPayments = await tx.select({ sourceKey: cashEntries.sourceKey,
+          description: cashEntries.description, cashAmount: cashEntries.cashAmount }).from(cashEntries).where(and(
+          eq(cashEntries.agentId, input.agentId), like(cashEntries.sourceKey, "agent-commission:%"),
+        )).for("update");
+        if (previousPayments.some(payment => {
+          const paidPeriod = commissionPaymentPeriod(payment);
+          return paidPeriod?.fromDate === period.fromDate && paidPeriod.toDate === period.toDate;
+        })) return { success: true };
+        const settlement = commissionSettlementStatus(previousPayments, period);
+        if (settlement.overlappingPeriods.length) {
+          throw new TRPCError({ code: "CONFLICT", message: `Bu davr oldin to‘langan komissiya davri bilan kesishadi: ${settlement.overlappingPeriods.join(", ")}. Alohida, kesishmaydigan davrni tanlang.` });
+        }
 
         const [sales] = await tx.select({ amount: sql<number>`coalesce(sum(${transactions.cashPayment} + ${transactions.terminalPayment} + ${transactions.clickPayment} + ${transactions.transferPayment}), 0)`.mapWith(Number) })
           .from(transactions).where(and(

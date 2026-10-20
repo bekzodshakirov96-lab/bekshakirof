@@ -154,7 +154,7 @@ export const cashDebtRepaymentsRouter = router({
         }
       } else {
         const [previousPayment] = await tx.select().from(cashJournalDebtRepayments)
-          .where(eq(cashJournalDebtRepayments.cashEntryId, input.cashEntryId)).limit(1);
+          .where(and(eq(cashJournalDebtRepayments.cashEntryId, input.cashEntryId), isNull(cashJournalDebtRepayments.voidedAt))).limit(1);
         if (previousPayment) {
           if (!previousPayment.voidedAt && previousPayment.debtId === input.debtId
             && previousPayment.amount === input.amount && previousPayment.method === input.method) return { id: previousPayment.id };
@@ -180,7 +180,7 @@ export const cashDebtRepaymentsRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "Tanlangan kassa kirimi sana, tur va summa bo‘yicha qaytimga mos kelmaydi." });
         }
         const [assigned] = await tx.select({ id: cashJournalDebtRepayments.id }).from(cashJournalDebtRepayments)
-          .where(eq(cashJournalDebtRepayments.cashEntryId, entry.id)).limit(1);
+          .where(and(eq(cashJournalDebtRepayments.cashEntryId, entry.id), isNull(cashJournalDebtRepayments.voidedAt))).limit(1);
         const [salesLink] = await tx.select({ id: cashTransferLinks.id }).from(cashTransferLinks)
           .where(eq(cashTransferLinks.cashEntryId, entry.id)).limit(1);
         if (assigned || salesLink) throw new TRPCError({ code: "CONFLICT", message: "Bu kirim boshqa operatsiyaga bog‘langan." });
@@ -227,7 +227,7 @@ export const cashDebtRepaymentsRouter = router({
             terminalAmount: 0, clickAmount: 0, transferAmount: 0 }, reason: input.reason });
       }
       const values = { voidedAt: new Date(), voidedBy: ctx.user.id, voidReason: input.reason };
-      await tx.update(cashJournalDebtRepayments).set(values)
+      await tx.update(cashJournalDebtRepayments).set({ ...values, paymentDate: payment.paymentDate })
         .where(eq(cashJournalDebtRepayments.id, payment.id));
       await logAudit(tx, { tableName: "cash_journal_debt_repayments", recordId: payment.id,
         action: "update", userId: ctx.user.id, before: payment, after: { ...payment, ...values }, reason: input.reason });
