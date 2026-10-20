@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   int,
   varchar,
@@ -301,10 +302,14 @@ export const cashJournalDebtRepayments = mysqlTable(
     voidedAt: timestamp("voidedAt"),
     voidedBy: int("voidedBy").references(() => users.id, { onDelete: "set null" }),
     voidReason: varchar("voidReason", { length: 500 }),
+    activeCashEntryId: int("activeCashEntryId").generatedAlwaysAs(
+      sql`CASE WHEN voidedAt IS NULL THEN cashEntryId ELSE NULL END`,
+      { mode: "stored" },
+    ),
   },
   table => [
     index("cash_debt_repayments_debt_idx").on(table.tenantId, table.debtId),
-    uniqueIndex("cash_debt_repayments_cash_entry_unique").on(table.tenantId, table.cashEntryId),
+    uniqueIndex("cash_debt_repayments_active_unique").on(table.tenantId, table.activeCashEntryId),
     index("cash_debt_repayments_date_idx").on(table.tenantId, table.paymentDate),
   ],
 );
@@ -415,6 +420,7 @@ export const clientPayments = mysqlTable(
   {
     tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
     id: int("id").autoincrement().primaryKey(),
+    requestId: varchar("requestId", { length: 64 }),
     clientId: int("clientId").references(() => clients.id, { onDelete: "cascade" }).notNull(),
     /** To'lovni qabul qilgan agent — komissiya (oylik) hisobida shu mijozning
      * eski qarzidan yig'ilgan pul ham hisobga olinishi uchun. */
@@ -432,6 +438,7 @@ export const clientPayments = mysqlTable(
     index("client_payments_client_idx").on(table.tenantId, table.clientId),
     index("client_payments_date_idx").on(table.tenantId, table.paymentDate),
     index("client_payments_agent_idx").on(table.tenantId, table.agentId),
+    uniqueIndex("client_payments_request_unique").on(table.tenantId, table.requestId),
   ],
 );
 
@@ -498,6 +505,7 @@ export const kassaDailyActuals = mysqlTable(
     id: int("id").autoincrement().primaryKey(),
     entryDate: timestamp("entryDate").notNull(),
     actualCash: int("actualCash").default(0).notNull(),
+    cashCountedAt: timestamp("cashCountedAt"),
     // Terminal/Click/Перечисление — bank/POS/Click orqali to'g'ridan-to'g'ri hisobga tushadigan
     // kanallar, jismoniy kassadan o'tmaydi. Shu uchun ularning "haqiqatda tushgani" tashqi
     // hisobot (bank ko'chirmasi, POS yopilish hisoboti, Click panel) asosida shu yerga qo'lda

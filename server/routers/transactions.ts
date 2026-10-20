@@ -1,4 +1,5 @@
 import { transactionContainerColumns } from "../tenancy/scalars";
+import { stockQuantity } from "../inventoryQuantity";
 import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -14,7 +15,20 @@ import { summarizeNetProfit, summarizeOperatingExpenses, summarizeProfit } from 
 import { fetchAverageCosts } from "../costingQueries";
 import { normalizeSearch, normalizeSearchable } from "../businessQueries";
 import { requireDb } from "../db";
-import { reconcileTransactionStock } from "../stockAccounting";
+import { reconcileTransactionStock, type DatabaseTransaction } from "../stockAccounting";
+import { TRPCError } from "@trpc/server";
+
+async function lockSaleClients(tx: DatabaseTransaction, ids: (number | null)[]) {
+  const unique = Array.from(new Set(ids.filter((id): id is number => id !== null))).sort((a, b) => a - b);
+  if (!unique.length) return [];
+  return tx.select({ id: clients.id, agentId: clients.agentId }).from(clients)
+    .where(inArray(clients.id, unique)).orderBy(asc(clients.id)).for("update");
+}
+async function lockSaleProducts(tx: DatabaseTransaction, ids: (number | null)[]) {
+  const unique = Array.from(new Set(ids.filter((id): id is number => id !== null))).sort((a, b) => a - b);
+  if (unique.length) await tx.select({ id: products.id }).from(products)
+    .where(inArray(products.id, unique)).orderBy(asc(products.id)).for("update");
+}
 
 function toMySqlDate(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
@@ -339,7 +353,7 @@ export const transactionsRouter = router({
           agentId: z.number().int().positive(),
           clientId: z.number().int().positive(),
           productId: z.number().int().positive(),
-          quantity: z.number().positive().max(1_000_000),
+          quantity: stockQuantity,
           salePrice: z.number().int().min(0).max(9_000_000_000_000),
           cashPayment: z.number().int().min(0).default(0),
           terminalPayment: z.number().int().min(0).default(0),
@@ -362,12 +376,15 @@ export const transactionsRouter = router({
       if (!client) throw new Error("Mijoz topilmadi.");
       if (client.agentId !== input.agentId) throw new Error("Bu mijoz ko‘rsatilgan agentga biriktirilmagan.");
       return db.transaction(async tx => {
+        const [currentClient] = await lockSaleClients(tx, [input.clientId]);
+        if (!currentClient || currentClient.agentId !== input.agentId) throw new Error("Mijozning agenti o'zgargan. Ma'lumotlarni yangilang.");
+        await lockSaleProducts(tx, [input.productId]);
         const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).limit(1);
         if (!product) throw new Error("Mahsulot topilmadi.");
         if (product.containerType) throw new Error("KEG/tara mahsulotlarini Savdo jurnalida sotib bo‘lmaydi — Tezkor KEG savdosi bo‘limidan foydalaning.");
         const totalAmount = Math.round(input.quantity * input.salePrice);
         const transactionDate = new Date(input.transactionDate);
-        const unitCosts = await fetchAverageCosts(tx, [product.id]);
+        const unitCosts = await fetchAverageCosts(tx, [product.id], transactionDate);
         const [created] = await tx
           .insert(transactions)
           .values({
@@ -441,7 +458,7 @@ export const transactionsRouter = router({
             .array(
               z.object({
                 productId: z.number().int().positive(),
-                quantity: z.number().positive().max(1_000_000),
+                quantity: stockQuantity,
                 salePrice: z.number().int().min(0).max(9_000_000_000_000),
                 returnContainerType: z.enum(["keg_30", "keg_50"]).nullable().optional(),
                 returnQuantity: z.number().int().min(0).max(1_000_000).default(0),
@@ -475,6 +492,9 @@ export const transactionsRouter = router({
       if (!client) throw new Error("Mijoz topilmadi.");
       if (client.agentId !== input.agentId) throw new Error("Bu mijoz ko‘rsatilgan agentga biriktirilmagan.");
       return db.transaction(async tx => {
+        const [currentClient] = await lockSaleClients(tx, [input.clientId]);
+        if (!currentClient || currentClient.agentId !== input.agentId) throw new Error("Mijozning agenti o'zgargan. Ma'lumotlarni yangilang.");
+        await lockSaleProducts(tx, input.items.map(item => item.productId));
         const productRows = await tx
           .select()
           .from(products)
@@ -495,7 +515,7 @@ export const transactionsRouter = router({
         let remainingTransfer = input.transferPayment;
         const transactionDate = new Date(input.transactionDate);
         // Tannarx nusxasi savatdagi barcha mahsulotlar uchun bir marta olinadi.
-        const unitCosts = await fetchAverageCosts(tx, input.items.map(item => item.productId));
+        const unitCosts = await fetchAverageCosts(tx, input.items.map(item => item.productId), transactionDate);
         let cartTotal = 0;
         const results: Array<{ productName: string; totalAmount: number }> = [];
 
@@ -637,7 +657,7 @@ export const transactionsRouter = router({
           agentId: z.number().int().positive(),
           clientId: z.number().int().positive(),
           productId: z.number().int().positive(),
-          quantity: z.number().positive().max(1_000_000),
+          quantity: stockQuantity,
           salePrice: z.number().int().min(0).max(9_000_000_000_000),
           cashPayment: z.number().int().min(0),
           terminalPayment: z.number().int().min(0),
@@ -662,9 +682,16 @@ export const transactionsRouter = router({
       await assertPeriodUnlocked(previous.transactionDate);
       await assertPeriodUnlocked(new Date(input.transactionDate));
       return db.transaction(async tx => {
+        const lockedClients = await lockSaleClients(tx, [previous.clientId, input.clientId]);
+        if (!lockedClients.some(row => row.id === input.clientId && row.agentId === input.agentId))
+          throw new Error("Bu mijoz ko'rsatilgan agentga biriktirilmagan.");
+        await lockSaleProducts(tx, [previous.productId, input.productId]);
         const [lockedTransaction] = await tx.select().from(transactions)
           .where(eq(transactions.id, input.id)).limit(1).for("update");
         if (!lockedTransaction) throw new Error("Operatsiya topilmadi.");
+        if (lockedTransaction.clientId !== previous.clientId || lockedTransaction.productId !== previous.productId)
+          throw new TRPCError({ code: "CONFLICT", message: "Operatsiya boshqa oynada o'zgardi. Yangilab qayta urinib ko'ring." });
+        await assertPeriodUnlocked(lockedTransaction.transactionDate);
         if (lockedTransaction.transactionDate.getTime() !== input.transactionDate
           || lockedTransaction.agentId !== input.agentId || lockedTransaction.transferPayment !== input.transferPayment) {
           const [link] = await tx.select({ id: cashTransferLinks.id }).from(cashTransferLinks)
@@ -675,8 +702,12 @@ export const transactionsRouter = router({
         if (!product) throw new Error("Mahsulot topilmadi.");
         const totalAmount = Math.round(input.quantity * input.salePrice);
         const transactionDate = new Date(input.transactionDate);
-        // Tahrirlashda mahsulot almashtirilgan bo'lishi mumkin — tannarx qaytadan olinadi.
-        const unitCosts = await fetchAverageCosts(tx, [product.id]);
+        // A note/payment/quantity edit must retain the original cost snapshot.
+        // Only moving the sale to another product/date requires a dated valuation.
+        const retainCost = lockedTransaction.productId === product.id &&
+          +lockedTransaction.transactionDate === +transactionDate;
+        const unitCosts = retainCost ? new Map<number, number>() :
+          await fetchAverageCosts(tx, [product.id], transactionDate);
         await tx
           .update(transactions)
           .set({
@@ -689,7 +720,7 @@ export const transactionsRouter = router({
             quantity: input.quantity.toFixed(3),
             currentPrice: product.price,
             salePrice: input.salePrice,
-            unitCost: unitCosts.get(product.id) ?? 0,
+            unitCost: retainCost ? lockedTransaction.unitCost : unitCosts.get(product.id) ?? 0,
             totalAmount,
             cashPayment: input.cashPayment,
             terminalPayment: input.terminalPayment,
@@ -743,8 +774,14 @@ export const transactionsRouter = router({
       }
       await assertPeriodUnlocked(existing.transactionDate);
       return db.transaction(async tx => {
-        await tx.select({ id: transactions.id }).from(transactions)
+        await lockSaleClients(tx, [existing.clientId]);
+        await lockSaleProducts(tx, [existing.productId]);
+        const [lockedTransaction] = await tx.select().from(transactions)
           .where(eq(transactions.id, input.id)).limit(1).for("update");
+        if (!lockedTransaction) throw new Error("Operatsiya topilmadi.");
+        if (lockedTransaction.clientId !== existing.clientId || lockedTransaction.productId !== existing.productId)
+          throw new TRPCError({ code: "CONFLICT", message: "Operatsiya boshqa oynada o'zgardi. Yangilab qayta urinib ko'ring." });
+        await assertPeriodUnlocked(lockedTransaction.transactionDate);
         const [link] = await tx.select({ id: cashTransferLinks.id }).from(cashTransferLinks)
           .where(eq(cashTransferLinks.transactionId, input.id)).limit(1);
         if (link) throw new Error("Savdo o‘tkazmasi Kassa IDsi bilan bog‘langan. O‘chirishdan oldin bog‘lanishni olib tashlang.");

@@ -22,6 +22,7 @@ import {
   type ContainerType,
 } from "../containerAccounting";
 import { requireDb } from "../db";
+import { fetchAverageCosts } from "../costingQueries";
 import { reconcileTransactionStock } from "../stockAccounting";
 import { router } from "../_core/trpc";
 
@@ -230,6 +231,21 @@ export const fastKegRouter = router({
     await assertPeriodUnlocked(new Date(input.transactionDate));
     const db = await requireDb();
     return db.transaction(async tx => {
+      // Lock before the FIRST consistent read: under REPEATABLE READ an earlier
+      // idempotency/product SELECT would pin a stale debt snapshot while waiting.
+      const clientIds = input.rows.map(row => row.clientId).sort((a, b) => a - b);
+      await tx.select({ id: clients.id }).from(clients)
+        .where(inArray(clients.id, clientIds)).orderBy(asc(clients.id)).for("update");
+      const productRows = await tx
+        .select()
+        .from(products)
+        .where(
+          and(
+            eq(products.isActive, true),
+            inArray(products.containerType, ["keg_30", "keg_50"]),
+          ),
+        )
+        .orderBy(asc(products.id)).for("update");
       const sourcePrefix = `fast-keg:${input.idempotencyKey}:`;
       const existing = await tx
         .select({ id: transactions.id })
@@ -246,16 +262,6 @@ export const fastKegRouter = router({
         };
       }
 
-      const productRows = await tx
-        .select()
-        .from(products)
-        .where(
-          and(
-            eq(products.isActive, true),
-            inArray(products.containerType, ["keg_30", "keg_50"]),
-          ),
-        )
-        .orderBy(asc(products.id));
       const keg30Product = productByType(productRows, "keg_30");
       const keg50Product = productByType(productRows, "keg_50");
       const needsKeg30 = input.rows.some(row => row.keg30 > 0 || row.returned30 > 0);
@@ -285,17 +291,6 @@ export const fastKegRouter = router({
         });
       }
 
-      const clientIds = input.rows.map(row => row.clientId);
-      // Shu mijozlar qatoriga qulf qo'yamiz — bir xil mijoz uchun ikkita saveBatch
-      // chaqiruvi deyarli bir vaqtda kelsa (tarmoq qayta urinishi, ikki qurilma va h.k.),
-      // ikkinchisi shu yerda birinchisi commit bo'lguncha kutadi, keyin qarz/tara
-      // qoldig'ini YANGILANGAN holatda o'qiydi. Bu to‘lov cheklovi va qaytariladigan
-      // tara qoldiqlari ketma-ket hisoblanishini ta’minlaydi.
-      await tx
-        .select({ id: clients.id })
-        .from(clients)
-        .where(inArray(clients.id, clientIds))
-        .for("update");
       const financialRows = await tx
         .select({
           id: clients.id,
@@ -346,6 +341,7 @@ export const fastKegRouter = router({
       }
       const clientMap = new Map(financialRows.map(row => [row.id, row]));
       const transactionDate = new Date(input.transactionDate);
+      const unitCosts = await fetchAverageCosts(tx, productRows.map(row => row.id), transactionDate);
       const pricing = {
         keg30Price: keg30Product?.price ?? 0,
         keg50Price: keg50Product?.price ?? 0,
@@ -430,6 +426,7 @@ export const fastKegRouter = router({
               quantity: action.quantity.toFixed(3),
               currentPrice: action.product?.price ?? 0,
               salePrice: action.product?.price ?? 0,
+              unitCost: action.product && action.quantity > 0 ? unitCosts.get(action.product.id) ?? 0 : 0,
               totalAmount,
               cashPayment: actionIndex === 0 ? inputRow.cash : 0,
               terminalPayment: actionIndex === 0 ? inputRow.terminal : 0,

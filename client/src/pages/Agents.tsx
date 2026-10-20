@@ -86,7 +86,7 @@ function AgentCommissionSection() {
   const rows = report.data ?? [];
   const totalCommission = rows.reduce((sum, row) => sum + row.commissionAmount, 0);
   const totalTaken = rows.reduce((sum, row) => sum + row.takenAmount, 0);
-  const totalRemaining = rows.reduce((sum, row) => sum + row.remainingAmount, 0);
+  const totalRemaining = rows.reduce((sum, row) => sum + (row.overlappingPeriods.length ? 0 : row.remainingAmount), 0);
 
   return (
     <SectionCard
@@ -118,14 +118,15 @@ function AgentCommissionSection() {
                   <TableCell
                     className={`text-right font-bold tabular-nums ${row.remainingAmount < 0 ? "text-rose-700 dark:text-rose-400" : "text-foreground"}`}
                   >
-                    {formatMoney(row.remainingAmount)}
+                    {row.overlappingPeriods.length ? <span className="text-xs text-amber-700 dark:text-amber-400">Oldin to‘langan davr bilan kesishadi</span> : formatMoney(row.remainingAmount)}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-8 rounded-lg text-xs"
-                      disabled={row.remainingAmount <= 0 || payCommission.isPending}
+                      disabled={row.remainingAmount <= 0 || row.overlappingPeriods.length > 0 || payCommission.isPending}
+                      title={row.overlappingPeriods.join(", ")}
                       onClick={() => payCommission.mutate({ agentId: row.agentId, amount: row.remainingAmount, periodLabel })}
                     >
                       To'lash

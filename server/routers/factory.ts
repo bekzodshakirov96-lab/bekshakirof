@@ -3,7 +3,7 @@ import { and, asc, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { bottleMovements, containerMovements, factoryOperations, products, stockMovements } from "../../drizzle/schema";
 import { skladProcedure } from "../access";
-import { logAudit } from "../auditLog";
+import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { normalizeContainerType } from "../containerAccounting";
 import { requireDb } from "../db";
 import { router } from "../_core/trpc";
@@ -191,6 +191,7 @@ export const factoryRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
+      await assertPeriodUnlocked(new Date(input.operationDate));
       const db = await requireDb();
       const [product] = await db.select({ id: products.id }).from(products).where(eq(products.id, input.productId)).limit(1);
       if (!product) throw new Error("Mahsulot topilmadi.");
@@ -243,6 +244,7 @@ export const factoryRouter = router({
       .where(eq(factoryOperations.id, input.id))
       .limit(1);
     if (!existing) throw new Error("Yozuv topilmadi yoki allaqachon o'chirilgan.");
+    await assertPeriodUnlocked(existing.operationDate);
     await db.transaction(async tx => {
       if (existing.stockMovementId) {
         const movements = await tx.select().from(stockMovements).where(eq(stockMovements.id, existing.stockMovementId));
@@ -358,6 +360,7 @@ export const factoryRouter = router({
         ]),
       )
       .mutation(async ({ ctx, input }) => {
+        await assertPeriodUnlocked(new Date(input.movementDate));
         const db = await requireDb();
         const shared = {
           movementDate: new Date(input.movementDate),
@@ -411,6 +414,7 @@ export const factoryRouter = router({
         .where(eq(bottleMovements.id, input.id))
         .limit(1);
       if (!existing) throw new Error("Yozuv topilmadi yoki allaqachon o'chirilgan.");
+      await assertPeriodUnlocked(existing.movementDate);
       return db.transaction(async tx => {
         await tx.delete(bottleMovements).where(eq(bottleMovements.id, input.id));
         await logAudit(tx, {

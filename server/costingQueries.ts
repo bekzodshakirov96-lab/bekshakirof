@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray } from "drizzle-orm";
+import { and, eq, gt, inArray, lte } from "drizzle-orm";
 import { stockMovements } from "../drizzle/schema";
 import { averageCostByProduct } from "./costing";
 import type { DatabaseTransaction } from "./stockAccounting";
@@ -16,6 +16,7 @@ import type { DatabaseTransaction } from "./stockAccounting";
 export async function fetchAverageCosts(
   tx: DatabaseTransaction,
   productIds: number[],
+  asOf?: Date,
 ): Promise<Map<number, number>> {
   const uniqueIds = productIds.filter(
     (id, index) => Number.isFinite(id) && id > 0 && productIds.indexOf(id) === index,
@@ -33,6 +34,7 @@ export async function fetchAverageCosts(
       and(
         eq(stockMovements.movementType, "in"),
         gt(stockMovements.unitCost, 0),
+        asOf ? lte(stockMovements.movementDate, asOf) : undefined,
         inArray(stockMovements.productId, uniqueIds),
       ),
     );

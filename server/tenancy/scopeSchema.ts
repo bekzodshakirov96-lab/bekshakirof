@@ -115,7 +115,7 @@ export async function assertTenantQueryScope(db: TenantSql, tenantId: string) {
 }
 
 /** Explicit maintenance operation. Only tenant metadata/keys are changed; never financial values. */
-export async function applyTenantQueryScope(db: TenantSql, tenantId: string) {
+export async function applyTenantQueryScope(db: TenantSql, tenantId: string, upgradeFromHash?: string) {
   if (!/^[a-z][a-z0-9-]{1,62}$/.test(tenantId))
     throw new Error("Invalid company ID.");
   const [tables] = await db.query(
@@ -139,8 +139,16 @@ export async function applyTenantQueryScope(db: TenantSql, tenantId: string) {
       throw new Error("Rebinding is forbidden.");
   }
   if (names.has(SCOPE_TABLE)) {
-    await assertTenantQueryScope(db, tenantId);
-    return;
+    const [records] = await db.query(`SELECT id,tenantId,schemaHash FROM ${SCOPE_TABLE}`);
+    const existing = records as { id: number; tenantId: string; schemaHash: string }[];
+    if (existing.length !== 1 || existing[0].id !== 1 || existing[0].tenantId !== tenantId)
+      throw new Error("Existing tenant scope identity differs.");
+    if (existing[0].schemaHash === scopeSchemaHash) {
+      await assertTenantQueryScope(db, tenantId);
+      return;
+    }
+    if (!upgradeFromHash || existing[0].schemaHash !== upgradeFromHash)
+      throw new Error("Tenant scope upgrade requires a reviewed previous schema hash.");
   }
   // Preflight every existing scope before any DDL/backfill.
   for (const table of businessTables) {
@@ -273,12 +281,17 @@ export async function applyTenantQueryScope(db: TenantSql, tenantId: string) {
         );
     }
   }
-  await db.query(
-    `CREATE TABLE ${SCOPE_TABLE} (id tinyint PRIMARY KEY,tenantId varchar(63) NOT NULL,schemaHash char(64) NOT NULL,preparedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)`
-  );
-  await db.query(
-    `INSERT INTO ${SCOPE_TABLE} (id,tenantId,schemaHash) VALUES (1,?,?)`,
-    [tenantId, scopeSchemaHash]
-  );
+  if (names.has(SCOPE_TABLE)) {
+    await db.query(`UPDATE ${SCOPE_TABLE} SET schemaHash=? WHERE id=1 AND tenantId=? AND schemaHash=?`,
+      [scopeSchemaHash, tenantId, upgradeFromHash]);
+  } else {
+    await db.query(
+      `CREATE TABLE ${SCOPE_TABLE} (id tinyint PRIMARY KEY,tenantId varchar(63) NOT NULL,schemaHash char(64) NOT NULL,preparedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)`
+    );
+    await db.query(
+      `INSERT INTO ${SCOPE_TABLE} (id,tenantId,schemaHash) VALUES (1,?,?)`,
+      [tenantId, scopeSchemaHash]
+    );
+  }
   await assertTenantQueryScope(db, tenantId);
 }

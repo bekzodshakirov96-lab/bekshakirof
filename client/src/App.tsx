@@ -1,32 +1,41 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LanguageProvider } from "@/lib/language";
-import NotFound from "@/pages/NotFound";
 import { Route, Switch, useLocation } from "wouter";
-import Platform from "./pages/Platform";
-import DashboardLayout from "./components/DashboardLayout";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Agents from "./pages/Agents";
-import AktSverka from "./pages/AktSverka";
-import AuditLog from "./pages/AuditLog";
-import Cash from "./pages/Cash";
-import Clients from "./pages/Clients";
-import Containers from "./pages/Containers";
-import Dashboard from "./pages/Dashboard";
-import Debts from "./pages/Debts";
-import Employees from "./pages/Employees";
-import Factory from "./pages/Factory";
-import ImportExcel from "./pages/ImportExcel";
-import FastKeg from "./pages/FastKeg";
-import Products from "./pages/Products";
-import KassaReports from "./pages/KassaReports";
-import SalesReport from "./pages/SalesReport";
-import Stock from "./pages/Stock";
-import StockReport from "./pages/StockReport";
-import Transactions from "./pages/Transactions";
-import Users from "./pages/Users";
-import CompanySettings from "./pages/CompanySettings";
+
+const Platform = lazy(() => import("./pages/Platform"));
+const DashboardLayout = lazy(() => import("./components/DashboardLayout"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Agents = lazy(() => import("./pages/Agents"));
+const AktSverka = lazy(() => import("./pages/AktSverka"));
+const AuditLog = lazy(() => import("./pages/AuditLog"));
+const Cash = lazy(() => import("./pages/Cash"));
+const Clients = lazy(() => import("./pages/Clients"));
+const Containers = lazy(() => import("./pages/Containers"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Debts = lazy(() => import("./pages/Debts"));
+const Employees = lazy(() => import("./pages/Employees"));
+const Factory = lazy(() => import("./pages/Factory"));
+const ImportExcel = lazy(() => import("./pages/ImportExcel"));
+const FastKeg = lazy(() => import("./pages/FastKeg"));
+const Products = lazy(() => import("./pages/Products"));
+const KassaReports = lazy(() => import("./pages/KassaReports"));
+const SalesReport = lazy(() => import("./pages/SalesReport"));
+const Stock = lazy(() => import("./pages/Stock"));
+const StockReport = lazy(() => import("./pages/StockReport"));
+const Transactions = lazy(() => import("./pages/Transactions"));
+const Users = lazy(() => import("./pages/Users"));
+const CompanySettings = lazy(() => import("./pages/CompanySettings"));
+
+function PageLoading() {
+  return <div role="status" aria-live="polite" className="flex min-h-48 items-center justify-center gap-3 text-sm text-muted-foreground">
+    <span aria-hidden="true" className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none" />
+    Sahifa yuklanmoqda…
+  </div>;
+}
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -73,12 +82,16 @@ function App() {
         defaultTheme="light"
         switchable
       >
-        <LanguageProvider>
+        <LanguageProvider syncAccount={!platformPage}>
           <TooltipProvider>
             <Toaster />
-            {platformPage ? <Platform /> : <DashboardLayout>
-              <Router />
-            </DashboardLayout>}
+            <ErrorBoundary>
+              <Suspense fallback={<PageLoading />}>
+                {platformPage ? <Platform /> : <DashboardLayout>
+                  <Suspense fallback={<PageLoading />}><Router /></Suspense>
+                </DashboardLayout>}
+              </Suspense>
+            </ErrorBoundary>
           </TooltipProvider>
         </LanguageProvider>
       </ThemeProvider>

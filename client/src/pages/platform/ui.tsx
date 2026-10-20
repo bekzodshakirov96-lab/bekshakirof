@@ -42,6 +42,7 @@ export const events: Record<string, string> = {
   billing_order_cancelled: "To‘lov buyurtmasi bekor qilindi",
   billing_paid: "Obuna to‘lovi tasdiqlandi",
   billing_cancelled: "Obuna to‘lovi bekor qilindi",
+  billing_reconciled: "To‘lovning provayderdagi holati tekshirildi",
   super_admin_created: "Super administrator yaratildi",
   registered: "Firma ro‘yxatdan o‘tdi",
   email_verified: "Email tasdiqlandi",

@@ -1,10 +1,13 @@
 import { and, desc, eq, gt, gte, inArray, isNotNull, lte, not, or, sql } from "drizzle-orm";
+import { hasRecordedCashCount } from "../cashCountStatus";
 import { cashCategorySql } from "../cashCategorySql";
 import { z } from "zod";
+import { stockQuantity } from "../inventoryQuantity";
 import { matrixLayoutValueSchema } from "../../shared/matrixLayout";
 import { syncLegacyTaking, syncTaking, matrixCellVersion, recordMatrixCellWrite } from "../matrixInventory";
 import { randomUUID } from "node:crypto";
 import {
+  auditLog,
   agentCashSubmissions,
   agentTakingEntries,
   agents,
@@ -244,6 +247,11 @@ export const kassaRouter = router({
       .where(and(sql`${kassaDailyActuals.entryDate} >= ${toMySqlDate(start)}`, sql`${kassaDailyActuals.entryDate} <= ${toMySqlDate(end)}`))
       .limit(1);
 
+    const countAudit = actual && !actual.cashCountedAt ? await db.select({ afterData: auditLog.afterData })
+      .from(auditLog).where(and(eq(auditLog.tableName, "kassa_daily_actuals"), eq(auditLog.recordId, actual.id)))
+      .orderBy(desc(auditLog.id)) : [];
+    const hasCount = actual ? hasRecordedCashCount(actual, countAudit.map(row => row.afterData)) : false;
+
     const takingRows = await db
       .select({
         agentId: agentTakingEntries.agentId,
@@ -306,9 +314,10 @@ export const kassaRouter = router({
       jamiPrihod,
       jamiRasxod,
       kassaQoldigi,
-      actualCash: actual?.actualCash ?? null,
+      actualCash: actual && hasCount ? actual.actualCash : null,
+      actualCashNeedsConfirmation: Boolean(actual && !hasCount),
       actualCashNote: actual?.note ?? "",
-      actualDiff: actual ? actual.actualCash - kassaQoldigi : null,
+      actualDiff: actual && hasCount ? actual.actualCash - kassaQoldigi : null,
       agentSummaries: agentSummaries.sort((a, b) => a.agentName.localeCompare(b.agentName, "uz-Latn")),
       agentComputedTotal,
       agentSubmittedTotal,
@@ -341,7 +350,7 @@ export const kassaRouter = router({
             const [previous] = await tx.select().from(kassaDailyActuals).where(eq(kassaDailyActuals.id, existing.id)).limit(1);
             await tx
               .update(kassaDailyActuals)
-              .set({ actualCash: input.actualCash, note: input.note, updatedBy: ctx.user.id })
+              .set({ entryDate: sql`${kassaDailyActuals.entryDate}`, actualCash: input.actualCash, cashCountedAt: new Date(), note: input.note, updatedBy: ctx.user.id })
               .where(eq(kassaDailyActuals.id, existing.id));
             await logAudit(tx, {
               tableName: "kassa_daily_actuals",
@@ -355,6 +364,7 @@ export const kassaRouter = router({
             const [created] = await tx.insert(kassaDailyActuals).values({
               entryDate: new Date(input.date),
               actualCash: input.actualCash,
+              cashCountedAt: new Date(),
               note: input.note,
               updatedBy: ctx.user.id,
             }).$returningId();
@@ -400,6 +410,7 @@ export const kassaRouter = router({
             await tx
               .update(kassaDailyActuals)
               .set({
+                entryDate: sql`${kassaDailyActuals.entryDate}`,
                 terminalConfirmed: input.terminalConfirmed,
                 clickConfirmed: input.clickConfirmed,
                 transferConfirmed: input.transferConfirmed,
@@ -556,16 +567,17 @@ export const kassaRouter = router({
           date: z.number().int(),
           agentId: z.number().int().positive(),
           productId: z.number().int().positive(),
-          quantity: z.number().positive().max(1_000_000).default(1),
+          quantity: stockQuantity.default(1),
         }),
       )
       .mutation(async ({ input, ctx }) => {
         await assertPeriodUnlocked(new Date(input.date));
         const db = await requireDb();
-        const [product] = await db.select().from(products).where(eq(products.id, input.productId)).limit(1);
+        return db.transaction(async tx => {
+        const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).limit(1).for("update");
         if (!product) throw new Error("Mahsulot topilmadi.");
         const { start, end } = dayRange(input.date);
-        const [override] = await db
+        const [override] = await tx
           .select({ unitPrice: dailyProductPrices.unitPrice })
           .from(dailyProductPrices)
           .where(
@@ -578,8 +590,6 @@ export const kassaRouter = router({
           .limit(1);
         const unitPrice = override?.unitPrice ?? product.price;
         const amount = Math.round(input.quantity * unitPrice);
-        return db.transaction(async tx => {
-        await tx.select({ id: products.id }).from(products).where(eq(products.id, product.id)).for("update");
         const [created] = await tx
           .insert(agentTakingEntries)
           .values({
@@ -601,7 +611,7 @@ export const kassaRouter = router({
         });
       }),
     updateQuantity: skladProcedure
-      .input(z.object({ id: z.number().int().positive(), quantity: z.number().positive().max(1_000_000) }))
+      .input(z.object({ id: z.number().int().positive(), quantity: stockQuantity }))
       .mutation(async ({ input, ctx }) => {
         const db = await requireDb();
         return syncLegacyTaking(db, input.id, ctx.user.id, input.quantity);
@@ -634,8 +644,14 @@ export const kassaRouter = router({
       .mutation(async ({ input, ctx }) => {
         await assertPeriodUnlocked(new Date(input.date));
         const db = await requireDb();
+        return db.transaction(async tx => {
+        // Share the product lock with matrix quantity writes; price and all
+        // affected money amounts commit together, including a new empty cell.
+        const [product] = await tx.select({ price: products.price }).from(products)
+          .where(eq(products.id, input.productId)).for("update");
+        if (!product) throw new Error("Mahsulot topilmadi.");
         const { start, end } = dayRange(input.date);
-        const [existing] = await db
+        const [existing] = await tx
           .select({ id: dailyProductPrices.id })
           .from(dailyProductPrices)
           .where(and(eq(dailyProductPrices.productId, input.productId), gte(dailyProductPrices.entryDate, start), lte(dailyProductPrices.entryDate, end)))
@@ -645,18 +661,16 @@ export const kassaRouter = router({
         if (input.unitPrice && input.unitPrice > 0) {
           effectiveUnitPrice = input.unitPrice;
           if (existing) {
-            await db.update(dailyProductPrices).set({ entryDate: sql`${dailyProductPrices.entryDate}`, unitPrice: input.unitPrice, updatedBy: ctx.user.id }).where(eq(dailyProductPrices.id, existing.id));
+            await tx.update(dailyProductPrices).set({ entryDate: sql`${dailyProductPrices.entryDate}`, unitPrice: input.unitPrice, updatedBy: ctx.user.id }).where(eq(dailyProductPrices.id, existing.id));
           } else {
-            await db.insert(dailyProductPrices).values({ entryDate: new Date(input.date), productId: input.productId, unitPrice: input.unitPrice, updatedBy: ctx.user.id });
+            await tx.insert(dailyProductPrices).values({ entryDate: new Date(input.date), productId: input.productId, unitPrice: input.unitPrice, updatedBy: ctx.user.id });
           }
         } else {
-          if (existing) await db.delete(dailyProductPrices).where(eq(dailyProductPrices.id, existing.id));
-          const [product] = await db.select({ price: products.price }).from(products).where(eq(products.id, input.productId)).limit(1);
-          if (!product) throw new Error("Mahsulot topilmadi.");
+          if (existing) await tx.delete(dailyProductPrices).where(eq(dailyProductPrices.id, existing.id));
           effectiveUnitPrice = product.price;
         }
 
-        await db
+        await tx
           .update(agentTakingEntries)
           .set({
             unitPrice: effectiveUnitPrice,
@@ -671,6 +685,7 @@ export const kassaRouter = router({
             ),
           );
         return { success: true, unitPrice: effectiveUnitPrice } as const;
+        });
       }),
   }),
 

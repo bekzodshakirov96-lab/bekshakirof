@@ -13,6 +13,12 @@ export type BillingOrder = {
   periodStart: number | null;
   periodEnd: number | null;
   checkoutUrl?: string;
+  needsReview?: boolean;
+};
+export type BillingReview = Pick<BillingOrder, "id" | "companyId" | "provider" | "mode" | "amountTiyin" | "expiresAt"> & {
+  companyName: string;
+  transactionId: number;
+  externalId: string;
 };
 export type BillingView = {
   mode: BillingMode;
