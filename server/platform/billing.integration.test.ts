@@ -556,5 +556,53 @@ describe.skipIf(!sqlUrl)(
       });
       expect((await store.company(otherId))!.accessUntil).toBe(beforeOther);
     });
+    it("recovers abandoned prepared Click payments only after verified admin reconciliation", async () => {
+      const price = (await call("/admin/billing", undefined, adminCookie)).data.price;
+      const amount = (price.amountTiyin / 100).toFixed(2);
+      const id = (await create("click")).data.orderId;
+      const prepared = await click(id, "99000001", "0", undefined, "0", amount);
+      expect(prepared.error).toBe(0);
+      await store.pool.query("UPDATE platform_billing_orders SET expiresAt=? WHERE id=?", [Date.now() - 1, id]);
+      const beforeAccess = (await company())!.accessUntil;
+      const beforeOther = (await store.company(otherId))!.accessUntil;
+      expect((await create("click")).status).toBe(409);
+      expect((await create("payme")).status).toBe(409);
+      const view = (await call("/billing", undefined, ownerCookie)).data;
+      expect(view.orders.find((o: { id: string }) => o.id === id)).toMatchObject({ needsReview: true });
+      expect(view.orders.find((o: { id: string }) => o.id === id).checkoutUrl).toBeUndefined();
+      expect((await call("/admin/billing/review", undefined, ownerCookie)).status).toBe(403);
+      expect((await call("/admin/billing/review", undefined, adminCookie)).data.items.some((o: { id: string }) => o.id === id)).toBe(true);
+      const resolve = { id, transactionId: Number(prepared.merchant_prepare_id), externalId: "99000001", mode: "test",
+        outcome: "cancelled", reference: "Provider final cancellation test receipt", providerVerified: true };
+      expect((await call("/admin/billing/reconcile", resolve, ownerCookie)).status).toBe(403);
+      expect((await call("/admin/billing/reconcile", { ...resolve, providerVerified: false }, adminCookie)).status).toBe(400);
+      expect((await call("/admin/billing/reconcile", { ...resolve, externalId: "wrong" }, adminCookie)).status).toBe(409);
+      expect((await call("/admin/billing/reconcile", resolve, adminCookie)).status).toBe(200);
+      expect((await call("/admin/billing/reconcile", resolve, adminCookie)).status).toBe(200);
+      expect((await company())!.accessUntil).toBe(beforeAccess);
+      expect((await click(id, "99000001", "1", String(prepared.merchant_prepare_id), "0", amount)).error).toBe(-9);
+      const replacement = await create("payme");
+      expect(replacement.status).toBe(200);
+      expect(replacement.data.orderId).not.toBe(id);
+      await call(`/billing/orders/${replacement.data.orderId}/cancel`, {}, ownerCookie);
+
+      const paidId = (await create("click")).data.orderId;
+      const paidPrep = await click(paidId, "99000002", "0", undefined, "0", amount);
+      await store.pool.query("UPDATE platform_billing_orders SET expiresAt=? WHERE id=?", [Date.now() - 1, paidId]);
+      const paid = { ...resolve, id: paidId, transactionId: Number(paidPrep.merchant_prepare_id),
+        externalId: "99000002", outcome: "paid", reference: "Provider confirmed paid test receipt" };
+      const results = await Promise.all([
+        call("/admin/billing/reconcile", paid, adminCookie),
+        call("/admin/billing/reconcile", paid, adminCookie),
+        click(paidId, "99000002", "1", String(paidPrep.merchant_prepare_id), "0", amount),
+      ]);
+      expect(results[0].status).toBe(200);
+      expect(results[1].status).toBe(200);
+      expect([0, -4]).toContain(results[2].error);
+      expect((await company())!.accessUntil).toBe(trialEndAfterMonth(beforeAccess!));
+      expect((await store.company(otherId))!.accessUntil).toBe(beforeOther);
+      const [grants] = await rows<{ n: number }>(store.pool, "SELECT COUNT(*) n FROM platform_billing_grants WHERE orderId=?", [paidId]);
+      expect(grants.n).toBe(1);
+    });
   }
 );

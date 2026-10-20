@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gt, gte, inArray, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, cashEntries, cashJournalDebtRepayments, cashTransferLinks, employees } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
@@ -83,7 +83,7 @@ export const cashRouter = router({
       id: cashJournalDebtRepayments.id,
       cashEntryId: cashJournalDebtRepayments.cashEntryId,
     }).from(cashJournalDebtRepayments)
-      .where(inArray(cashJournalDebtRepayments.cashEntryId, rows.map(row => row.id))) : [];
+      .where(and(inArray(cashJournalDebtRepayments.cashEntryId, rows.map(row => row.id)), isNull(cashJournalDebtRepayments.voidedAt))) : [];
     const repaymentByEntry = new Map(repayments.map(row => [row.cashEntryId, row.id]));
     const linksByEntry = new Map<number, Array<{ kind: "transaction" | "client_payment"; id: number }>>();
     const independentEntries = new Set<number>();

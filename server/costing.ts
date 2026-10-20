@@ -97,7 +97,7 @@ export function summarizeProfit(lines: ProfitLine[]): ProfitSummary {
     if (line.unitCost > 0) {
       revenueWithCost += line.totalAmount;
       cost += line.quantity * line.unitCost;
-    } else {
+    } else if (line.quantity > 0 || line.totalAmount !== 0) {
       linesWithoutCost += 1;
       revenueWithoutCost += line.totalAmount;
     }

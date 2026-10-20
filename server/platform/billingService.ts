@@ -4,6 +4,7 @@ import type {
   BillingOrder,
   BillingProvider,
   BillingView,
+  BillingReview,
 } from "../../shared/billing";
 import {
   trialEndAfterMonth,
@@ -159,8 +160,9 @@ export class BillingService {
         paidAt: o.paidAt,
         periodStart: o.periodStart,
         periodEnd: o.periodEnd,
+        needsReview: o.state === "pending" && !!o.activeTxn && o.expiresAt <= Date.now(),
         ...(o.state === "pending" &&
-        (o.expiresAt > Date.now() || o.activeTxn) &&
+        o.expiresAt > Date.now() &&
         o.mode === this.settings.mode &&
         providers[o.provider]
           ? { checkoutUrl: this.checkout(o) }
@@ -196,7 +198,7 @@ export class BillingService {
           );
         if (
           prior.state !== "pending" ||
-          (prior.expiresAt <= Date.now() && !prior.activeTxn)
+          prior.expiresAt <= Date.now()
         )
           throw new PlatformError(
             409,
@@ -218,6 +220,8 @@ export class BillingService {
         [company.id]
       );
       if (pending) {
+        if (pending.expiresAt <= Date.now() && pending.activeTxn)
+          throw new PlatformError(409, "Boshlangan to‘lov muddati tugagan. Super admin provayderdagi yakuniy holatni tekshirib buyurtmani tiklashi kerak.");
         if (
           pending.provider !== provider ||
           pending.mode !== this.settings.mode
@@ -311,6 +315,45 @@ export class BillingService {
         [provider, this.settings.mode, externalId]
       )
     )[0];
+  }
+  async reviewOrders(page = 1): Promise<{ items: BillingReview[]; total: number }> {
+    const filter = "o.state='pending' AND o.expiresAt<=? AND t.state=1 AND t.id=o.activeTxn";
+    const now = Date.now();
+    const [{ total }] = await rows<{ total: number }>(this.store.pool,
+      `SELECT COUNT(*) total FROM platform_billing_orders o JOIN platform_billing_transactions t ON t.orderId=o.id WHERE ${filter}`, [now]);
+    const items = await rows<BillingReview>(this.store.pool,
+      `SELECT o.id,o.companyId,c.name companyName,o.provider,o.mode,o.amountTiyin,o.expiresAt,t.id transactionId,t.externalId
+       FROM platform_billing_orders o JOIN platform_billing_transactions t ON t.orderId=o.id
+       JOIN platform_companies c ON c.id=o.companyId WHERE ${filter}
+       ORDER BY o.expiresAt,o.id LIMIT 20 OFFSET ?`, [now, (page - 1) * 20]);
+    return { items, total };
+  }
+  /** Only a verified FINAL provider result may resolve an uncertain payment.
+   * Expiry alone never proves cancellation; retain provider IDs and full history. */
+  async reconcile(admin: PlatformAccount, input: {
+    id: string; transactionId: number; externalId: string; mode: string;
+    outcome: "paid" | "cancelled"; reference: string;
+  }) {
+    if (admin.role !== "super_admin" || !admin.verified)
+      throw new PlatformError(403, "Faqat super admin uchun.");
+    return this.store.transaction(async db => {
+      const [hint] = await rows<Order>(db, "SELECT * FROM platform_billing_orders WHERE id=?", [input.id]);
+      if (!hint) throw new PlatformError(404, "Buyurtma topilmadi.");
+      const company = (await this.store.company(hint.companyId, db, true))!;
+      const [order] = await rows<Order>(db, "SELECT * FROM platform_billing_orders WHERE id=? FOR UPDATE", [input.id]);
+      const [payment] = await rows<Payment>(db, "SELECT * FROM platform_billing_transactions WHERE id=? AND orderId=? FOR UPDATE", [input.transactionId, order.id]);
+      if (!payment || payment.externalId !== input.externalId || order.mode !== input.mode || order.activeTxn !== payment.id)
+        throw new PlatformError(409, "Tranzaksiya ma’lumoti mos emas. Ro‘yxatni yangilang.");
+      if ((order.state === "paid" && payment.state === 2 && input.outcome === "paid")
+        || (order.state === "cancelled" && payment.state < 0 && input.outcome === "cancelled")) return;
+      if (order.state !== "pending" || payment.state !== 1 || order.expiresAt > Date.now())
+        throw new PlatformError(409, "To‘lov holati o‘zgargan yoki tekshirish muddati kelmagan.");
+      if (input.reference.trim().length < 5) throw new PlatformError(400, "Provayder tasdiqlash manbasini kiriting.");
+      await this.store.event(db, order.companyId, admin, "billing_reconciled",
+        `${order.id}; ${order.provider}/${order.mode}; ${payment.externalId}; ${input.outcome}; ${input.reference.trim()}`);
+      if (input.outcome === "paid") await this.perform(db, order, company, payment);
+      else await this.cancel(db, order, company, payment, 1);
+    });
   }
   async locked<T>(
     id: string,

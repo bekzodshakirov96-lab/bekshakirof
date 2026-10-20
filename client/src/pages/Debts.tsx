@@ -360,7 +360,7 @@ function CashDebtRepaymentDialog({ debt, onClose }: { debt: CashDebt | null; onC
   const history = trpc.cash.journalDebt.repayments.history.useQuery({ debtId: debt?.id ?? 0 }, { enabled: Boolean(debt) });
   const cashDay = trpc.cash.byDate.useQuery({ date: tashkentDateToTimestamp(date) || 0 }, { enabled: Boolean(debt) && showExisting && Number.isFinite(tashkentDateToTimestamp(date)) });
   const remaining = debt ? debt.amount - (debt.paidAmount ?? 0) : 0;
-  const matchingEntries = (cashDay.data ?? []).filter(entry => entry.type === "income" && entry.category === "Qarz qaytimi" &&
+  const matchingEntries = (cashDay.data ?? []).filter(entry => entry.type === "income" && entry.category === "Qarz qaytimi" && !entry.debtRepaymentId &&
     entry.agentId === debt?.agentId && entry.employeeId === debt?.employeeId &&
     entry.cashAmount === (method === "cash" ? Number(amount) : 0) &&
     entry.terminalAmount === (method === "terminal" ? Number(amount) : 0) &&
@@ -452,8 +452,12 @@ function DebtPaymentDialog({
   const [date, setDate] = useState(() => localDateInputValue());
   const [note, setNote] = useState("");
 
+  // Keep this key after a failed/unknown response so retry cannot duplicate a receipt.
+  const [paymentRequestId, setPaymentRequestId] = useState(() => crypto.randomUUID());
+
   function reset() {
     setCash(""); setTerminal(""); setClick(""); setTransfer(""); setNote("");
+    setPaymentRequestId(crypto.randomUUID());
     setDate(localDateInputValue());
   }
 
@@ -606,8 +610,9 @@ function DebtPaymentDialog({
             onClick={() => {
               if (!client) return;
               create.mutate({
+                requestId: paymentRequestId,
                 clientId: client.id,
-                paymentDate: new Date(`${date}T12:00:00`).getTime(),
+                paymentDate: tashkentDateToTimestamp(date),
                 cashAmount: Number(cash || 0),
                 terminalAmount: Number(terminal || 0),
                 clickAmount: Number(click || 0),

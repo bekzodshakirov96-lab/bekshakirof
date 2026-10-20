@@ -134,11 +134,13 @@ export default function Transactions() {
   });
 
   /** Mahsulot tanlanmagan holatda ham — mijozdan faqat eski qarz to'lovi qabul qilish uchun. */
+  const debtPaymentRequestId = useRef(crypto.randomUUID());
   const createDebtOnlyPayment = trpc.debts.payments.create.useMutation({
     onSuccess: async (_result, variables) => {
       const total =
         (variables.cashAmount ?? 0) + (variables.terminalAmount ?? 0) + (variables.clickAmount ?? 0) + (variables.transferAmount ?? 0);
       toast.success(`Qarz to‘lovi qabul qilindi: ${formatMoney(total)}`);
+      debtPaymentRequestId.current = crypto.randomUUID();
       setDebtPayment(""); setDebtTerminalPayment(""); setDebtClickPayment(""); setDebtTransferPayment(""); setNote("");
       await Promise.all([
         utils.dashboard.overview.invalidate(),
@@ -255,6 +257,7 @@ export default function Transactions() {
 
   function submitDebtOnly() {
     createDebtOnlyPayment.mutate({
+      requestId: debtPaymentRequestId.current,
       clientId: Number(clientId),
       paymentDate: new Date(`${date}T12:00:00`).getTime(),
       cashAmount: Math.round(Number(debtPayment || 0)),

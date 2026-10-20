@@ -2,7 +2,7 @@ import * as XLSX from "xlsx";
 import { describe, expect, it } from "vitest";
 import { parseDistributionWorkbook } from "./excelImport";
 
-function makeWorkbook() {
+function makeWorkbook(bookType: "xlsx" | "xlsm" | "xls" = "xlsm") {
   const workbook = XLSX.utils.book_new();
   const add = (name: string, rows: unknown[][]) => XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), name);
 
@@ -10,7 +10,7 @@ function makeWorkbook() {
     ["Agentlar"],
     ["№", "Agent", "Telefon", "Izoh"],
     [1, "Akmal Agent", "+998900001122", "Shimoliy hudud"],
-    [2, "Akmal Agent", "+998900001133", "Yangilangan"],
+    [2, "Akmal Agent", "+998900001133", "Янгиланган — O‘zbekiston"],
   ]);
   add("Mijozlar", [
     ["Mijozlar"],
@@ -38,10 +38,23 @@ function makeWorkbook() {
     [1, new Date("2026-07-20T00:00:00Z"), "Akmal Agent", "Baraka Market", "KEG 30L", "Berildi", 3, "Test"],
   ]);
 
-  return XLSX.write(workbook, { type: "buffer", bookType: "xlsm" }) as Buffer;
+  return XLSX.write(workbook, { type: "buffer", bookType }) as Buffer;
 }
 
 describe("Excel import normalizatsiyasi", () => {
+  it.each(["xlsx", "xlsm", "xls"] as const)("preserves financial fields and Unicode in %s workbooks", bookType => {
+    const parsed = parseDistributionWorkbook(makeWorkbook(bookType));
+    expect(parsed.agents[0].note).toBe("Янгиланган — O‘zbekiston");
+    expect(parsed.clients[0]).toMatchObject({ openingDebt: 750000 });
+    expect(parsed.transactions[0]).toMatchObject({
+      quantity: "10.000", salePrice: 12500, totalAmount: 125000,
+      cashPayment: 50000, terminalPayment: 25000,
+    });
+    expect(parsed.cashEntries[0]).toMatchObject({
+      cashAmount: 50000, terminalAmount: 25000, clickAmount: 10000,
+    });
+    expect(parsed.containerMovements[0]).toMatchObject({ quantity: 3 });
+  });
   function cashWorkbook(rows: unknown[][]) {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([

@@ -214,6 +214,7 @@ export function BillingPanel({
                               ? "To‘langan"
                               : o.state === "cancelled"
                                 ? "Bekor qilingan"
+                                : o.needsReview ? "Provayder holati tekshirilishi kerak"
                                 : o.expiresAt <= Date.now() && !o.checkoutUrl
                                   ? "Muddati tugagan"
                                   : "Kutilmoqda"}
@@ -233,7 +234,8 @@ export function BillingPanel({
                                 <ExternalLink className="size-3" />
                               </a>
                             )}
-                            {o.state === "pending" && (
+                            {o.needsReview && <p className="text-xs text-muted-foreground">Super admin bilan bog‘laning. Tekshiruv tugamaguncha takror to‘lamang.</p>}
+                            {o.state === "pending" && !o.needsReview && (
                               <Button
                                 variant="ghost"
                                 size="sm"

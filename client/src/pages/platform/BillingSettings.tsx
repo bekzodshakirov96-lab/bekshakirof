@@ -6,6 +6,7 @@ import { billingMoney, type BillingView } from "@shared/billing";
 import { api, ErrorMessage, Loading } from "./ui";
 import { ConsoleSection } from "./console-ui";
 import { toast } from "sonner";
+import { BillingReviewPanel } from "./BillingReviewPanel";
 
 export function BillingSettings() {
   const cache = useQueryClient();
@@ -163,6 +164,7 @@ export function BillingSettings() {
           </p>
         </div>
       </ConsoleSection>
+      <BillingReviewPanel />
     </div>
   );
 }

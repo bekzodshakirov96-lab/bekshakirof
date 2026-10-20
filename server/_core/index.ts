@@ -1,7 +1,6 @@
 import { ensureMatrixInventorySchema } from "../matrixInventorySchema";
 import "dotenv/config";
 import express from "express";
-import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import { createServer } from "http";
 import net from "net";
@@ -17,7 +16,7 @@ import { ensureCashTransferLinkTable } from "../cashTransferLinkSchema";
 import { ensureCashDebtRepaymentSchema } from "../cashDebtRepaymentSchema";
 import { permitsTenantHost, runtimeTenant } from "../tenancy/config";
 import { requireDb } from "../db";
-import { validateStorageKey } from "../tenancy/files";
+import { loginRateLimit, uploadAccess } from "../httpAccess";
 import { installManagedAccess, readManagedConfig } from "../tenancy/platformAccess";
 import { installReleaseMaintenance } from "../releaseMaintenance";
 
@@ -103,33 +102,10 @@ async function startServer() {
   installManagedAccess(app, runtimeTenant);
   // Parolni ketma-ket taxmin qilishga (brute-force) qarshi: bitta IP'dan 15 daqiqada
   // 20 ta login urinishi. Faqat login yo'liga qo'llanadi, oddiy ishlashga xalaqit bermaydi.
-  app.use(
-    "/api/trpc/auth.login",
-    rateLimit({
-      windowMs: 15 * 60 * 1000,
-      limit: 20,
-      standardHeaders: true,
-      legacyHeaders: false,
-      message: { error: "Juda ko'p urinish. 15 daqiqadan so'ng qayta urinib ko'ring." },
-    }),
-  );
+  app.use("/api/trpc", loginRateLimit());
   // Yuklangan fayllar (import qilingan Excel jadvallari) — butun savdo/mijoz ma'lumotini
   // o'z ichiga oladi, shuning uchun faqat tizimga kirgan foydalanuvchiga beriladi.
-  app.use("/uploads", async (req, res, next) => {
-    const user = await authenticateRequest(req);
-    if (!user) {
-      res.status(401).json({ error: "Avval tizimga kiring." });
-      return;
-    }
-    try {
-      // Prevent the original root from exposing another firm's nested directory.
-      validateStorageKey(decodeURIComponent(req.path).slice(1));
-    } catch {
-      res.status(404).end();
-      return;
-    }
-    next();
-  });
+  app.use("/uploads", uploadAccess(authenticateRequest));
   app.use("/uploads", express.static(UPLOADS_DIR));
   // Missing uploads must stop here, before the Vite/SPA index.html fallback.
   app.use("/uploads", (_req, res) => res.status(404).end());
