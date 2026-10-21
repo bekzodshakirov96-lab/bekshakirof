@@ -70,13 +70,13 @@ function AgentCommissionSection() {
 
   const payCommission = trpc.agents.payCommission.useMutation({
     onSuccess: async () => {
-      toast.success("Komissiya Kassa'ga Ойлик xarajati sifatida yozildi");
+      toast.success("Komissiya to‘lovi saqlandi. Kassa qoldig‘i o‘zgarmadi");
       // Hisobotni ham yangilash shart: to'lov "olingan" summaga qo'shilib, qoldiqni
       // nolga tushiradi. Aks holda eski qoldiq ekranda qolib, qayta bosilsa ikki
       // marta to'lanib ketardi.
       await Promise.all([
         utils.agents.commissionReport.invalidate(),
-        utils.cash.invalidate(),
+
         utils.dashboard.overview.invalidate(),
       ]);
     },
@@ -91,7 +91,7 @@ function AgentCommissionSection() {
   return (
     <SectionCard
       title="Agent oyligi (komissiya)"
-      description="Faqat mijozdan qaytib kelgan (to'langan) summadan hisoblanadi — qarzda qolgan qism kiritilmaydi. Davr ichida kassadan olingan avans hisoblangan komissiyadan ayiriladi."
+      description="Faqat mijozdan qaytib kelgan (to'langan) summadan hisoblanadi — qarzda qolgan qism kiritilmaydi. Komissiya qaydlari alohida yuritiladi; Kassa jurnaliga ta’sir qilmaydi."
       className="mt-5"
       action={
         <div className="flex items-center gap-2">

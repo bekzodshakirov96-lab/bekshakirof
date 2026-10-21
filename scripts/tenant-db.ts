@@ -5,6 +5,7 @@ import { snapshotBusinessData, type DatabaseSnapshot } from "../server/tenancy/a
 import { bindTenantDatabase } from "../server/tenancy/bind";
 import { applyTenantQueryScope } from "../server/tenancy/scopeSchema";
 import { assertSameBusinessData } from "../server/tenancy/audit";
+import { migrateCashDebtRecordOnly } from "../server/cashDebtRecordOnlySchema";
 import { accountingHistoryHash, accountingHistoryProjection, applyAccountingAuditSchema, assertAccountingScopeUpgradeable, ACCOUNTING_PREVIOUS_SCOPE_HASH } from "../server/accountingAuditSchema";
 
 const args = process.argv.slice(2);
@@ -14,8 +15,8 @@ function option(name: string) {
 }
 async function main() {
   const action = args[0];
-  if (!["audit", "bind", "scope", "audit-fixes"].includes(action)) {
-    throw new Error("Usage: tenant:db audit --out snapshot.json | tenant:db bind|scope|audit-fixes --tenant-id legacy --baseline snapshot.json --apply");
+  if (!["audit", "bind", "scope", "audit-fixes", "debt-record-only"].includes(action)) {
+    throw new Error("Usage: tenant:db audit --out snapshot.json | tenant:db bind|scope|audit-fixes|debt-record-only --tenant-id legacy --baseline snapshot.json --apply");
   }
   const output = option("--out");
   const baselinePath = option("--baseline");
@@ -32,6 +33,11 @@ async function main() {
       const snapshot = await snapshotBusinessData(db);
       await writeFile(output!, JSON.stringify(snapshot, null, 2), { flag: "wx" });
       console.log(`Audit saved: ${snapshot.tables.length} tables, fingerprint ${snapshot.fingerprint}. No business data changed.`);
+    } else if (action === "debt-record-only") {
+      const baseline = JSON.parse(await readFile(baselinePath!, "utf8")) as DatabaseSnapshot;
+      assertSameBusinessData(baseline, await snapshotBusinessData(db));
+      await migrateCashDebtRecordOnly(db, tenantId!);
+      console.log("Record-only repayments prepared. All original cash and debt history is unchanged.");
     } else if (action === "audit-fixes") {
       const baseline = JSON.parse(await readFile(baselinePath!, "utf8")) as DatabaseSnapshot;
       assertSameBusinessData(baseline, await snapshotBusinessData(db));

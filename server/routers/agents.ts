@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, like, not, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agentTakingEntries, matrixCellWrites, agents, cashEntries, clientPayments, positions, transactions, users } from "../../drizzle/schema";
+import { agentTakingEntries, matrixCellWrites, agents, agentCommissionPayments, clientPayments, positions, transactions, users } from "../../drizzle/schema";
 import { businessProcedure, ownerProcedure, productsViewProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { tashkentBusinessDate } from "../../shared/agentReconciliation";
@@ -15,20 +15,13 @@ import {
 import { requireDb } from "../db";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
-import { cashStorageCategory } from "../../shared/cashCategoryRegistry";
 import { commissionPaymentPeriod, commissionSettlementStatus } from "../commissionSettlement";
-import { cashCategorySql } from "../cashCategorySql";
 
 function toMySqlDate(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
-/**
- * Kassadagi "Ойлик" toifasi. Agentga oy davomida berilgan avans ham, oy oxirida
- * to'langan komissiya ham shu toifada yoziladi — shuning uchun komissiya hisobida
- * "allaqachon olingan" summa aynan shu yerdan olinadi.
- */
-const SALARY_CATEGORY = cashStorageCategory("salary");
+/** Historical salary/advance records are snapshotted once into the independent commission ledger. */
 
 export function commissionPeriod(label: string) {
   const match = /^(\d{4}-\d{2}-\d{2}) — (\d{4}-\d{2}-\d{2})$/.exec(label);
@@ -298,29 +291,27 @@ export const agentsRouter = router({
         ? `${tashkentBusinessDate(new Date(input.from))} — ${tashkentBusinessDate(new Date(input.to))}`
         : null;
       const salaryPeriodConditions = [
-        eq(cashEntries.type, "expense"),
-        cashCategorySql("salary"),
-        input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
-        input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
-        periodLabel ? not(like(cashEntries.sourceKey, "agent-commission:%")) : undefined,
+        input.from ? sql`${agentCommissionPayments.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
+        input.to ? sql`${agentCommissionPayments.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+        periodLabel ? not(like(agentCommissionPayments.sourceKey, "agent-commission:%")) : undefined,
       ].filter(Boolean);
 
       const agentRows = await db.select().from(agents).orderBy(asc(agents.name));
       const commissionPayments = periodLabel ? await db.select({
-        agentId: cashEntries.agentId, sourceKey: cashEntries.sourceKey,
-        description: cashEntries.description, cashAmount: cashEntries.cashAmount,
-      }).from(cashEntries).where(like(cashEntries.sourceKey, "agent-commission:%")) : [];
+        agentId: agentCommissionPayments.agentId, sourceKey: agentCommissionPayments.sourceKey,
+        description: agentCommissionPayments.description, cashAmount: agentCommissionPayments.cashAmount,
+      }).from(agentCommissionPayments).where(like(agentCommissionPayments.sourceKey, "agent-commission:%")) : [];
       const requestedPeriod = periodLabel ? commissionPeriod(periodLabel) : null;
 
-      /** Agent davr ichida kassadan olib bo'lgan pul (avans va to'langan komissiya). */
+      /** Independent advance/commission history; no live journal dependency. */
       const takenRows = await db
         .select({
-          agentId: cashEntries.agentId,
-          takenAmount: sql<number>`coalesce(sum(${cashEntries.cashAmount}), 0)`.mapWith(Number),
+          agentId: agentCommissionPayments.agentId,
+          takenAmount: sql<number>`coalesce(sum(${agentCommissionPayments.cashAmount}), 0)`.mapWith(Number),
         })
-        .from(cashEntries)
+        .from(agentCommissionPayments)
         .where(and(...salaryPeriodConditions))
-        .groupBy(cashEntries.agentId);
+        .groupBy(agentCommissionPayments.agentId);
       const takenByAgent = new Map(takenRows.map(row => [row.agentId, row.takenAmount]));
       const collectedRows = await db
         .select({
@@ -375,7 +366,7 @@ export const agentsRouter = router({
           };
         });
     }),
-  /** Records a computed commission payout as an "Ойлик" (salary) expense in the Kassa cash journal. */
+  /** Records commission in its independent ledger; never writes the Kassa journal. */
   payCommission: businessProcedure
     .input(
       z.object({
@@ -397,9 +388,9 @@ export const agentsRouter = router({
         if (!agent?.isActive) throw new TRPCError({ code: "NOT_FOUND", message: "Faol agent topilmadi." });
         const sourceKey = `agent-commission:${input.agentId}:${period.fromDate}:${period.toDate}`;
         const description = `Komissiya (${input.periodLabel})`;
-        const previousPayments = await tx.select({ sourceKey: cashEntries.sourceKey,
-          description: cashEntries.description, cashAmount: cashEntries.cashAmount }).from(cashEntries).where(and(
-          eq(cashEntries.agentId, input.agentId), like(cashEntries.sourceKey, "agent-commission:%"),
+        const previousPayments = await tx.select({ sourceKey: agentCommissionPayments.sourceKey,
+          description: agentCommissionPayments.description, cashAmount: agentCommissionPayments.cashAmount }).from(agentCommissionPayments).where(and(
+          eq(agentCommissionPayments.agentId, input.agentId), like(agentCommissionPayments.sourceKey, "agent-commission:%"),
         )).for("update");
         if (previousPayments.some(payment => {
           const paidPeriod = commissionPaymentPeriod(payment);
@@ -422,39 +413,32 @@ export const agentsRouter = router({
             sql`${clientPayments.paymentDate} >= ${toMySqlDate(period.from)}`,
             sql`${clientPayments.paymentDate} <= ${toMySqlDate(period.to)}`,
           ));
-        const [taken] = await tx.select({ amount: sql<number>`coalesce(sum(${cashEntries.cashAmount}), 0)`.mapWith(Number) })
-          .from(cashEntries).where(and(
-            eq(cashEntries.agentId, input.agentId),
-            eq(cashEntries.type, "expense"),
-            cashCategorySql("salary"),
-            not(like(cashEntries.sourceKey, "agent-commission:%")),
-            sql`${cashEntries.entryDate} >= ${toMySqlDate(period.from)}`,
-            sql`${cashEntries.entryDate} <= ${toMySqlDate(period.to)}`,
+        const [taken] = await tx.select({ amount: sql<number>`coalesce(sum(${agentCommissionPayments.cashAmount}), 0)`.mapWith(Number) })
+          .from(agentCommissionPayments).where(and(
+            eq(agentCommissionPayments.agentId, input.agentId),
+            not(like(agentCommissionPayments.sourceKey, "agent-commission:%")),
+            sql`${agentCommissionPayments.entryDate} >= ${toMySqlDate(period.from)}`,
+            sql`${agentCommissionPayments.entryDate} <= ${toMySqlDate(period.to)}`,
           ));
         const commission = Math.round(((sales?.amount ?? 0) + (debts?.amount ?? 0)) * Number(agent.commissionPercent) / 100);
         const remaining = commission - (taken?.amount ?? 0);
         if (remaining <= 0 || input.amount !== remaining) {
           throw new TRPCError({ code: "CONFLICT", message: "Komissiya summasi o‘zgargan. Hisobotni yangilab qayta tekshiring." });
         }
-        const [created] = await tx.insert(cashEntries).values({
+        const [created] = await tx.insert(agentCommissionPayments).values({
           sourceKey,
           entryDate,
-          type: "expense",
-          category: SALARY_CATEGORY,
           agentId: input.agentId,
           description,
           cashAmount: input.amount,
-          terminalAmount: 0,
-          clickAmount: 0,
-          source: "manual",
           createdBy: ctx.user.id,
         }).$returningId();
         await logAudit(tx, {
-          tableName: "cash_entries",
+          tableName: "agent_commission_payments",
           recordId: created.id,
           action: "create",
           userId: ctx.user.id,
-          after: { type: "expense", category: SALARY_CATEGORY, agentId: input.agentId, cashAmount: input.amount, periodLabel: input.periodLabel },
+          after: { agentId: input.agentId, cashAmount: input.amount, periodLabel: input.periodLabel },
         });
         return { success: true };
       });

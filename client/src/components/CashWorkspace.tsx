@@ -103,9 +103,9 @@ export function CashWorkspace({
         <AnimatedDisclosure className="cash-disclosure" title={
             <span>
               <WalletCards className="size-4" />
-              <strong>Kutilayotgan kassa</strong>
+              <strong>Jurnal nazorati</strong>
               <span className="cash-summary-hint">
-                Naqd, Terminal, Click va o‘tkazma nazorati
+                Agent × Tovar va jurnal kanallari
               </span>
               {pendingStatus}
             </span>

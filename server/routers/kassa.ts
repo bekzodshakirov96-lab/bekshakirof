@@ -12,20 +12,16 @@ import {
   agentTakingEntries,
   agents,
   cashEntries,
-  cashTransferLinks,
   cashMatrixLayouts,
-  clientPayments,
   dailyProductPrices,
   kassaDailyActuals,
   products,
-  transactions,
 } from "../../drizzle/schema";
 import { businessProcedure, skladProcedure } from "../access";
 import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { cashExpenseSql, physicalCashBalanceSql, realizedIncomeSql } from "../cashAccounting";
 import { requireDb } from "../db";
 import { tashkentDayRange, toMySqlDate } from "../businessDay";
-import { reconcileExpectedTransfers } from "../transferExpectation";
 import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
 import { buildAgentDifferenceSummary } from "../../shared/agentDifference";
@@ -89,134 +85,42 @@ function reportDateRange(fromDate: string, toDate: string) {
   };
 }
 
-/**
- * Kassaga "kelishi kerak bo'lgan" summa — savdo/qarz to'lovlarida har kanal bo'yicha
- * yozilgan miqdorlar (transactions + client_payments) — va "haqiqatda tasdiqlangan"
- * summa (naqd uchun Приход кег/пет, boshqalar uchun kunlik qo'lda tasdiqlash) orasidagi
- * farq. Bu buxgalter/agent naqd pulni yozib qo'yib, kassaga hech qachon kiritmasa yoki
- * kanalni almashtirib yozsa ham darhol ko'rinadigan, chetlab o'tib bo'lmaydigan signal —
- * chunki "kutilgan" tomon allaqachon audit qilingan transactions/client_payments
- * yozuvlaridan hisoblanadi, xodim uni yashira olmaydi. Har kanal uchun ikkita qiymat
- * qaytaradi: shu kunning o'zi (`today`) va davr boshidan shu kungacha yig'ilgan
- * qoldiq (`cumulative`, oldingi kunlardan avtomatik "ko'chib" keladi).
- */
+/** Independent journal control: never reads sales or customer debt payments. */
 async function computePendingByChannel(timestamp: number) {
   const db = await requireDb();
-  const { end } = dayRange(timestamp);
-  const { start: todayStart } = dayRange(timestamp);
-
-  const [expected] = await db
-    .select({
-      cashToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${toMySqlDate(todayStart)} then ${transactions.cashPayment} else 0 end), 0)`,
-      terminalToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${toMySqlDate(todayStart)} then ${transactions.terminalPayment} else 0 end), 0)`,
-      clickToday: numberSql`coalesce(sum(case when ${transactions.transactionDate} >= ${toMySqlDate(todayStart)} then ${transactions.clickPayment} else 0 end), 0)`,
-      cashCumulative: numberSql`coalesce(sum(${transactions.cashPayment}), 0)`,
-      terminalCumulative: numberSql`coalesce(sum(${transactions.terminalPayment}), 0)`,
-      clickCumulative: numberSql`coalesce(sum(${transactions.clickPayment}), 0)`,
-    })
-    .from(transactions)
-    .where(sql`${transactions.transactionDate} <= ${toMySqlDate(end)}`);
-
-  const [expectedDebt] = await db
-    .select({
-      cashToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${toMySqlDate(todayStart)} then ${clientPayments.cashAmount} else 0 end), 0)`,
-      terminalToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${toMySqlDate(todayStart)} then ${clientPayments.terminalAmount} else 0 end), 0)`,
-      clickToday: numberSql`coalesce(sum(case when ${clientPayments.paymentDate} >= ${toMySqlDate(todayStart)} then ${clientPayments.clickAmount} else 0 end), 0)`,
-      cashCumulative: numberSql`coalesce(sum(${clientPayments.cashAmount}), 0)`,
-      terminalCumulative: numberSql`coalesce(sum(${clientPayments.terminalAmount}), 0)`,
-      clickCumulative: numberSql`coalesce(sum(${clientPayments.clickAmount}), 0)`,
-    })
-    .from(clientPayments)
-    .where(sql`${clientPayments.paymentDate} <= ${toMySqlDate(end)}`);
-
-  const [actualCash] = await db
-    .select({
-      today: numberSql`coalesce(sum(case when ${cashEntries.entryDate} >= ${toMySqlDate(todayStart)} then ${cashEntries.cashAmount} else 0 end), 0)`,
-      cumulative: numberSql`coalesce(sum(${cashEntries.cashAmount}), 0)`,
-    })
-    .from(cashEntries)
-    .where(
-      and(
-        eq(cashEntries.type, "income"),
-        cashCategorySql("agent_cash_keg", "agent_cash_pet"),
-        sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`,
-      ),
-    );
-
-  // Jurnaldagi Перечисление agentning kunlik jami o'tkazmasi. Savdo/qarz
-  // yozuvlaridagi summani unga ko'r-ko'rona qo'shish bir to'lovni ikki marta sanaydi.
-  // SQL'dagi sana Drizzle saqlagan UTC ko'rinishidan Toshkent biznes kuniga o'tadi.
-  const [saleTransfers, debtTransfers, journalTransfers] = await Promise.all([
-    db.select({
-      day: sql<string>`date_format(date_add(${transactions.transactionDate}, interval 5 hour), '%Y-%m-%d')`,
-      agentId: transactions.agentId,
-      amount: sql<number>`sum(${transactions.transferPayment})`.mapWith(Number),
-    }).from(transactions)
-      .where(and(gt(transactions.transferPayment, 0), sql`${transactions.transactionDate} <= ${toMySqlDate(end)}`))
-      .groupBy(sql`date_format(date_add(${transactions.transactionDate}, interval 5 hour), '%Y-%m-%d')`, transactions.agentId),
-    db.select({
-      day: sql<string>`date_format(date_add(${clientPayments.paymentDate}, interval 5 hour), '%Y-%m-%d')`,
-      agentId: clientPayments.agentId,
-      amount: sql<number>`sum(${clientPayments.transferAmount})`.mapWith(Number),
-    }).from(clientPayments)
-      .where(and(gt(clientPayments.transferAmount, 0), sql`${clientPayments.paymentDate} <= ${toMySqlDate(end)}`))
-      .groupBy(sql`date_format(date_add(${clientPayments.paymentDate}, interval 5 hour), '%Y-%m-%d')`, clientPayments.agentId),
-    db.select({
-      day: sql<string>`date_format(date_add(${cashEntries.entryDate}, interval 5 hour), '%Y-%m-%d')`,
-      agentId: cashEntries.agentId,
-      amount: cashEntries.transferAmount,
-      linkedAmount: sql<number>`coalesce(sum(coalesce(${transactions.transferPayment}, 0) + coalesce(${clientPayments.transferAmount}, 0)), 0)`.mapWith(Number),
-      linkedCount: sql<number>`coalesce(sum(case when ${cashTransferLinks.transactionId} is not null or ${cashTransferLinks.clientPaymentId} is not null then 1 else 0 end), 0)`.mapWith(Number),
-      independentCount: sql<number>`coalesce(sum(case when ${cashTransferLinks.id} is not null and ${cashTransferLinks.transactionId} is null and ${cashTransferLinks.clientPaymentId} is null then 1 else 0 end), 0)`.mapWith(Number),
-    }).from(cashEntries)
-      .leftJoin(cashTransferLinks, eq(cashTransferLinks.cashEntryId, cashEntries.id))
-      .leftJoin(transactions, eq(cashTransferLinks.transactionId, transactions.id))
-      .leftJoin(clientPayments, eq(cashTransferLinks.clientPaymentId, clientPayments.id))
-      .where(and(eq(cashEntries.type, "income"), gt(cashEntries.transferAmount, 0),
-        not(cashCategorySql("debt_repayment")),
-        sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`))
-      .groupBy(cashEntries.id, cashEntries.entryDate, cashEntries.agentId, cashEntries.transferAmount),
-  ]);
-  const expectedTransfer = reconcileExpectedTransfers(saleTransfers, debtTransfers,
-    journalTransfers.map(row => ({
-      day: row.day, agentId: row.agentId, amount: row.amount, linkedAmount: row.linkedAmount,
-      mode: row.linkedCount > 0 ? "linked" as const : row.independentCount > 0 ? "independent" as const : "legacy" as const,
-    })), tashkentDateKey(timestamp));
-
-  const [actualConfirmed] = await db
-    .select({
-      terminalToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${toMySqlDate(todayStart)} then ${kassaDailyActuals.terminalConfirmed} else 0 end), 0)`,
-      clickToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${toMySqlDate(todayStart)} then ${kassaDailyActuals.clickConfirmed} else 0 end), 0)`,
-      transferToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${toMySqlDate(todayStart)} then ${kassaDailyActuals.transferConfirmed} else 0 end), 0)`,
-      terminalCumulative: numberSql`coalesce(sum(${kassaDailyActuals.terminalConfirmed}), 0)`,
-      clickCumulative: numberSql`coalesce(sum(${kassaDailyActuals.clickConfirmed}), 0)`,
-      transferCumulative: numberSql`coalesce(sum(${kassaDailyActuals.transferConfirmed}), 0)`,
-    })
-    .from(kassaDailyActuals)
-    .where(sql`${kassaDailyActuals.entryDate} <= ${toMySqlDate(end)}`);
-
-  const channel = (name: "cash" | "terminal" | "click" | "transfer") => {
-    if (name === "transfer") {
-      return {
-        today: expectedTransfer.today - actualConfirmed.transferToday,
-        cumulative: expectedTransfer.cumulative - actualConfirmed.transferCumulative,
-      };
-    }
-    const expectedToday = expected[`${name}Today`] + expectedDebt[`${name}Today`];
-    const expectedCumulative = expected[`${name}Cumulative`] + expectedDebt[`${name}Cumulative`];
-    const actualToday = name === "cash" ? actualCash.today : actualConfirmed[`${name}Today`];
-    const actualCumulative = name === "cash" ? actualCash.cumulative : actualConfirmed[`${name}Cumulative`];
-    return {
-      today: expectedToday - actualToday,
-      cumulative: expectedCumulative - actualCumulative,
-    };
-  };
-
+  const { start, end } = dayRange(timestamp);
+  const [taking] = await db.select({
+    today: numberSql`coalesce(sum(case when ${agentTakingEntries.entryDate} >= ${toMySqlDate(start)} then ${agentTakingEntries.amount} else 0 end), 0)`,
+    cumulative: numberSql`coalesce(sum(${agentTakingEntries.amount}), 0)`,
+  }).from(agentTakingEntries).where(sql`${agentTakingEntries.entryDate} <= ${toMySqlDate(end)}`);
+  const settlement = sql`case when ${cashEntries.agentId} is not null then
+    (case when ${and(eq(cashEntries.type, "income"), cashCategorySql("agent_cash_keg", "agent_cash_pet"))} then ${cashEntries.cashAmount} else 0 end
+    + case when ${not(cashCategorySql("debt_repayment"))} then ${cashEntries.terminalAmount} + ${cashEntries.clickAmount} + ${cashEntries.transferAmount} else 0 end) else 0 end`;
+  const [journal] = await db.select({
+    settledToday: numberSql`coalesce(sum(case when ${cashEntries.entryDate} >= ${toMySqlDate(start)} then ${settlement} else 0 end), 0)`,
+    settledCumulative: numberSql`coalesce(sum(${settlement}), 0)`,
+    terminalToday: numberSql`coalesce(sum(case when ${cashEntries.entryDate} >= ${toMySqlDate(start)} then ${cashEntries.terminalAmount} else 0 end), 0)`,
+    clickToday: numberSql`coalesce(sum(case when ${cashEntries.entryDate} >= ${toMySqlDate(start)} then ${cashEntries.clickAmount} else 0 end), 0)`,
+    transferToday: numberSql`coalesce(sum(case when ${cashEntries.entryDate} >= ${toMySqlDate(start)} then ${cashEntries.transferAmount} else 0 end), 0)`,
+    terminalCumulative: numberSql`coalesce(sum(${cashEntries.terminalAmount}), 0)`,
+    clickCumulative: numberSql`coalesce(sum(${cashEntries.clickAmount}), 0)`,
+    transferCumulative: numberSql`coalesce(sum(${cashEntries.transferAmount}), 0)`,
+  }).from(cashEntries).where(and(not(cashCategorySql("debt_repayment")), sql`${cashEntries.entryDate} <= ${toMySqlDate(end)}`));
+  const [confirmed] = await db.select({
+    terminalToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${toMySqlDate(start)} then ${kassaDailyActuals.terminalConfirmed} else 0 end), 0)`,
+    clickToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${toMySqlDate(start)} then ${kassaDailyActuals.clickConfirmed} else 0 end), 0)`,
+    transferToday: numberSql`coalesce(sum(case when ${kassaDailyActuals.entryDate} >= ${toMySqlDate(start)} then ${kassaDailyActuals.transferConfirmed} else 0 end), 0)`,
+    terminalCumulative: numberSql`coalesce(sum(${kassaDailyActuals.terminalConfirmed}), 0)`,
+    clickCumulative: numberSql`coalesce(sum(${kassaDailyActuals.clickConfirmed}), 0)`,
+    transferCumulative: numberSql`coalesce(sum(${kassaDailyActuals.transferConfirmed}), 0)`,
+  }).from(kassaDailyActuals).where(sql`${kassaDailyActuals.entryDate} <= ${toMySqlDate(end)}`);
+  const electronic = (key: "terminal" | "click" | "transfer") => ({
+    today: journal[`${key}Today`] - confirmed[`${key}Today`],
+    cumulative: journal[`${key}Cumulative`] - confirmed[`${key}Cumulative`],
+  });
   return {
-    cash: channel("cash"),
-    terminal: channel("terminal"),
-    click: channel("click"),
-    transfer: channel("transfer"),
+    cash: { today: taking.today - journal.settledToday, cumulative: taking.cumulative - journal.settledCumulative },
+    terminal: electronic("terminal"), click: electronic("click"), transfer: electronic("transfer"),
   };
 }
 

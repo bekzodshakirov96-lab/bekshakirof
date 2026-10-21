@@ -284,7 +284,23 @@ export const cashJournalDebts = mysqlTable(
   ],
 );
 
-/** Kassa qarzining mustaqil qaytimlari; savdo va tezkor KEG qarzlariga bog'lanmaydi. */
+/** Commission payments are recorded outside the independent Kassa journal. */
+export const agentCommissionPayments = mysqlTable("agent_commission_payments", {
+  tenantId: varchar("tenant_id", { length: 63 }).notNull().default("legacy"),
+  id: int("id").autoincrement().primaryKey(),
+  sourceKey: varchar("sourceKey", { length: 255 }).notNull(),
+  agentId: int("agentId").notNull().references(() => agents.id, { onDelete: "restrict" }),
+  entryDate: timestamp("entryDate").notNull(),
+  cashAmount: int("cashAmount").notNull(),
+  description: varchar("description", { length: 255 }),
+  createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  uniqueIndex("agent_commission_source_unique").on(table.tenantId, table.sourceKey),
+  index("agent_commission_agent_date_idx").on(table.tenantId, table.agentId, table.entryDate),
+]);
+
+/** Debt-only repayments; existing cash links are retained for historical audit. */
 export const cashJournalDebtRepayments = mysqlTable(
   "cash_journal_debt_repayments",
   {
@@ -295,7 +311,8 @@ export const cashJournalDebtRepayments = mysqlTable(
     amount: int("amount").notNull(),
     method: mysqlEnum("method", ["cash", "terminal", "click", "transfer"]).notNull(),
     note: text("note"),
-    cashEntryId: int("cashEntryId").notNull().references(() => cashEntries.id, { onDelete: "restrict" }),
+    cashEntryId: int("cashEntryId").references(() => cashEntries.id, { onDelete: "restrict" }),
+    requestId: varchar("requestId", { length: 36 }),
     cashEntryCreated: boolean("cashEntryCreated").default(false).notNull(),
     createdBy: int("createdBy").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -309,6 +326,7 @@ export const cashJournalDebtRepayments = mysqlTable(
   },
   table => [
     index("cash_debt_repayments_debt_idx").on(table.tenantId, table.debtId),
+    uniqueIndex("cash_debt_repayments_request_unique").on(table.tenantId, table.requestId),
     uniqueIndex("cash_debt_repayments_active_unique").on(table.tenantId, table.activeCashEntryId),
     index("cash_debt_repayments_date_idx").on(table.tenantId, table.paymentDate),
   ],

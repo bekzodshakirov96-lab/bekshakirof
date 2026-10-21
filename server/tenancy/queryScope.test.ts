@@ -136,7 +136,7 @@ describe("mandatory tenant SQL compilation", () => {
     ).toThrow("another company");
   });
   it("keeps every business table and secondary index explicitly tenant-scoped", () => {
-    expect(businessTables).toHaveLength(27);
+    expect(businessTables).toHaveLength(28);
     for (const table of businessTables) {
       expect(
         table.columns.find(col => col.name === "tenant_id")?.notNull,

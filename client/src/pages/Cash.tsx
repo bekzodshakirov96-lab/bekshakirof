@@ -161,88 +161,14 @@ function JournalDetails({ title, trigger, children }: { title: string; trigger: 
 
 type TransferSource = { kind: "transaction" | "client_payment"; id: number };
 
-/** Aniq manba IDlari bilan jurnal o'tkazmasini bog'lash. Eski yozuvlar qo'lda tasdiqlanmaguncha o'zgarmaydi. */
-function TransferSourcePicker({ entryId, linkedSources = [], linkMode = "legacy", onChanged }: {
+/** Historical links are displayed read-only; no new cross-module connections. */
+function TransferSourcePicker({ linkedSources = [] }: {
   entryId: number; linkedSources?: TransferSource[]; linkMode?: "legacy" | "linked" | "independent"; onChanged: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"legacy" | "linked" | "independent">("legacy");
-  const [selected, setSelected] = useState<TransferSource[]>([]);
-  const utils = trpc.useUtils();
-  const options = trpc.cash.transferLinks.options.useQuery({ cashEntryId: entryId }, { enabled: open });
-  useEffect(() => {
-    if (!options.data) return;
-    setMode(options.data.mode);
-    setSelected(options.data.selected);
-  }, [options.data]);
-  const save = trpc.cash.transferLinks.save.useMutation({
-    onSuccess: async () => {
-      await Promise.all([
-        utils.cash.transferLinks.options.invalidate({ cashEntryId: entryId }),
-        utils.cash.byDate.invalidate(),
-        utils.kassa.daySummary.invalidate(),
-      ]);
-      setOpen(false);
-      onChanged();
-      toast.success("O‘tkazma manbasi saqlandi");
-    },
-    onError: error => toast.error(error.message),
-  });
-  const selectedAmount = (options.data?.sources ?? [])
-    .filter(source => selected.some(item => item.kind === source.kind && item.id === source.id))
-    .reduce((sum, source) => sum + source.amount, 0);
-  const sourceLabel = linkedSources.map(source => `${source.kind === "transaction" ? "S" : "Q"}${source.id}`).join(", ");
-  return <Popover open={open} onOpenChange={setOpen}>
-    <PopoverTrigger asChild>
-      <button type="button" aria-label={`O‘tkazma #${entryId} manba IDlarini tanlash`}
-        title={sourceLabel || (linkMode === "independent" ? "Mustaqil o‘tkazma" : "Manba IDsi kiritilmagan")}
-        className="max-w-28 shrink-0 truncate rounded border border-border px-1.5 py-1 text-[10px] font-semibold text-primary hover:bg-muted">
-        {sourceLabel || (linkMode === "independent" ? "Alohida" : "ID")}
-      </button>
-    </PopoverTrigger>
-    <PopoverContent align="end" className="w-[min(25rem,calc(100vw-2rem))] bg-card p-4" aria-label="O‘tkazma manba IDlari">
-      <p className="mb-2 text-sm font-semibold">O‘tkazma #{entryId} manbasi</p>
-      <p className="mb-3 text-xs text-muted-foreground">Jurnaldagi {formatMoney(options.data?.entryAmount ?? 0)} qaysi savdo yoki qarz to‘loviga tegishli ekanini belgilang.</p>
-      <p className="mb-2 text-xs text-muted-foreground">S — savdo IDsi, Q — qarz to‘lovi IDsi.</p>
-      {options.isLoading && <p className="text-sm">Yuklanmoqda…</p>}
-      {options.error && <p className="text-sm text-destructive">{options.error.message}</p>}
-      {options.data && <div className="space-y-3">
-        <label className="flex cursor-pointer items-start gap-2 text-sm">
-          <input type="radio" name={`transfer-mode-${entryId}`} checked={mode === "linked"} onChange={() => setMode("linked")} />
-          <span>Savdo yoki qarz to‘lovi IDlariga bog‘lash</span>
-        </label>
-        {mode === "linked" && <div className="max-h-52 space-y-1 overflow-y-auto rounded-md border p-2">
-          {options.data.sources.length === 0 && <p className="text-xs text-muted-foreground">Shu sana va agent uchun manba topilmadi.</p>}
-          {options.data.sources.map(source => {
-            const checked = selected.some(item => item.kind === source.kind && item.id === source.id);
-            return <label key={`${source.kind}:${source.id}`} className={`flex items-center gap-2 rounded px-1 py-1 text-xs ${source.available ? "cursor-pointer hover:bg-muted" : "opacity-50"}`}>
-              <Checkbox checked={checked} disabled={!source.available}
-                onCheckedChange={value => setSelected(current => value
-                  ? [...current, { kind: source.kind, id: source.id }]
-                  : current.filter(item => item.kind !== source.kind || item.id !== source.id))} />
-              <span className="min-w-0 flex-1 truncate" title={source.label}>{source.label}</span>
-              <span className="shrink-0 tabular-nums">{formatMoney(source.amount)}</span>
-            </label>;
-          })}
-          <p className="border-t pt-2 text-xs">Tanlangan: {formatMoney(selectedAmount)}</p>
-        </div>}
-        <label className="flex cursor-pointer items-start gap-2 text-sm">
-          <input type="radio" name={`transfer-mode-${entryId}`} checked={mode === "independent"} onChange={() => setMode("independent")} />
-          <span>Mustaqil o‘tkazma (savdo/qarz to‘lovida qayd etilmagan)</span>
-        </label>
-        <label className="flex cursor-pointer items-start gap-2 text-sm">
-          <input type="radio" name={`transfer-mode-${entryId}`} checked={mode === "legacy"} onChange={() => setMode("legacy")} />
-          <span>Eski yozuv — manba aniqlanmagan</span>
-        </label>
-        <p className="text-xs text-muted-foreground">Bog‘langan summadan ortiq qismi mustaqil o‘tkazma deb hisoblanadi. Eski yozuvlar faqat siz tanlasangiz yangilanadi.</p>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>Bekor qilish</Button>
-          <Button type="button" size="sm" disabled={save.isPending || (mode === "linked" && (selected.length === 0 || selectedAmount > options.data.entryAmount))}
-            onClick={() => save.mutate({ cashEntryId: entryId, mode, sources: mode === "linked" ? selected : [] })}>Saqlash</Button>
-        </div>
-      </div>}
-    </PopoverContent>
-  </Popover>;
+  if (!linkedSources.length) return null;
+  return <span className="text-[10px] text-muted-foreground" title="Eski bog‘lanish: faqat tarix uchun, hisobga ta’sir qilmaydi">
+    {linkedSources.map(source => `${source.kind === "transaction" ? "S" : "Q"}${source.id}`).join(", ")}
+  </span>;
 }
 
 /** Katakdagi tahrirlash va saqlash o'zgarishsiz; uzun izoh alohida o'qiladi. */
@@ -1675,22 +1601,13 @@ function AgentProductMatrix() {
 
 type PendingChannel = { today: number; cumulative: number };
 const PENDING_CHANNELS: { key: "cash" | "terminal" | "click" | "transfer"; label: string; icon: typeof Banknote }[] = [
-  { key: "cash", label: "Naqd", icon: Banknote },
+  { key: "cash", label: "Agent × Tovar farqi", icon: Banknote },
   { key: "terminal", label: "Terminal", icon: Landmark },
   { key: "click", label: "Click", icon: Smartphone },
   { key: "transfer", label: "Перечисление", icon: ArrowLeftRight },
 ];
 
-/**
- * Har kanal (Naqd/Terminal/Click/Перечисление) bo'yicha "kassaga kelishi kerak bo'lgan"
- * summa (savdo+qarz to'lovlaridan hisoblangan) va "haqiqatda tasdiqlangan" summa orasidagi
- * farqni ko'rsatadi — buxgalter biror to'lovni yozib qo'yib kassaga kiritmasa yoki
- * boshqa kanalga yozib qo'ysa ham, bu yerda darhol ko'rinadi (kutilgan tomon audit
- * qilingan yozuvlardan hisoblanadi, uni yashirib bo'lmaydi). `today` — shu kunning
- * o'zi, `cumulative` — davr boshidan buyon yig'ilib qolgan qoldiq (oldingi kundan
- * avtomatik "ko'chib" keladi). Naqd — mavjud "Приход кег/пет" orqali, qolgan uch
- * kanal — quyidagi kunlik tasdiqlash formasi orqali yopiladi.
- */
+/** Control uses Agent × Tovar and the daily journal only. */
 function PendingKassaPanel({
   timestamp,
   data,
@@ -1722,17 +1639,16 @@ function PendingKassaPanel({
 
   return (
     <div className="mt-5 rounded-2xl border border-border bg-card p-5">
-      <div className="mb-1 flex items-center gap-2"><AlertTriangle className="size-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Kutilayotgan kassa</h3></div>
+      <div className="mb-1 flex items-center gap-2"><AlertTriangle className="size-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Jurnal nazorati</h3></div>
       <p className="mb-3 text-xs text-muted-foreground">
-        Savdo/qarz to'lovlarida yozilgan summa bilan kassaga haqiqatda tasdiqlangan summa orasidagi farq — kanal qanday yozilishidan qat'i nazar darhol ko'rinadi.{" "}
-        Перечисление ustuniga agentning shu kundagi jami o'tkazmasini yozing; savdo yoki qarz to'lovidagi ayni summa qayta qo'shilmaydi.
+        Agent × Tovar farqi — hisoblangan summa minus Kunlik jurnaldagi naqd va elektron tushumlar. Elektron kanallar esa jurnal bilan qo‘lda tasdiqlangan summani solishtiradi. Boshqa bo‘limlarning savdo va to‘lovlari bu hisobga kirmaydi.
       </p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {PENDING_CHANNELS.map(({ key, label, icon: Icon }) => {
           const row = data?.pendingByChannel?.[key];
           const today = row?.today ?? 0;
           const cumulative = row?.cumulative ?? 0;
-          const flagged = cumulative > 0;
+          const flagged = cumulative !== 0;
           return (
             <div
               key={key}
@@ -1741,7 +1657,7 @@ function PendingKassaPanel({
               <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground"><Icon className="size-3.5" />{label}</div>
               <div className="mt-1.5 text-sm font-bold text-foreground">Bugun: {formatMoney(today)}</div>
               <div className={`text-xs font-semibold ${flagged ? "text-rose-700 dark:text-rose-300" : "text-emerald-700 dark:text-emerald-300"}`}>
-                Jami qoldiq: {formatMoney(cumulative)}
+                Jami farq: {formatMoney(cumulative)}
               </div>
             </div>
           );
@@ -1900,7 +1816,7 @@ export default function Cash() {
   return <CashWorkspace
     date={date}
     actualStatus={<span className={data?.actualCash != null && data.actualDiff !== 0 ? "cash-control-status text-destructive" : "cash-control-status"}>{data?.actualCash == null ? (data?.actualCashNeedsConfirmation ? "Sanalgan summani tasdiqlang" : "Hali sanalmagan") : data.actualDiff === 0 ? "Mos" : `Farq: ${formatMoney(data.actualDiff ?? 0)}`}</span>}
-    pendingStatus={data?.pendingByChannel && Object.values(data.pendingByChannel).some(channel => channel.cumulative > 0) ? <span className="cash-control-status text-destructive">Qoldiq bor</span> : null}
+    pendingStatus={data?.pendingByChannel && Object.values(data.pendingByChannel).some(channel => channel.cumulative !== 0) ? <span className="cash-control-status text-destructive">Farq bor</span> : null}
     header={<PageHeader
         eyebrow="Kundalik ish maydoni"
         title="Kassa"
