@@ -54,7 +54,10 @@ const dateToTimestamp = tashkentDateToTimestamp;
 const shiftDate = shiftDateInputValue;
 
 const DEBT_COLUMN = "Qarz";
-const CASH_COLUMNS = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
+// Repayments remain in the ledger/balance and are managed in Qarzdorlik;
+// the daily journal does not need a separate repayment input column.
+const CASH_COLUMNS = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES]
+  .filter(category => category !== cashStorageCategory("debt_repayment"));
 const JOURNAL_COLUMNS = [...CASH_COLUMNS, DEBT_COLUMN];
 const DRAFT_ROWS = 4;
 
