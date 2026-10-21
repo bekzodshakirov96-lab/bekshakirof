@@ -43,7 +43,10 @@ it.skipIf(!url)("copies historical commission once, preserves original cash/hist
     expect((await db.query("SELECT * FROM cash_entries ORDER BY id"))[0]).toEqual(originalCash);
     expect((await db.query("SELECT id,debtId,paymentDate,amount,method,cashEntryId,cashEntryCreated,createdAt,activeCashEntryId FROM cash_journal_debt_repayments ORDER BY id"))[0]).toEqual(originalPayments);
     const [ledger] = await db.query<mysql.RowDataPacket[]>("SELECT * FROM agent_commission_payments ORDER BY id");
-    expect(ledger.map(r=>r.cashAmount)).toEqual([1000,9000]);
+    expect(ledger.map(r=>({sourceKey:r.sourceKey,cashAmount:r.cashAmount})).sort((a,b)=>a.sourceKey.localeCompare(b.sourceKey))).toEqual([
+      {sourceKey:'agent-commission:1:2026-09-01:2026-09-30',cashAmount:9000},
+      {sourceKey:'old-advance',cashAmount:1000},
+    ]);
     await db.query("INSERT INTO cash_entries(sourceKey,agentId,entryDate,type,category,cashAmount) VALUES ('later-journal-only',1,'2026-10-21 12:00:00','expense','Ойлик',777)");
     await migrateCashDebtRecordOnly(db,"legacy");
     expect((await db.query("SELECT * FROM agent_commission_payments ORDER BY id"))[0]).toEqual(ledger);

@@ -89,8 +89,8 @@ performed in this task.
 
 ## Release rehearsal (2026-10-21)
 
-- Full local SQL run exercised 442 tests. The sole initial failure was an outdated
-  expected table count; after updating 27 to 28, the affected suite passed.
+- Final full local SQL run: 442 tests passed across 72 files, including the
+  updated expected table count (27 to 28).
 - Migration regression now starts with the old non-null cashEntryId and no
   requestId, preserves an existing linked repayment, and covers the legacy
   installation without a SaaS identity table. It passed on local TEST SQL.
