@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { createTenantDatabase } from "./tenancy/queryScope";
-import { users, agents, clients, clientPayments, cashEntries, cashJournalDebts, cashJournalDebtRepayments, kassaDailyActuals, auditLog } from "../drizzle/schema";
+import { users, agents, clients, clientPayments, cashEntries, agentCommissionPayments, cashJournalDebts, cashJournalDebtRepayments, kassaDailyActuals, auditLog } from "../drizzle/schema";
 import type { TrpcContext } from "./_core/context";
 let root: Connection | undefined, pool: Pool | undefined;
 let db: ReturnType<typeof createTenantDatabase>;
@@ -18,6 +18,11 @@ import { debtsRouter } from "./routers/debts";
 import { kassaRouter } from "./routers/kassa";
 import { cashRouter } from "./routers/cash";
 import { cashDebtRepaymentsRouter } from "./routers/cashDebtRepayments";
+import { products, stockMovements } from "../drizzle/schema";
+import { transactionsRouter } from "./routers/transactions";
+import { fastKegRouter } from "./routers/fastKeg";
+import { factoryRouter } from "./routers/factory";
+import { activateMatrixStock, addMatrixReceipt, setMatrixCell, matrixStockDay } from "./matrixInventory";
 const day = Date.parse("2026-09-10T12:00:00+05:00");
 const context = (role = "admin", agentId: number | null = null) => ({ user: { id: userId, role, agentId }, req: { headers: {} }, res: {} }) as TrpcContext;
 async function fixture() {
@@ -51,6 +56,50 @@ describe.skipIf(!url)("accounting audit regression on isolated local SQL", () =>
     if (root) { await root.query(`DROP DATABASE IF EXISTS \`${schema}\``); await root.end(); }
   });
 
+  it("isolates journal and matrix from sales, KEG, factory, customer payments and commission; carries only journal cash forward", async () => {
+    const {agentId, clientId} = await fixture();
+    const date = Date.parse("2026-10-21T12:00:00+05:00");
+    await db.update(clients).set({clientType:"keg"}).where(eq(clients.id,clientId));
+    const [product] = await db.insert(products).values({code:randomUUID(),name:"Independent matrix TEST",unit:"blok",price:1000}).$returningId();
+    const [keg] = await db.insert(products).values({code:randomUUID(),name:"Independent KEG TEST",unit:"dona",price:1000,containerType:"keg_30",containerUnitsPerItem:1}).$returningId();
+    for (const productId of [product.id,keg.id]) {
+      await activateMatrixStock(db,{productId,date,openingQuantity:100},userId);
+      await addMatrixReceipt(db,{productId,date,quantity:500,requestKey:randomUUID()},userId);
+      const cell = {productId,date,agentId,quantity:80,expectedQuantity:0,expectedVersion:0,requestKey:randomUUID()};
+      await setMatrixCell(db,cell,userId);
+      await setMatrixCell(db,cell,userId);
+    }
+    expect(await db.select().from(stockMovements)).toHaveLength(0);
+    const cash = cashRouter.createCaller(context()), kassa = kassaRouter.createCaller(context());
+    const snapshot = async () => ({today:await kassa.daySummary({date}),next:await cash.openingBalance({date:date+86400000}),later:await cash.openingBalance({date:date+7*86400000}),matrix:await matrixStockDay(db,date),nextStock:await matrixStockDay(db,date+86400000)});
+    const before = await snapshot();
+    for (const productId of [product.id,keg.id]) {
+      expect(before.matrix.find(r=>r.productId===productId)).toMatchObject({opening:100,closing:520,received:500});
+      expect(before.nextStock.find(r=>r.productId===productId)).toMatchObject({opening:520,closing:520});
+    }
+    await transactionsRouter.createCaller(context()).create({transactionDate:date,agentId,clientId,productId:product.id,quantity:10,salePrice:1000,cashPayment:5000,terminalPayment:2000,clickPayment:1000,transferPayment:2000});
+    expect(await snapshot()).toEqual(before);
+    await fastKegRouter.createCaller(context()).saveBatch({idempotencyKey:randomUUID(),transactionDate:date,agentId,rows:[{clientId,keg30:2,cash:1000,terminal:500,click:250,transfer:250}]});
+    expect(await snapshot()).toEqual(before);
+    await factoryRouter.createCaller(context()).record({productId:keg.id,operationDate:date,quantity:20,operationType:"filled_received"});
+    expect(await snapshot()).toEqual(before);
+    await debtsRouter.createCaller(context()).payments.create({clientId,requestId:randomUUID(),paymentDate:date,cashAmount:100000,terminalAmount:10000,clickAmount:10000,transferAmount:10000});
+    expect(await snapshot()).toEqual(before);
+    const commissions = agentsRouter.createCaller(context());
+    const report = await commissions.commissionReport({from:Date.parse("2026-10-01T00:00:00+05:00"),to:Date.parse("2026-10-31T23:59:59+05:00")});
+    const own = report.find(r=>r.agentId===agentId)!;
+    await commissions.payCommission({agentId,amount:own.remainingAmount,periodLabel:"2026-10-01 — 2026-10-31"});
+    expect(await snapshot()).toEqual(before);
+    await cash.create({entryDate:date,type:"income",category:"Приход пет",agentId,cashAmount:1000,terminalAmount:200,clickAmount:300,transferAmount:400});
+    await cash.create({entryDate:date,type:"expense",category:"Расход",agentId,cashAmount:100});
+    const after = await snapshot();
+    expect(after.today.kassaQoldigi-before.today.kassaQoldigi).toBe(900);
+    expect(after.next.openingBalance-before.next.openingBalance).toBe(900);
+    expect(after.later.openingBalance-before.later.openingBalance).toBe(900);
+    expect(after.matrix).toEqual(before.matrix);
+    expect(after.today.pendingByChannel.cash.today-before.today.pendingByChannel.cash.today).toBe(-1900);
+  });
+
   it("denies agent mutations on unassigned and other agents' clients, while allowing its own", async () => {
     const own = await fixture(), other = await fixture();
     const [unassigned] = await db.insert(clients).values({ code: randomUUID(), name: "Unassigned" }).$returningId();
@@ -80,6 +129,7 @@ describe.skipIf(!url)("accounting audit regression on isolated local SQL", () =>
     await db.insert(clientPayments).values({ clientId, agentId, paymentDate: new Date(day), cashAmount: 1000000 });
     await db.insert(clientPayments).values({ clientId, agentId, paymentDate: new Date("2026-10-02T12:00:00+05:00"), cashAmount: 500000 });
     const api = agentsRouter.createCaller(context());
+    const before = await kassaRouter.createCaller(context()).daySummary({date:day});
     const first = { agentId, amount: 100000, periodLabel: "2026-09-01 — 2026-09-30" };
     await Promise.all([api.payCommission(first), api.payCommission(first)]);
     await expect(api.payCommission({ ...first, periodLabel: "2026-09-01 — 2026-10-01" })).rejects.toMatchObject({ code: "CONFLICT" });
@@ -87,7 +137,10 @@ describe.skipIf(!url)("accounting audit regression on isolated local SQL", () =>
     expect(report.find(row => row.agentId === agentId)?.overlappingPeriods).toEqual(["2026-09-01 — 2026-09-30"]);
     await api.payCommission({ agentId, amount: 50000, periodLabel: "2026-10-01 — 2026-10-31" });
     const cash = await db.select().from(cashEntries).where(eq(cashEntries.agentId, agentId));
-    expect(cash.reduce((sum, row) => sum + row.cashAmount, 0)).toBe(150000);
+    expect(cash).toHaveLength(0);
+    const commissions = await db.select().from(agentCommissionPayments).where(eq(agentCommissionPayments.agentId,agentId));
+    expect(commissions.reduce((sum,row)=>sum+row.cashAmount,0)).toBe(150000);
+    expect(await kassaRouter.createCaller(context()).daySummary({date:day})).toEqual(before);
   });
 
   it("keeps electronic confirmation uncounted until an explicit cash count, including zero", async () => {
@@ -129,5 +182,30 @@ describe.skipIf(!url)("accounting audit regression on isolated local SQL", () =>
     expect(history).toHaveLength(2); expect(history.filter(row => !row.voidedAt)).toHaveLength(1);
     expect((await cashRouter.createCaller(context()).byDate({ date: day })).find(row => row.id === cash.id)?.debtRepaymentId).toBe(second.id);
     expect((await db.select().from(cashEntries).where(eq(cashEntries.id, cash.id)))[0].cashAmount).toBe(100000);
+  });
+
+  it("records all repayment methods without cash changes, including retries, archive and void", async () => {
+    const { agentId } = await fixture();
+    const [debt] = await db.insert(cashJournalDebts).values({entryDate:new Date(day),amount:400000,agentId,createdBy:userId}).$returningId();
+    const api = cashDebtRepaymentsRouter.createCaller(context());
+    const cash = cashRouter.createCaller(context());
+    const before = await db.select().from(cashEntries);
+    const next = await cash.openingBalance({date:day+86400000});
+    const ids: number[] = [];
+    for (const method of ["cash", "terminal", "click", "transfer"] as const) {
+      const input = {mode:"new" as const,debtId:debt.id,paymentDate:day,amount:100000,method,requestId:randomUUID()};
+      const [a,b] = await Promise.all([api.create(input),api.create(input)]);
+      expect(a).toEqual(b); ids.push(a.id);
+      expect(await db.select().from(cashEntries)).toEqual(before);
+      expect(await cash.openingBalance({date:day+86400000})).toEqual(next);
+    }
+    const rows = await db.select().from(cashJournalDebtRepayments).where(eq(cashJournalDebtRepayments.debtId,debt.id));
+    expect(rows).toHaveLength(4);
+    expect(rows.every(row => row.cashEntryId === null && !row.cashEntryCreated)).toBe(true);
+    expect((await api.report({status:"closed",page:1,pageSize:100})).items.some(row=>row.id===debt.id)).toBe(true);
+    for (const id of ids) await api.void({id,reason:"Record-only correction"});
+    expect(await db.select().from(cashEntries)).toEqual(before);
+    expect(await cash.openingBalance({date:day+86400000})).toEqual(next);
+    expect((await api.report({status:"active",page:1,pageSize:100})).items.find(row=>row.id===debt.id)?.paidAmount).toBe(0);
   });
 });

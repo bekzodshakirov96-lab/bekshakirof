@@ -7,7 +7,6 @@ import { assertPeriodUnlocked, logAudit } from "../auditLog";
 import { tashkentDayRange, toMySqlDate } from "../businessDay";
 import { requireDb } from "../db";
 import { router } from "../_core/trpc";
-import { CASH_DEBT_REPAYMENT_CATEGORY } from "../../shared/cashAccounting";
 import { isCashCategory } from "../../shared/cashCategoryRegistry";
 
 const methodSchema = z.enum(["cash", "terminal", "click", "transfer"]);
@@ -143,6 +142,16 @@ export const cashDebtRepaymentsRouter = router({
       }
 
       if (input.mode === "new") {
+        const [recorded] = await tx.select().from(cashJournalDebtRepayments)
+          .where(eq(cashJournalDebtRepayments.requestId, input.requestId)).limit(1);
+        if (recorded) {
+          if (!recorded.voidedAt && recorded.debtId === input.debtId
+            && recorded.amount === input.amount && recorded.method === input.method
+            && recorded.paymentDate.getTime() === paymentDate.getTime()
+            && (recorded.note || "") === (input.note || "")) return { id: recorded.id };
+          throw new TRPCError({ code: "CONFLICT", message: "Bu so‘rov IDsi boshqa to‘lovda ishlatilgan." });
+        }
+        // Preserve retry handling for receipts saved before record-only repayments.
         const [previousCash] = await tx.select({ id: cashEntries.id }).from(cashEntries)
           .where(eq(cashEntries.sourceKey, sourceKey)).limit(1);
         if (previousCash) {
@@ -167,7 +176,7 @@ export const cashDebtRepaymentsRouter = router({
       if (input.amount > debt.amount - paid.amount) throw new TRPCError({
         code: "BAD_REQUEST", message: "Qaytim qarz qoldig‘idan oshmasligi kerak." });
 
-      let cashEntryId: number;
+      let cashEntryId: number | null = null;
       if (input.mode === "existing") {
         const [entry] = await tx.select().from(cashEntries)
           .where(eq(cashEntries.id, input.cashEntryId)).limit(1).for("update");
@@ -185,20 +194,11 @@ export const cashDebtRepaymentsRouter = router({
           .where(eq(cashTransferLinks.cashEntryId, entry.id)).limit(1);
         if (assigned || salesLink) throw new TRPCError({ code: "CONFLICT", message: "Bu kirim boshqa operatsiyaga bog‘langan." });
         cashEntryId = entry.id;
-      } else {
-        const [entry] = await tx.insert(cashEntries).values({
-          sourceKey, entryDate: paymentDate, type: "income", category: CASH_DEBT_REPAYMENT_CATEGORY,
-          agentId: debt.agentId, employeeId: debt.employeeId,
-          description: (input.note || debt.borrowerName || debt.description || `Qarz #${debt.id} qaytimi`).slice(0, 255),
-          ...amounts, source: "manual", createdBy: ctx.user.id,
-        }).$returningId();
-        cashEntryId = entry.id;
-        await logAudit(tx, { tableName: "cash_entries", recordId: cashEntryId, action: "create",
-          userId: ctx.user.id, after: { sourceKey, type: "income", category: CASH_DEBT_REPAYMENT_CATEGORY, entryDate: paymentDate, ...amounts } });
       }
       const values = {
         debtId: debt.id, paymentDate, amount: input.amount, method: input.method,
-        note: input.note || null, cashEntryId, cashEntryCreated: input.mode === "new", createdBy: ctx.user.id,
+        note: input.note || null, requestId: input.requestId,
+        cashEntryId, cashEntryCreated: false, createdBy: ctx.user.id,
       };
       const [created] = await tx.insert(cashJournalDebtRepayments).values(values).$returningId();
       await logAudit(tx, { tableName: "cash_journal_debt_repayments", recordId: created.id,
@@ -217,15 +217,9 @@ export const cashDebtRepaymentsRouter = router({
       if (!payment) throw new TRPCError({ code: "NOT_FOUND", message: "Qaytim topilmadi." });
       if (payment.voidedAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Qaytim avval bekor qilingan." });
       await assertPeriodUnlocked(payment.paymentDate);
-      const [entry] = await tx.select().from(cashEntries)
-        .where(eq(cashEntries.id, payment.cashEntryId)).limit(1).for("update");
-      if (payment.cashEntryCreated && entry) {
-        await tx.update(cashEntries).set({ cashAmount: 0, terminalAmount: 0, clickAmount: 0, transferAmount: 0,
-          description: `Bekor qilingan qarz qaytimi #${payment.id}` }).where(eq(cashEntries.id, entry.id));
-        await logAudit(tx, { tableName: "cash_entries", recordId: entry.id,
-          action: "update", userId: ctx.user.id, before: entry, after: { ...entry, cashAmount: 0,
-            terminalAmount: 0, clickAmount: 0, transferAmount: 0 }, reason: input.reason });
-      }
+      // Historical generated receipts must not silently change cash or lose their link.
+      if (payment.cashEntryCreated) throw new TRPCError({ code: "BAD_REQUEST",
+        message: "Bu eski qaytim Kassa kirimiga bog‘langan. Tarix va Kassa qoldig‘ini saqlash uchun bu bo‘limdan bekor qilinmaydi." });
       const values = { voidedAt: new Date(), voidedBy: ctx.user.id, voidReason: input.reason };
       await tx.update(cashJournalDebtRepayments).set({ ...values, paymentDate: payment.paymentDate })
         .where(eq(cashJournalDebtRepayments.id, payment.id));

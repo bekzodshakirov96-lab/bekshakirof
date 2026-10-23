@@ -27,6 +27,7 @@ function fakeDb() {
           if (condition) {
             const { sql, params } = dialect.sqlToQuery(condition);
             if (sql.includes("`sourceKey`")) rows = rows.filter(row => row.sourceKey === params[0]);
+            else if (sql.includes("`requestId`")) rows = rows.filter(row => row.requestId === params[0]);
             else if (sql.includes("`cashEntryId`")) rows = rows.filter(row => row.cashEntryId === params[0]);
             else if (sql.includes("`debtId`")) rows = rows.filter(row => row.debtId === params[0]);
             else if (sql.includes("`id`")) rows = rows.filter(row => row.id === params[0]);
@@ -90,22 +91,22 @@ beforeEach(() => {
 });
 
 describe("independent cash debt repayments", () => {
-  it("records partial and full repayments once, with exactly one cash income per payment", async () => {
+  it("records partial and full repayments once without creating cash income", async () => {
     const api = caller();
     const first = { mode: "new" as const, debtId: 1, paymentDate: date, amount: 100,
       method: "cash" as const, requestId: "b3e2fc5c-c183-49e9-b5c2-af274804b1df" };
     expect(await api.create(first)).toEqual({ id: 1 });
     expect(await api.create(first)).toEqual({ id: 1 });
-    expect(state.cash).toMatchObject([{ type: "income", category: "Qarz qaytimi", cashAmount: 100,
-      terminalAmount: 0, clickAmount: 0, transferAmount: 0 }]);
+    expect(state.cash).toEqual([]);
+    expect(state.repayments[0]).toMatchObject({ amount: 100, cashEntryId: null, cashEntryCreated: false });
     expect(state.repayments).toHaveLength(1);
     await expect(api.create({ ...first, requestId: "874be72d-a7cc-4188-b516-93858fc89a90", amount: 201 }))
       .rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(state.cash).toHaveLength(1);
+    expect(state.cash).toHaveLength(0);
     await api.create({ ...first, requestId: "464568aa-8823-4c3d-b603-55f383db09ef", amount: 200,
       method: "terminal" });
-    expect(state.cash).toHaveLength(2);
-    expect(state.cash[1]).toMatchObject({ cashAmount: 0, terminalAmount: 200 });
+    expect(state.cash).toHaveLength(0);
+    expect(state.repayments.reduce((sum, row) => sum + Number(row.amount), 0)).toBe(300);
     await expect(api.create({ ...first, requestId: "367ee982-f3ea-4383-83de-f0384691577c", amount: 1 }))
       .rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
@@ -138,13 +139,42 @@ describe("independent cash debt repayments", () => {
     expect(state.cash).toHaveLength(1);
   });
 
-  it("voids a generated payment and neutralizes its linked cash entry", async () => {
+  it("voids a record-only payment without changing cash and does not allow its retry", async () => {
     const api = caller();
     await api.create({ mode: "new", debtId: 1, paymentDate: date, amount: 50, method: "cash",
       requestId: "cf98fc1d-a371-4a2e-a06f-ed79d51e42ed" });
     await api.void({ id: 1, reason: "To‘lov xato yozildi" });
     expect(state.repayments[0].voidedAt).toBeInstanceOf(Date);
-    expect(state.cash[0].cashAmount).toBe(0);
+    expect(state.cash).toEqual([]);
+    await expect(api.create({ mode: "new", debtId: 1, paymentDate: date, amount: 50, method: "cash",
+      requestId: "cf98fc1d-a371-4a2e-a06f-ed79d51e42ed" })).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(api.void({ id: 1, reason: "Yana xato" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it.each(["cash", "terminal", "click", "transfer"] as const)("keeps all cash history unchanged for %s, including void", async method => {
+    state.cash.push({ id: 9, entryDate: new Date(date), type: "income", cashAmount: 500,
+      terminalAmount: 400, clickAmount: 300, transferAmount: 200 });
+    const before = structuredClone(state.cash);
+    const api = caller();
+    const input = { mode: "new" as const, debtId: 1, paymentDate: date, amount: 75, method,
+      note: "Record only", requestId: "cf98fc1d-a371-4a2e-a06f-ed79d51e42ed" };
+    const result = await api.create(input);
+    expect(state.cash).toEqual(before);
+    for (const change of [{ amount: 76 }, { note: "Changed" }, { paymentDate: date + 86400000 }])
+      await expect(api.create({ ...input, ...change })).rejects.toMatchObject({ code: "CONFLICT" });
+    await api.void({ id: result.id, reason: "Test correction" });
+    expect(state.cash).toEqual(before);
+    expect(state.audits.every(row => row.tableName === "cash_journal_debt_repayments")).toBe(true);
+  });
+
+  it("preserves old generated cash receipts and their payment history", async () => {
+    state.cash.push({ id: 9, sourceKey: "cash-debt-repayment:cf98fc1d-a371-4a2e-a06f-ed79d51e42ed", cashAmount: 50 });
+    state.repayments.push({ id: 7, debtId: 1, amount: 50, method: "cash", paymentDate: new Date(date), cashEntryId: 9, cashEntryCreated: true });
+    const before = structuredClone({ cash: state.cash, repayments: state.repayments });
+    const api = caller();
+    expect(await api.create({ mode: "new", debtId: 1, paymentDate: date, amount: 50, method: "cash",
+      requestId: "cf98fc1d-a371-4a2e-a06f-ed79d51e42ed" })).toEqual({ id: 7 });
+    await expect(api.void({ id: 7, reason: "Keep history" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect({ cash: state.cash, repayments: state.repayments }).toEqual(before);
   });
 });

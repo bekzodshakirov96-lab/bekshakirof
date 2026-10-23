@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { and, asc, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   agentTakingEntries,
@@ -10,7 +10,6 @@ import {
   matrixStockEvents,
   matrixCellWrites,
   products,
-  stockMovements,
 } from "../drizzle/schema";
 import { assertPeriodUnlocked, logAudit } from "./auditLog";
 import { tashkentDayRange, toMySqlDate } from "./businessDay";
@@ -29,7 +28,6 @@ export const inventoryQuantity = z
     "Miqdor 3 tagacha kasr bilan kiritiladi"
   );
 const round = (value: number) => Math.round(value * 1000) / 1000;
-const signed = sql<number>`case when ${stockMovements.movementType} = 'in' then ${stockMovements.quantity} else -${stockMovements.quantity} end`;
 
 async function lockProduct(tx: Tx, productId: number) {
   const [product] = await tx
@@ -55,31 +53,10 @@ async function post(
     note?: string;
   }
 ) {
-  let stockMovementId: number | undefined;
-  if (event.quantity !== 0) {
-    const [movement] = await tx
-      .insert(stockMovements)
-      .values({
-        productId: event.productId,
-        movementDate: event.movementDate,
-        movementType: event.quantity > 0 ? "in" : "out",
-        quantity: Math.abs(event.quantity).toFixed(3),
-        reason:
-          event.kind === "opening"
-            ? "Inventarizatsiya — Agent × Tovar"
-            : event.kind === "taking"
-              ? "Agent × Tovar — tayyor miqdor"
-              : "Agent × Tovar — prixod",
-        isAutomatic: true,
-        createdBy: event.createdBy,
-        note: event.note,
-      })
-      .$returningId();
-    stockMovementId = movement.id;
-  }
+  // Matrix receipts/takings are independent from the general warehouse ledger.
   const [created] = await tx
     .insert(matrixStockEvents)
-    .values({ ...event, quantity: event.quantity.toFixed(3), stockMovementId })
+    .values({ ...event, quantity: event.quantity.toFixed(3) })
     .$returningId();
   await logAudit(tx, {
     tableName: "matrix_stock_events",
@@ -453,17 +430,6 @@ export async function activateMatrixStock(
         "Bu mahsulot uchun boshlang'ich qoldiq allaqachon tasdiqlangan."
       );
     }
-    const [prior] = await tx
-      .select({
-        quantity: sql<number>`coalesce(sum(${signed}), 0)`.mapWith(Number),
-      })
-      .from(stockMovements)
-      .where(
-        and(
-          eq(stockMovements.productId, input.productId),
-          lt(stockMovements.movementDate, start)
-        )
-      );
     await tx.insert(matrixStockConfigs).values({
       productId: input.productId,
       effectiveDate: start,
@@ -473,7 +439,7 @@ export async function activateMatrixStock(
     await post(tx, {
       productId: input.productId,
       kind: "opening",
-      quantity: round(input.openingQuantity - (prior?.quantity ?? 0)),
+      quantity: input.openingQuantity,
       movementDate: start,
       requestKey: randomUUID(),
       createdBy: userId,
@@ -582,18 +548,16 @@ export async function matrixStockDay(db: Db, date: number) {
   return db.transaction(
     async tx => {
       const configs = await tx.select().from(matrixStockConfigs);
-      const balances = await tx
-        .select({
-          productId: stockMovements.productId,
-          opening:
-            sql<number>`coalesce(sum(case when ${stockMovements.movementDate} < ${toMySqlDate(start)} then ${signed} else 0 end), 0)`.mapWith(
-              Number
-            ),
-          closing: sql<number>`coalesce(sum(${signed}), 0)`.mapWith(Number),
-        })
-        .from(stockMovements)
-        .where(lte(stockMovements.movementDate, end))
-        .groupBy(stockMovements.productId);
+      const balances = await tx.select({
+        productId: matrixStockEvents.productId,
+        opening: sql<number>`coalesce(sum(case when ${matrixStockEvents.movementDate} < ${toMySqlDate(start)} then ${matrixStockEvents.quantity} else 0 end),0)`.mapWith(Number),
+        closing: sql<number>`coalesce(sum(${matrixStockEvents.quantity}),0)`.mapWith(Number),
+      }).from(matrixStockEvents)
+        .innerJoin(matrixStockConfigs,eq(matrixStockConfigs.productId,matrixStockEvents.productId))
+        .where(and(lte(matrixStockEvents.movementDate,end),
+          gte(matrixStockEvents.movementDate,matrixStockConfigs.effectiveDate),
+          sql`${matrixStockEvents.kind} <> 'opening'`))
+        .groupBy(matrixStockEvents.productId);
       const receipts = await tx
         .select({
           productId: matrixStockEvents.productId,
@@ -616,13 +580,12 @@ export async function matrixStockDay(db: Db, date: number) {
         effectiveDate: config.effectiveDate,
         active: config.effectiveDate <= end,
         opening: round(
-          +config.effectiveDate === +start
+          config.effectiveDate > end ? 0 : +config.effectiveDate === +start
             ? Number(config.openingQuantity)
-            : (balances.find(row => row.productId === config.productId)
-                ?.opening ?? 0)
+            : Number(config.openingQuantity) + (balances.find(row => row.productId === config.productId)?.opening ?? 0)
         ),
         closing: round(
-          balances.find(row => row.productId === config.productId)?.closing ?? 0
+          config.effectiveDate > end ? 0 : Number(config.openingQuantity) + (balances.find(row => row.productId === config.productId)?.closing ?? 0)
         ),
         received: round(
           receipts.find(row => row.productId === config.productId)?.quantity ??

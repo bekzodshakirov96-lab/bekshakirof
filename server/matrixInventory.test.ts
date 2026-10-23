@@ -74,6 +74,8 @@ let owner: number;
 let otherOwner: number;
 let agent: number;
 let secondAgent: number;
+let disposableSchema: string;
+let disposableUser: string;
 const day = +tashkentDayRange(Date.now()).start;
 const date = day + 12 * 3_600_000;
 const tomorrow = date + 86_400_000;
@@ -141,6 +143,8 @@ describe.skipIf(!url)("matrix inventory on disposable SQL", () => {
     const suffix = randomBytes(6).toString("hex");
     const schema = `bc_inventory_${suffix}`;
     const user = `mi_${suffix}`;
+    disposableSchema = schema;
+    disposableUser = user;
     const password = randomBytes(20).toString("hex");
     await root.query(`CREATE DATABASE \`${schema}\` CHARACTER SET utf8mb4`);
     await root.query(`CREATE USER '${user}'@'%' IDENTIFIED BY ?`, [
@@ -217,6 +221,10 @@ describe.skipIf(!url)("matrix inventory on disposable SQL", () => {
   afterAll(async () => {
     await pool?.end();
     await connection?.end();
+    if (root && /^bc_inventory_[a-f0-9]{12}$/.test(disposableSchema) && /^mi_[a-f0-9]{12}$/.test(disposableUser)) {
+      await root.query(`DROP DATABASE IF EXISTS \`${disposableSchema}\``);
+      await root.query(`DROP USER IF EXISTS '${disposableUser}'@'%'`);
+    }
     await root?.end();
   });
 
@@ -239,7 +247,7 @@ describe.skipIf(!url)("matrix inventory on disposable SQL", () => {
     expect((await b.select().from(cashMatrixLayouts))).toHaveLength(0);
   });
 
-  it("leaves old/unconfigured quantities untouched and applies only the opening DIFFERENCE", async () => {
+  it("leaves old rows untouched and starts an independent counted opening", async () => {
     const id = await product();
     await a.insert(stockMovements).values({
       productId: id,
@@ -273,7 +281,7 @@ describe.skipIf(!url)("matrix inventory on disposable SQL", () => {
         .filter(row => row.productId === id)
         .sort((left, right) => left.id - right.id)
         .map(row => Number(row.quantity))
-    ).toEqual([20, -10]);
+    ).toEqual([100, -10]);
     expect(
       await a
         .select()
@@ -592,7 +600,7 @@ describe.skipIf(!url)("matrix inventory on disposable SQL", () => {
     });
     expect(await balance(id, tomorrow)).toMatchObject({
       opening: 100,
-      closing: 120,
+      closing: 100,
     });
     const concurrentId = await product();
     const race = await Promise.allSettled([

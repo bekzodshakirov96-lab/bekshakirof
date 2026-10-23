@@ -1,5 +1,4 @@
 import { ExportMenu } from "@/components/ExportMenu";
-import { AnimatedPanel } from "@/components/ui/expandable";
 import { ClientStatementDialog } from "@/components/ClientStatementDialog";
 import { DebtBadge, EmptyState, MetricCard, PageHeader, PaginationBar, QueryError, SectionCard, TableLoading } from "@/components/finance-ui";
 import { Button } from "@/components/ui/button";
@@ -271,7 +270,7 @@ function CashJournalDebtReport() {
           <span>Qoldiq: <strong className="text-foreground tabular-nums">{report.data ? formatMoney(report.data.remainingAmount) : "—"}</strong></span>
         </div>
       </div>
-      <p className="mb-3 text-xs text-muted-foreground">Qarzni qisman yoki to‘liq yopish uchun “To‘lov qabul qilish”ni oching. Saqlangan qaytim qarz qoldig‘ini kamaytiradi va tanlangan usulda kassaga kirim yozadi.</p>
+      <p className="mb-3 text-xs text-muted-foreground">Qarzni qisman yoki to‘liq yopish uchun “To‘lov qabul qilish”ni oching. Saqlangan qaytim qarz qoldig‘ini kamaytiradi xolos. Kassa kirimlari va qoldiqlariga ta’sir qilmaydi.</p>
       {report.error ? <QueryError description={report.error.message} onRetry={() => report.refetch()} /> : report.isLoading ? <TableLoading columns={8} /> : !report.data?.items?.length ? (
         <EmptyState description="Yopilmagan kassa qarzi topilmadi. To‘liq yopilganlarni Arxivdan ko‘ring." />
       ) : (
@@ -353,19 +352,10 @@ function CashDebtRepaymentDialog({ debt, onClose }: { debt: CashDebt | null; onC
   const [date, setDate] = useState(() => tashkentDateInputValue());
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<"cash" | "terminal" | "click" | "transfer">("cash");
-  const [showExisting, setShowExisting] = useState(false);
-  const [cashEntryId, setCashEntryId] = useState("");
   const [note, setNote] = useState("");
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const history = trpc.cash.journalDebt.repayments.history.useQuery({ debtId: debt?.id ?? 0 }, { enabled: Boolean(debt) });
-  const cashDay = trpc.cash.byDate.useQuery({ date: tashkentDateToTimestamp(date) || 0 }, { enabled: Boolean(debt) && showExisting && Number.isFinite(tashkentDateToTimestamp(date)) });
   const remaining = debt ? debt.amount - (debt.paidAmount ?? 0) : 0;
-  const matchingEntries = (cashDay.data ?? []).filter(entry => entry.type === "income" && entry.category === "Qarz qaytimi" && !entry.debtRepaymentId &&
-    entry.agentId === debt?.agentId && entry.employeeId === debt?.employeeId &&
-    entry.cashAmount === (method === "cash" ? Number(amount) : 0) &&
-    entry.terminalAmount === (method === "terminal" ? Number(amount) : 0) &&
-    entry.clickAmount === (method === "click" ? Number(amount) : 0) &&
-    entry.transferAmount === (method === "transfer" ? Number(amount) : 0));
   const refresh = async () => {
     await Promise.all([
       utils.cash.journalDebt.repayments.report.invalidate(),
@@ -381,8 +371,8 @@ function CashDebtRepaymentDialog({ debt, onClose }: { debt: CashDebt | null; onC
   });
   const create = trpc.cash.journalDebt.repayments.create.useMutation({
     onSuccess: async () => {
-      toast.success(showExisting ? "Oldingi kirim qarzga bog‘landi" : "To‘lov saqlandi, qarz qoldig‘i kamaydi");
-      setAmount(""); setNote(""); setCashEntryId(""); setRequestId(crypto.randomUUID());
+      toast.success("To‘lov saqlandi, faqat qarz qoldig‘i kamaydi");
+      setAmount(""); setNote(""); setRequestId(crypto.randomUUID());
       await refresh(); onClose();
     },
     onError: error => toast.error(error.message),
@@ -393,7 +383,7 @@ function CashDebtRepaymentDialog({ debt, onClose }: { debt: CashDebt | null; onC
   });
   const numericAmount = Number(amount);
   const canSave = debt && amount !== "" && Number.isInteger(numericAmount) && numericAmount > 0 && numericAmount <= remaining &&
-    Number.isFinite(tashkentDateToTimestamp(date)) && (!showExisting || Number(cashEntryId) > 0) && !create.isPending;
+    Number.isFinite(tashkentDateToTimestamp(date)) && !create.isPending;
   return <Dialog open={Boolean(debt)} onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
       <DialogHeader><DialogTitle>Kassa qarzi #{debt?.id} — {remaining > 0 ? "to‘lov qabul qilish" : "batafsil"}</DialogTitle><DialogDescription>
@@ -404,22 +394,19 @@ function CashDebtRepaymentDialog({ debt, onClose }: { debt: CashDebt | null; onC
           event.preventDefault();
           if (!canSave || !debt) return;
           const payment = { debtId: debt.id, paymentDate: tashkentDateToTimestamp(date), amount: numericAmount, method, note: note.trim(), requestId };
-          create.mutate(showExisting ? { ...payment, mode: "existing", cashEntryId: Number(cashEntryId) } : { ...payment, mode: "new" });
+          create.mutate({ ...payment, mode: "new" });
         }}>
           <h4 className="text-sm font-semibold">Qaytimni kiritish</h4>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5"><label htmlFor="cash-debt-payment-amount" className="text-xs font-semibold">Qaytgan summa</label><Input id="cash-debt-payment-amount" inputMode="numeric" className="finance-input" value={amount} onChange={event => { setAmount(sanitizeIntegerInput(event.target.value)); setCashEntryId(""); }} placeholder="0" /><p className="text-xs text-muted-foreground">Qoldiq: {formatMoney(remaining)}</p></div>
-            <div className="space-y-1.5"><label htmlFor="cash-debt-payment-date" className="text-xs font-semibold">Qaytim sanasi</label><Input id="cash-debt-payment-date" type="date" className="finance-input" value={date} onChange={event => { setDate(event.target.value); setCashEntryId(""); }} /></div>
-            <div className="space-y-1.5"><label htmlFor="cash-debt-payment-method" className="text-xs font-semibold">To‘lov usuli</label><select id="cash-debt-payment-method" className="finance-input w-full border px-3" value={method} onChange={event => { setMethod(event.target.value as typeof method); setCashEntryId(""); }}><option value="cash">Naqd</option><option value="terminal">Terminal</option><option value="click">Click</option><option value="transfer">O‘tkazma</option></select></div>
+            <div className="space-y-1.5"><label htmlFor="cash-debt-payment-amount" className="text-xs font-semibold">Qaytgan summa</label><Input id="cash-debt-payment-amount" inputMode="numeric" className="finance-input" value={amount} onChange={event => { setAmount(sanitizeIntegerInput(event.target.value)); }} placeholder="0" /><p className="text-xs text-muted-foreground">Qoldiq: {formatMoney(remaining)}</p></div>
+            <div className="space-y-1.5"><label htmlFor="cash-debt-payment-date" className="text-xs font-semibold">Qaytim sanasi</label><Input id="cash-debt-payment-date" type="date" className="finance-input" value={date} onChange={event => { setDate(event.target.value); }} /></div>
+            <div className="space-y-1.5"><label htmlFor="cash-debt-payment-method" className="text-xs font-semibold">To‘lov usuli</label><select id="cash-debt-payment-method" className="finance-input w-full border px-3" value={method} onChange={event => { setMethod(event.target.value as typeof method); }}><option value="cash">Naqd</option><option value="terminal">Terminal</option><option value="click">Click</option><option value="transfer">O‘tkazma</option></select></div>
             <div className="space-y-1.5"><label htmlFor="cash-debt-payment-note" className="text-xs font-semibold">Izoh</label><Input id="cash-debt-payment-note" className="finance-input" value={note} onChange={event => setNote(event.target.value)} placeholder="Ixtiyoriy" /></div>
-            <AnimatedPanel id="cash-debt-existing-panel" open={showExisting} unmountOnExit className="sm:col-span-2">
-              {showExisting && <div className="space-y-1.5"><label htmlFor="cash-debt-payment-existing" className="text-xs font-semibold">Oldingi kassa kirimi</label><select id="cash-debt-payment-existing" className="finance-input w-full border px-3" value={cashEntryId} onChange={event => setCashEntryId(event.target.value)}><option value="">Kirimni tanlang</option>{matchingEntries.map(entry => <option key={entry.id} value={entry.id}>#{entry.id} · {formatMoney(numericAmount)} · {entry.description || "Izohsiz"}</option>)}</select><p className="text-xs text-muted-foreground">Faqat shu sanadagi “Qarz qaytimi” turi va aynan shu summadagi kirim tanlanadi. Ikkinchi kassa kirimi yaratilmaydi.</p></div>}
-            </AnimatedPanel>
           </div>
-          <div className="flex flex-wrap items-center gap-2"><Button type="submit" disabled={!canSave}>{showExisting ? "Oldingi kirimni bog‘lash" : "To‘lovni saqlash"}</Button><Button type="button" variant="ghost" aria-expanded={showExisting} aria-controls="cash-debt-existing-panel" onClick={() => { setShowExisting(value => !value); setCashEntryId(""); }}>{showExisting ? "Yangi kirim yaratish" : "Kassaga oldin yozilgan kirimni bog‘lash"}</Button></div>
-          {!showExisting && <p className="text-xs text-muted-foreground">Naqd qaytim naqd qoldiqqa qo‘shiladi. Terminal, Click va o‘tkazma naqd qoldiqni o‘zgartirmaydi.</p>}
+          <Button type="submit" disabled={!canSave}>To‘lovni saqlash</Button>
+          <p className="text-xs text-muted-foreground">To‘lov faqat qarz qoldig‘ini kamaytiradi. Naqd, Terminal, Click yoki o‘tkazma tanlanishidan qat’i nazar, Kassaga kirim yozilmaydi va kassa qoldig‘i o‘zgarmaydi.</p>
         </form>}
-        <div><h4 className="mb-2 text-sm font-semibold">Qaytimlar tarixi</h4>{history.isLoading ? <p className="text-xs text-muted-foreground">Yuklanmoqda...</p> : !history.data?.length ? <p className="text-xs text-muted-foreground">Hali qaytim qayd etilmagan.</p> : <div className="space-y-2">{history.data.map(payment => <div key={payment.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2 text-sm"><div><strong>{formatMoney(payment.amount)}</strong> · {formatTashkentDate(payment.paymentDate)} · {{ cash: "Naqd", terminal: "Terminal", click: "Click", transfer: "O‘tkazma" }[payment.method]} · kassa #{payment.cashEntryId}{payment.note ? ` · ${payment.note}` : ""}{payment.voidedAt && <span className="ml-2 text-rose-500">Bekor qilingan: {payment.voidReason}</span>}</div>{!payment.voidedAt && <Button type="button" size="sm" variant="outline" disabled={voidPayment.isPending} onClick={() => { const reason = window.prompt("Bekor qilish sababi (kamida 3 belgi):"); if (reason?.trim() && reason.trim().length >= 3) voidPayment.mutate({ id: payment.id, reason: reason.trim() }); }}>Bekor qilish</Button>}</div>)}</div>}</div>
+        <div><h4 className="mb-2 text-sm font-semibold">Qaytimlar tarixi</h4><p className="mb-2 text-xs text-muted-foreground">Avval Kassaga kirim yozgan qaytimlar tarixda saqlanadi va bu yerdan bekor qilinmaydi.</p>{history.isLoading ? <p className="text-xs text-muted-foreground">Yuklanmoqda...</p> : !history.data?.length ? <p className="text-xs text-muted-foreground">Hali qaytim qayd etilmagan.</p> : <div className="space-y-2">{history.data.map(payment => <div key={payment.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2 text-sm"><div><strong>{formatMoney(payment.amount)}</strong> · {formatTashkentDate(payment.paymentDate)} · {{ cash: "Naqd", terminal: "Terminal", click: "Click", transfer: "O‘tkazma" }[payment.method]}{payment.cashEntryId ? ` · Oldingi Kassa kirimi #${payment.cashEntryId}` : " · Faqat qarz qaydi"}{payment.note ? ` · ${payment.note}` : ""}{payment.voidedAt && <span className="ml-2 text-rose-500">Bekor qilingan: {payment.voidReason}</span>}</div>{!payment.voidedAt && !payment.cashEntryCreated && <Button type="button" size="sm" variant="outline" disabled={voidPayment.isPending} onClick={() => { const reason = window.prompt("Bekor qilish sababi (kamida 3 belgi):"); if (reason?.trim() && reason.trim().length >= 3) voidPayment.mutate({ id: payment.id, reason: reason.trim() }); }}>Bekor qilish</Button>}</div>)}</div>}</div>
         <div className="space-y-1.5"><label className="text-xs font-semibold">Qarz oluvchi ismini tuzatish</label>
           <div className="flex gap-2"><Input className="finance-input" value={borrower} onChange={event => setBorrower(event.target.value)} placeholder={debt?.borrowerName || "Qarz oluvchi ismi"} />
             <Button type="button" variant="outline" disabled={!debt || borrower.trim().length < 2 || saveBorrower.isPending} onClick={() => debt && saveBorrower.mutate({ debtId: debt.id, borrowerName: borrower.trim() })}>Saqlash</Button></div>

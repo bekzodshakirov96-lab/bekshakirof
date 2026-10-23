@@ -97,7 +97,7 @@ describe.skipIf(!testUrl)("real isolated company databases", () => {
 
   it("preserves every business row and actual daily cash report when converting the original company", async () => {
     const before = await snapshotBusinessData(original);
-    expect(before.tables).toHaveLength(27);
+    expect(before.tables).toHaveLength(28);
     const [oldColumns] = await original.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND COLUMN_NAME='tenant_id'");
     expect(oldColumns).toHaveLength(0);
     const [cashBeforeScope] = await drizzle(original).select({ jamiPrihod: realizedIncomeSql(), jamiRasxod: cashExpenseSql(), kassaQoldigi: physicalCashBalanceSql() }).from(cashEntries);
@@ -217,7 +217,7 @@ describe.skipIf(!testUrl)("real isolated company databases", () => {
     const options = { env: { ...process.env, DATABASE_URL: originalUrl }, encoding: "utf8" as const, timeout: 10_000 };
     const before = await snapshotBusinessData(original);
     const audit = execFileSync(process.execPath, ["--import", "tsx", "scripts/tenant-db.ts", "audit", "--out", baselinePath], options);
-    expect(audit).toContain("27 tables");
+    expect(audit).toContain("28 tables");
     expect(JSON.parse(await readFile(baselinePath, "utf8"))).toEqual(before);
     const binding = execFileSync(process.execPath, ["--import", "tsx", "scripts/tenant-db.ts", "bind", "--tenant-id", "legacy", "--baseline", baselinePath, "--apply"], options);
     expect(binding).toContain("All business data matches baseline");
