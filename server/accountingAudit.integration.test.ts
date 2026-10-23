@@ -58,7 +58,12 @@ describe.skipIf(!url)("accounting audit regression on isolated local SQL", () =>
 
   it("isolates journal and matrix from sales, KEG, factory, customer payments and commission; carries only journal cash forward", async () => {
     const {agentId, clientId} = await fixture();
-    const date = Date.parse("2026-10-21T12:00:00+05:00");
+    // Activation is allowed from today onward; keep this regression valid as
+    // the calendar advances and when CI runs outside the firm's timezone.
+    const businessDay = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tashkent", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    const date = Date.parse(`${businessDay}T12:00:00+05:00`);
     await db.update(clients).set({clientType:"keg"}).where(eq(clients.id,clientId));
     const [product] = await db.insert(products).values({code:randomUUID(),name:"Independent matrix TEST",unit:"blok",price:1000}).$returningId();
     const [keg] = await db.insert(products).values({code:randomUUID(),name:"Independent KEG TEST",unit:"dona",price:1000,containerType:"keg_30",containerUnitsPerItem:1}).$returningId();
