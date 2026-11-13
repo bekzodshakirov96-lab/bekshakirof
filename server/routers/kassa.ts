@@ -26,6 +26,7 @@ import { assertExportRowLimit } from "../reportExport";
 import { router } from "../_core/trpc";
 import { buildAgentDifferenceSummary } from "../../shared/agentDifference";
 import { buildDailyReconciliation, tashkentBusinessDate } from "../../shared/agentReconciliation";
+import { cashReportConditions, cashReportScopeInput } from "../cashReportFilters";
 
 const numberSql = (template: TemplateStringsArray, ...params: unknown[]) =>
   sql<number>(template, ...params).mapWith(Number);
@@ -755,13 +756,12 @@ export const kassaRouter = router({
     /** Rasxod turlari (Ойлик, Обед, Газ, Завод, Расход...) bo'yicha davr jamlanmasi —
      * "Kassa hisobotlari"dagi rasxod tarkibi jadvali uchun. */
     expenseByCategory: businessProcedure
-      .input(z.object({ from: z.number().int().optional(), to: z.number().int().optional() }))
+      .input(cashReportScopeInput)
       .query(async ({ input }) => {
         const db = await requireDb();
         const conditions = [
           eq(cashEntries.type, "expense"),
-          input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
-          input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+          ...cashReportConditions(input),
         ].filter(Boolean);
         const rows = await db
           .select({

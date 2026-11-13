@@ -91,9 +91,10 @@ describe.skipIf(!url)("accounting audit regression on isolated local SQL", () =>
     await debtsRouter.createCaller(context()).payments.create({clientId,requestId:randomUUID(),paymentDate:date,cashAmount:100000,terminalAmount:10000,clickAmount:10000,transferAmount:10000});
     expect(await snapshot()).toEqual(before);
     const commissions = agentsRouter.createCaller(context());
-    const report = await commissions.commissionReport({from:Date.parse("2026-10-01T00:00:00+05:00"),to:Date.parse("2026-10-31T23:59:59+05:00")});
+    const report = await commissions.commissionReport({from:Date.parse(`${businessDay}T00:00:00+05:00`),to:Date.parse(`${businessDay}T23:59:59+05:00`)});
     const own = report.find(r=>r.agentId===agentId)!;
-    await commissions.payCommission({agentId,amount:own.remainingAmount,periodLabel:"2026-10-01 — 2026-10-31"});
+    expect(own.remainingAmount).toBeGreaterThan(0);
+    await commissions.payCommission({agentId,amount:own.remainingAmount,periodLabel:`${businessDay} — ${businessDay}`});
     expect(await snapshot()).toEqual(before);
     await cash.create({entryDate:date,type:"income",category:"Приход пет",agentId,cashAmount:1000,terminalAmount:200,clickAmount:300,transferAmount:400});
     await cash.create({entryDate:date,type:"expense",category:"Расход",agentId,cashAmount:100});

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { agents, cashEntries, cashJournalDebtRepayments, cashTransferLinks, employees } from "../../drizzle/schema";
 import { businessProcedure } from "../access";
@@ -12,6 +12,9 @@ import { cashJournalDebtRouter } from "./cashJournalDebt";
 import { cashTransferLinksRouter } from "./cashTransferLinks";
 import { createCashReportPageAccumulator, normalizeCashReportEntries, summarizeCashAccounting } from "../../shared/cashAccounting";
 import { CASH_CATEGORY_IDS, LEGACY_CASH_PROFILE, cashCategoryIdFromLegacy, cashCategoryView, resolveCashCategoryWrite, type CashCategoryId } from "../../shared/cashCategoryRegistry";
+import { cashExpenseSql, realizedIncomeSql } from "../cashAccounting";
+import { cashCategorySql } from "../cashCategorySql";
+import { cashParticipantError, cashReportConditions, cashReportFilterFields, cashReportScopeInput, oneCashParticipant } from "../cashReportFilters";
 
 function categoryWriteInput<T extends { category: string; type: "income" | "expense"; categoryId?: CashCategoryId }>(value: T, ctx: z.RefinementCtx): T {
   try { return resolveCashCategoryWrite(value); }
@@ -29,6 +32,29 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 export const cashRouter = router({
+  /** Include inactive people so historical cash/salary reports remain accessible. */
+  participantOptions: businessProcedure.query(async () => {
+    const db = await requireDb();
+    const [agentRows, employeeRows] = await Promise.all([
+      db.select({ id: agents.id, name: agents.name, isActive: agents.isActive }).from(agents).orderBy(asc(agents.name)),
+      db.select({ id: employees.id, name: employees.name, isActive: employees.isActive }).from(employees).orderBy(asc(employees.name)),
+    ]);
+    return { agents: agentRows, employees: employeeRows };
+  }),
+
+  /** Totals for the person and whole date range, independent of table pagination/category. */
+  reportSummary: businessProcedure.input(cashReportScopeInput).query(async ({ input }) => {
+    const db = await requireDb();
+    const salary = and(eq(cashEntries.type, "expense"), cashCategorySql("salary"));
+    const [totals] = await db.select({
+      income: realizedIncomeSql(),
+      expense: cashExpenseSql(),
+      salaryPaid: sql<number>`coalesce(sum(case when ${salary} then ${cashEntries.cashAmount} else 0 end), 0)`.mapWith(Number),
+      salaryPaymentCount: sql<number>`coalesce(sum(case when ${salary} and ${cashEntries.cashAmount} > 0 then 1 else 0 end), 0)`.mapWith(Number),
+    }).from(cashEntries).where(and(...cashReportConditions(input)));
+    return { ...totals, net: totals.income - totals.expense };
+  }),
+
   categoryDefinitions: businessProcedure.query(() => ({
     profileId: LEGACY_CASH_PROFILE.id,
     categories: CASH_CATEGORY_IDS.map(id => cashCategoryView(id)),
@@ -153,20 +179,17 @@ export const cashRouter = router({
         .object({
           type: z.enum(["all", "income", "expense"]).default("all"),
           category: z.string().max(160).optional(),
-          agentId: z.number().int().positive().optional(),
-          from: z.number().int().optional(),
-          to: z.number().int().optional(),
+          ...cashReportFilterFields,
           page: z.number().int().positive().default(1),
           pageSize: z.number().int().min(10).max(100).default(25),
         })
+        .refine(oneCashParticipant, cashParticipantError)
         .default({ type: "all", page: 1, pageSize: 25 }),
     )
     .query(async ({ input }) => {
       const db = await requireDb();
       const conditions = [
-        input.agentId ? eq(cashEntries.agentId, input.agentId) : undefined,
-        input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
-        input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
+        ...cashReportConditions(input),
         input.type === "income" ? or(eq(cashEntries.type, "income"), gt(cashEntries.terminalAmount, 0), gt(cashEntries.clickAmount, 0), gt(cashEntries.transferAmount, 0)) : undefined,
         input.type === "expense" ? and(eq(cashEntries.type, "expense"), gt(cashEntries.cashAmount, 0)) : undefined,
       ].filter(Boolean);
@@ -244,18 +267,12 @@ export const cashRouter = router({
       z.object({
         type: z.enum(["all", "income", "expense"]).default("all"),
         category: z.string().max(160).optional(),
-        agentId: z.number().int().positive().optional(),
-        from: z.number().int().optional(),
-        to: z.number().int().optional(),
-      }),
+        ...cashReportFilterFields,
+      }).refine(oneCashParticipant, cashParticipantError),
     )
     .query(async ({ input }) => {
       const db = await requireDb();
-      const conditions = [
-        input.agentId ? eq(cashEntries.agentId, input.agentId) : undefined,
-        input.from ? sql`${cashEntries.entryDate} >= ${toMySqlDate(new Date(input.from))}` : undefined,
-        input.to ? sql`${cashEntries.entryDate} <= ${toMySqlDate(new Date(input.to))}` : undefined,
-      ].filter(Boolean);
+      const conditions = cashReportConditions(input).filter(Boolean);
       const where = conditions.length ? and(...conditions) : undefined;
       const rawRows = await db
         .select({
