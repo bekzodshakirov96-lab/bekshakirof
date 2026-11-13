@@ -11,7 +11,8 @@ import { formatMoney, formatTashkentDate, tashkentDateInputValue, tashkentDayBou
 import { exportReportPdf, exportReportXlsx, type ReportColumn } from "@/lib/report-export";
 import { trpc } from "@/lib/trpc";
 import { ELECTRONIC_PAYMENT_CATEGORY } from "../../../shared/cashAccounting";
-import { Landmark, RotateCcw, TrendingDown, TrendingUp } from "lucide-react";
+import { isCashCategory } from "../../../shared/cashCategoryRegistry";
+import { Banknote, Landmark, RotateCcw, TrendingDown, TrendingUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -21,7 +22,7 @@ const today = tashkentDateInputValue;
 export default function KassaReports() {
   const [fromDate, setFromDate] = useState(firstOfMonth());
   const [toDate, setToDate] = useState(today());
-  const [agentFilter, setAgentFilter] = useState("");
+  const [participantFilter, setParticipantFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [cashPage, setCashPage] = useState(1);
@@ -29,7 +30,7 @@ export default function KassaReports() {
   const [isExportingCash, setIsExportingCash] = useState(false);
   const [isExportingExpense, setIsExportingExpense] = useState(false);
 
-  const agents = trpc.kassa.report.agentDifferenceOptions.useQuery();
+  const participants = trpc.cash.participantOptions.useQuery();
   const categories = trpc.cash.categories.useQuery({ type: typeFilter === "all" ? undefined : typeFilter });
   const categoryOptions = useMemo(() => {
     const staticList = typeFilter === "income"
@@ -43,14 +44,19 @@ export default function KassaReports() {
   const filters = useMemo(() => ({
     from: fromDate ? tashkentDayBoundary(fromDate) : undefined,
     to: toDate ? tashkentDayBoundary(toDate, true) : undefined,
-    agentId: agentFilter ? Number(agentFilter) : undefined,
-  }), [fromDate, toDate, agentFilter]);
-  useEffect(() => { setCashPage(1); }, [fromDate, toDate, agentFilter, typeFilter, categoryFilter]);
+    agentId: participantFilter.startsWith("agent:") ? Number(participantFilter.slice(6)) : undefined,
+    employeeId: participantFilter.startsWith("employee:") ? Number(participantFilter.slice(9)) : undefined,
+  }), [fromDate, toDate, participantFilter]);
+  useEffect(() => { setCashPage(1); }, [fromDate, toDate, participantFilter, typeFilter, categoryFilter]);
 
-  const summary = trpc.kassa.report.summary.useQuery({ from: filters.from, to: filters.to });
-  const expenseByCategory = trpc.kassa.report.expenseByCategory.useQuery({ from: filters.from, to: filters.to });
+  const selectedPerson = filters.agentId
+    ? participants.data?.agents.find(person => person.id === filters.agentId)?.name
+    : filters.employeeId ? participants.data?.employees.find(person => person.id === filters.employeeId)?.name : undefined;
+  const reportFilterDescription = `${fromDate || "Barcha sanalar"} — ${toDate || "Barcha sanalar"} · ${selectedPerson || "Barcha agentlar va xodimlar"}`;
+  const summary = trpc.cash.reportSummary.useQuery(filters);
+  const expenseByCategory = trpc.kassa.report.expenseByCategory.useQuery(filters);
   const cashList = trpc.cash.list.useQuery({
-    from: filters.from, to: filters.to, agentId: filters.agentId,
+    ...filters,
     type: typeFilter, category: categoryFilter.trim() || undefined,
     page: cashPage, pageSize: 50,
   });
@@ -58,14 +64,14 @@ export default function KassaReports() {
 
   function clearFilters() {
     setFromDate(firstOfMonth()); setToDate(today());
-    setAgentFilter(""); setTypeFilter("all"); setCategoryFilter("");
+    setParticipantFilter(""); setTypeFilter("all"); setCategoryFilter("");
   }
 
   async function exportCash(format: "xlsx" | "pdf") {
     setIsExportingCash(true);
     try {
       const data = await utils.cash.exportData.fetch({
-        from: filters.from, to: filters.to, agentId: filters.agentId,
+        ...filters,
         type: typeFilter, category: categoryFilter.trim() || undefined,
       });
       type Row = (typeof data.rows)[number];
@@ -73,7 +79,7 @@ export default function KassaReports() {
         { title: "Sana", value: row => formatTashkentDate(row.entryDate), width: 48 },
         { title: "Harakat", value: row => row.category === ELECTRONIC_PAYMENT_CATEGORY ? "Elektron to‘lov" : row.type === "income" ? "Prihod" : "Rasxod", width: 48 },
         { title: "Kategoriya", value: row => row.category, width: "*" },
-        { title: "Agent", value: row => row.agentName || "—", width: 62 },
+        { title: "Agent / xodim", value: row => [row.agentName, row.employeeName].filter(Boolean).join(" / ") || "—", width: 62 },
         { title: "Izoh", value: row => row.description || "—", width: 80 },
         { title: "Naqd", value: row => row.cashAmount, width: 52, align: "right" },
         { title: "Terminal", value: row => row.terminalAmount, width: 52, align: "right" },
@@ -84,10 +90,11 @@ export default function KassaReports() {
         title: "Kassa harakatlari hisoboti",
         fileName: `kassa_hisoboti_${today()}`,
         rows: data.rows, columns, generatedAt: data.generatedAt,
-        filterDescription: `${fromDate} — ${toDate}`,
+        filterDescription: reportFilterDescription,
         summary: [
           { label: "Jami Prihod", value: data.summary.income },
           { label: "Jami Rasxod", value: data.summary.expense },
+          { label: "Filtrlangan oylik", value: data.rows.reduce((sum, row) => sum + (row.type === "expense" && isCashCategory(row, "salary") ? row.cashAmount : 0), 0) },
         ],
       };
       if (format === "xlsx") await exportReportXlsx(options); else await exportReportPdf(options);
@@ -114,7 +121,7 @@ export default function KassaReports() {
         title: "Rasxod turlari bo'yicha",
         fileName: `rasxod_turlari_${today()}`,
         rows: data.rows, columns, generatedAt: data.generatedAt,
-        filterDescription: `${fromDate} — ${toDate}`,
+        filterDescription: reportFilterDescription,
         summary: [{ label: "Jami rasxod", value: data.total }],
       };
       if (format === "xlsx") await exportReportXlsx(options); else await exportReportPdf(options);
@@ -136,25 +143,31 @@ export default function KassaReports() {
     <div className="mx-auto w-full max-w-[1650px]">
       <PageHeader eyebrow="Hisobot" title="Kassa hisobotlari" description="Kassa harakatlari va agentlar raznitsasi; mahsulot tafsiloti agent tanlanganda ochiladi." />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <MetricCard label="Jami Prihod" value={formatMoney(summary.data?.jamiPrihod, true)} helper="Tanlangan davr" icon={TrendingUp} tone="green" />
-        <MetricCard label="Jami Rasxod" value={formatMoney(summary.data?.jamiRasxod, true)} helper="Tanlangan davr" icon={TrendingDown} tone="rose" />
-        <MetricCard label="Sof natija" value={formatMoney(summary.data?.sofNatija, true)} helper="Prihod − Rasxod" icon={Landmark} tone="cyan" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Jami Prihod" value={formatMoney(summary.data?.income, true)} helper={selectedPerson || "Tanlangan davr · barcha agentlar va xodimlar"} icon={TrendingUp} tone="green" />
+        <MetricCard label="Jami Rasxod" value={formatMoney(summary.data?.expense, true)} helper={selectedPerson || "Tanlangan davr · barcha agentlar va xodimlar"} icon={TrendingDown} tone="rose" />
+        <MetricCard label="Sof natija" value={formatMoney(summary.data?.net, true)} helper="Prihod − Rasxod" icon={Landmark} tone="cyan" />
+        <MetricCard label="Olingan oylik jami" value={formatMoney(summary.data?.salaryPaid)} helper={`${summary.data?.salaryPaymentCount ?? 0} ta to‘lov · tanlangan odam va davr bo‘yicha`} icon={Banknote} tone="cyan" />
       </div>
 
       <AgentDifferenceReport />
 
-      <SectionCard title="Kassa harakatlari filtrlari" description="Sana umumiy ko‘rsatkichlar va pastki hisobotlarga ta’sir qiladi. Agent, harakat va kategoriya Kassa harakatlariga tegishli. Raznitsa kartasining o‘z filtrlari bor." className="mt-5">
+      <SectionCard title="Kassa harakatlari filtrlari" description="Sana va agent/xodim tanlovi yuqoridagi jamlar hamda Kassa harakatlariga ta’sir qiladi. Harakat va kategoriya faqat harakatlar jadvali va uning eksportini filtrlaydi. Oylik jami tanlangan davrdagi barcha oylik to‘lovlarini qamrab oladi. Raznitsa kartasining o‘z filtrlari bor." className="mt-5">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <Input type="date" className="finance-input" value={fromDate} max={toDate} onChange={event => setFromDate(event.target.value)} aria-label="Boshlanish sanasi" />
           <Input type="date" className="finance-input" value={toDate} min={fromDate} onChange={event => setToDate(event.target.value)} aria-label="Tugash sanasi" />
-          <select className="finance-input border px-3 text-muted-foreground" value={agentFilter} onChange={event => setAgentFilter(event.target.value)}><option value="">Barcha agentlar</option>{(agents.data ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select>
+          <select aria-label="Agent yoki xodim" className="finance-input border px-3 text-muted-foreground" value={participantFilter} onChange={event => setParticipantFilter(event.target.value)} disabled={participants.isLoading || Boolean(participants.error)}>
+            <option value="">Barcha agentlar va xodimlar</option>
+            <optgroup label="Agentlar">{(participants.data?.agents ?? []).map(agent => <option key={`agent:${agent.id}`} value={`agent:${agent.id}`}>{agent.name}{agent.isActive ? "" : " (faol emas)"}</option>)}</optgroup>
+            <optgroup label="Xodimlar">{(participants.data?.employees ?? []).map(employee => <option key={`employee:${employee.id}`} value={`employee:${employee.id}`}>{employee.name}{employee.isActive ? "" : " (faol emas)"}</option>)}</optgroup>
+          </select>
           <select className="finance-input border px-3 text-muted-foreground" value={typeFilter} onChange={event => { setTypeFilter(event.target.value as typeof typeFilter); setCategoryFilter(""); }}><option value="all">Prihod + Rasxod</option><option value="income">Faqat Prihod</option><option value="expense">Faqat Rasxod</option></select>
           <select className="finance-input border px-3 text-muted-foreground" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}>
             <option value="">Barcha turlar</option>
             {categoryOptions.map(category => <option key={category} value={category}>{category}</option>)}
           </select>
         </div>
+        {participants.error && <QueryError description={participants.error.message} onRetry={() => participants.refetch()} />}
         <div className="mt-3"><Button variant="outline" className="gap-2 bg-card" onClick={clearFilters}><RotateCcw className="size-4" />Filtrlarni tozalash</Button></div>
       </SectionCard>
 
@@ -201,14 +214,14 @@ export default function KassaReports() {
         <div className="-mx-5 overflow-hidden border-t border-border">
           {cashList.error ? <QueryError description={cashList.error.message} onRetry={() => cashList.refetch()} /> : cashList.isLoading ? <TableLoading columns={9} /> : cashRows.length === 0 ? <EmptyState /> : (
             <Table containerClassName="max-h-[620px] overflow-y-auto" className="finance-table min-w-[1100px]"><TableHeader className="sticky top-0 z-10 bg-card"><TableRow>
-              <TableHead>Sana</TableHead><TableHead>Harakat</TableHead><TableHead>Kategoriya</TableHead><TableHead>Agent</TableHead><TableHead>Izoh</TableHead>
+              <TableHead>Sana</TableHead><TableHead>Harakat</TableHead><TableHead>Kategoriya</TableHead><TableHead>Agent / xodim</TableHead><TableHead>Izoh</TableHead>
               <TableHead className="text-right">Naqd</TableHead><TableHead className="text-right">Terminal</TableHead><TableHead className="text-right">Click</TableHead><TableHead className="text-right">O‘tkazma</TableHead>
             </TableRow></TableHeader><TableBody>
               {cashRows.map(row => <TableRow key={row.reportKey}>
                 <TableCell className="whitespace-nowrap text-muted-foreground">{formatTashkentDate(row.entryDate)}</TableCell>
                 <TableCell><Badge className={row.category === ELECTRONIC_PAYMENT_CATEGORY ? "rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-50" : row.type === "income" ? "rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : "rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-50"}>{row.category === ELECTRONIC_PAYMENT_CATEGORY ? "Elektron" : row.type === "income" ? "Prihod" : "Rasxod"}</Badge></TableCell>
                 <TableCell className="font-semibold text-foreground">{row.category}</TableCell>
-                <TableCell>{row.agentName || "—"}</TableCell>
+                <TableCell>{[row.agentName, row.employeeName].filter(Boolean).join(" / ") || "—"}</TableCell>
                 <TableCell className="max-w-64"><ExpandableNote text={row.description || "—"} expanded={openNotes.includes(row.reportKey)} onToggle={() => setOpenNotes(current => current.includes(row.reportKey) ? current.filter(id => id !== row.reportKey) : [...current, row.reportKey])} /></TableCell>
                 <TableCell className={`text-right font-bold tabular-nums ${row.type === "expense" ? "text-rose-500" : ""}`}>{row.type === "expense" && row.cashAmount > 0 ? "−" : ""}{formatMoney(row.cashAmount)}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatMoney(row.terminalAmount)}</TableCell>
